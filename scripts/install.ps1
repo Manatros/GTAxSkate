@@ -277,7 +277,9 @@ if (-not (Is-Done 'boards')) {
         Run 'Adding your decks' { & $ped --assets $assets --import-decks $customDecks --out $models }
     }
     Run 'Making the board models' { & $ped --assets $assets --out $models --weapon --game $disc }
-    Run 'Packing the board models' { & (Join-Path $PSScriptRoot 'pack-skate-skater.ps1') -Gta $Gta -CodeWalker $CodeWalker -Weapon $models -Mode weapon }
+    # With the weapon wheel's skateboard icon (SK8V's converter made the HUD file).
+    $icon = Join-Path $data 'live-clip\hud.gfx'
+    Run 'Packing the board models' { & (Join-Path $PSScriptRoot 'pack-skate-skater.ps1') -Gta $Gta -CodeWalker $CodeWalker -Weapon $models -Mode weapon -Icon $icon }
     Done 'boards'
 }
 Say '  ready' 'Green'

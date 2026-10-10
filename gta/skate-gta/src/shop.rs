@@ -258,10 +258,21 @@ pub fn sticker_offers(library: &Library, tier: Tier) -> Vec<Offer> {
             title: format!("{} sticker", s.title),
             price: (price(tier, &format!("sticker:{}", s.id)) / 4).div_ceil(5) * 5,
             preview: s.id.clone(),
-            group: Some(s.group.clone()),
+            // Brand logos by their maker (its black-and-white and colour
+            // versions together, B97); team logos as one group.
+            group: Some(sticker_group(s)),
             goods: Goods::Sticker(s.id.clone()),
         })
         .collect()
+}
+
+/// The group a sticker is listed under: a brand logo's maker (its title
+/// before the version in brackets), else the sticker's own group.
+fn sticker_group(s: &skate_boards::stickers::Sticker) -> String {
+    match s.title.split_once(" (") {
+        Some((maker, _)) if s.group == "Brand logos" => maker.to_owned(),
+        _ => s.group.clone(),
+    }
 }
 
 /// The griptapes on sale: about half a deck's price.
@@ -826,6 +837,14 @@ mod tests {
     #[test]
     fn the_part_view_shows_the_part_an_offer_is_about() {
         use super::{Goods, focus_of};
+
+    #[test]
+    fn stickers_are_grouped_by_maker() {
+        let sticker = |group: &str, title: &str| skate_boards::stickers::Sticker { id: "x".into(), title: title.into(), group: group.into() };
+        assert_eq!(super::sticker_group(&sticker("Brand logos", "Adidas (bw)")), "Adidas");
+        assert_eq!(super::sticker_group(&sticker("Brand logos", "Adidas (colour)")), "Adidas");
+        assert_eq!(super::sticker_group(&sticker("Team logos", "Baker (team)")), "Team logos");
+    }
         use skate_boards::{BoardChoice, Part, PartRef};
         let wheel = PartRef { asset: "m".into(), material: "w".into() };
         assert_eq!(focus_of(&Goods::Part(Part::Wheels, wheel)), Some(Part::Wheels));
