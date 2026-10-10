@@ -1,0 +1,11 @@
+[package]
+name = "skate_rules"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+description = "Rules skate mode shares between the mashup and Skate 3 for GTA V: how far a skater may fall."
+
+# No dependencies, nothing inherited: Skate 3 for GTA V builds this crate
+# from its own workspace too.
+[dependencies]

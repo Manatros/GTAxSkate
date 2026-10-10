@@ -1,0 +1,11 @@
+[package]
+name = "skate_park"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+description = "Skate 3's object dropper: ramps, rails, ledges and boxes to build a park anywhere, their shapes and grind rails, and the dropper's controls. Shared by the mashup and Skate 3 for GTA V."
+
+# No dependencies, nothing inherited: Skate 3 for GTA V builds this crate
+# from its own workspace too.
+[dependencies]

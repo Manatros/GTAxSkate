@@ -1,0 +1,46 @@
+From 6bf35e59df2acd815371c671af3922a1d1e5efb3 Mon Sep 17 00:00:00 2001
+From: Manatros <Manatros@users.noreply.github.com>
+Date: Sat, 10 Oct 2026 13:34:39 +0200
+Subject: [PATCH 2/2] SkateMods: keyboard and mouse through SkateGTA.asi's pad
+ (SkateModsKeyboardPad) while GTA has the keyboard
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ host/src/main.cpp | 21 +++++++++++++++++++++
+ 1 file changed, 21 insertions(+)
+
+diff --git a/host/src/main.cpp b/host/src/main.cpp
+index bd28f98..70cfa93 100644
+--- a/host/src/main.cpp
++++ b/host/src/main.cpp
+@@ -384,6 +384,27 @@ SvPad ReadPadRaw() {
+         break;
+     }
+     if (scan) s_nextScan = now + 1000;
++    // SkateMods: while GTA has the keyboard, the keyboard and mouse with the
++    // SkateMods layout (F, E, Shift push, Space pop, ...), translated by
++    // SkateGTA.asi into a pad. It answers 0 while a controller is used.
++    using KeyboardPadFn = int(__cdecl*)(XINPUT_GAMEPAD*);
++    if (const HMODULE extras = GetModuleHandleW(L"SkateGTA.asi")) {
++        if (const auto keyboardPad = reinterpret_cast<KeyboardPadFn>(GetProcAddress(extras, "SkateModsKeyboardPad"))) {
++            static DWORD s_packet = 0;
++            XINPUT_GAMEPAD kb{};
++            if (keyboardPad(&kb)) {
++                pad.connected = 1;
++                pad.packet = ++s_packet;
++                pad.buttons = kb.wButtons;
++                pad.left_trigger = kb.bLeftTrigger;
++                pad.right_trigger = kb.bRightTrigger;
++                pad.left_x = kb.sThumbLX;
++                pad.left_y = kb.sThumbLY;
++                pad.right_x = kb.sThumbRX;
++                pad.right_y = kb.sThumbRY;
++            }
++        }
++    }
+     return pad;
+ }
+ 
+-- 
+2.55.0.windows.5
+

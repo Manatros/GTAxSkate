@@ -1,0 +1,37 @@
+[package]
+name = "skate-gta"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Skate 3 for GTA V: the Skate 3 Rust engine's physics, tricks, grinds and animations on the player, as a Script Hook V plugin"
+license = "Apache-2.0"
+
+# Its own workspace, like the Skate crates it links.
+[workspace]
+
+[lib]
+name = "skate_gta"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+# Type-checks the Windows-only Script Hook V layer on other systems
+# (`cargo check --features check-windows`); it is never linked there.
+check-windows = []
+# The older standalone core (the Skate 3 engine from the 2010 Rust Rewrite
+# Mashup): only built by ../skate-gta-own, which adds the engine. Here it is
+# off: SK8V skates and the plugin adds the extras, no mashup needed.
+own-core = []
+
+[dependencies]
+bevy = { version = "0.19", default-features = false, features = ["std", "multi_threaded", "bevy_log"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+skate_boards = { path = "../crates/skate_boards" }
+skate_input = { path = "../crates/skate_input" }
+skate_rules = { path = "../crates/skate_rules" }
+skate_park = { path = "../crates/skate_park" }
+skate_sound = { path = "../crates/skate_sound" }
+
+[profile.release]
+opt-level = 3
+codegen-units = 16

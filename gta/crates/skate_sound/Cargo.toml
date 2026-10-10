@@ -1,0 +1,11 @@
+[package]
+name = "skate_sound"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+description = "The board's sounds while skating, synthesised from what the board does: rolling on each surface, pops, landings, grinds, slides and bails. Shared by the mashup and Skate 3 for GTA V."
+
+# No dependencies, nothing inherited: Skate 3 for GTA V builds this crate
+# from its own workspace too.
+[dependencies]

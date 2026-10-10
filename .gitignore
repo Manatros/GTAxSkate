@@ -1,0 +1,8 @@
+# Build output
+target/
+# Made by install-gta.ps1 from your own game copies: never committed
+/sk8v/
+/skate-data/
+/board-models/
+/skate-config.json
+*.log
