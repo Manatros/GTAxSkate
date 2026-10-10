@@ -6,6 +6,11 @@ Each version is a tag on GitHub; `main` holds the newest confirmed one, `dev` th
 
 ## Unreleased (`dev`)
 
+## 0.3.0 (2026-10-10)
+
+Tested in the game: skating, tricks, the board shop and bought boards work; installed by the installer
+from Skate 3 directly. Known: the board sounds are not right yet (Skate 3's own audio engine is next).
+
 - **Animation**: Skate's pose on your character with SK8V's retarget (GTA keeps its own proportions,
   feet and grabbing hands follow Skate through two-bone IK, roll bones twist correctly).
 - **Pose hook**: the pose is written inside GTA's own animation pass instead of against it (no flicker,
@@ -15,6 +20,8 @@ Each version is a tag on GitHub; `main` holds the newest confirmed one, `dev` th
 - Bought painted boards are kept when the game loads them again.
 - Shop prompt no longer flickers while wanted.
 - America griptape removed (the USA print looks better).
+- Weapon-wheel icon for the skateboard; stickers grouped by maker in the shop.
+- D-pad gestures (Raise the roof, Dunno, Shaka, Point) no longer stop the Skate engine.
 - Our own Skate core is the base again; SK8V is a code source, not needed to play.
 - **Merged Skate engine**: our engine changes on top of SK8V 1.1.0's 47 engine fixes (skitching, moving
   geometry, stability), prepared automatically from the public sources: no 2010 Rust Rewrite Mashup install needed.

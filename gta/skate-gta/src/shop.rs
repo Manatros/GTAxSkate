@@ -835,16 +835,16 @@ pub fn preview_start() -> bevy_math::Quat {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn the_part_view_shows_the_part_an_offer_is_about() {
-        use super::{Goods, focus_of};
-
-    #[test]
     fn stickers_are_grouped_by_maker() {
         let sticker = |group: &str, title: &str| skate_boards::stickers::Sticker { id: "x".into(), title: title.into(), group: group.into() };
         assert_eq!(super::sticker_group(&sticker("Brand logos", "Adidas (bw)")), "Adidas");
         assert_eq!(super::sticker_group(&sticker("Brand logos", "Adidas (colour)")), "Adidas");
         assert_eq!(super::sticker_group(&sticker("Team logos", "Baker (team)")), "Team logos");
     }
+
+    #[test]
+    fn the_part_view_shows_the_part_an_offer_is_about() {
+        use super::{Goods, focus_of};
         use skate_boards::{BoardChoice, Part, PartRef};
         let wheel = PartRef { asset: "m".into(), material: "w".into() };
         assert_eq!(focus_of(&Goods::Part(Part::Wheels, wheel)), Some(Part::Wheels));

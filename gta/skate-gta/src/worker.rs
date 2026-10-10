@@ -163,6 +163,20 @@ impl Worker {
     }
 }
 
+/// D-pad gestures [up, down, left, right] in Skate 3's catalog (SK8V's
+/// defaults: Raise the roof, Dunno, Shaka, Point). SK8V's engine plays one
+/// on every d-pad press and fails without them (test 10-10 20:26).
+pub const GESTURES: [u32; 4] = [23, 7, 24, 22];
+
+/// A session on the small floor, with the engine's defaults set.
+fn new_session(assets: &std::path::Path) -> Result<Session, String> {
+    #[allow(unused_mut)]
+    let mut session = Session::new(assets, floor(), vec![], [0., 0., 0.], 0.)?;
+    #[cfg(feature = "sk8v-engine")]
+    session.set_gestures(Some(GESTURES));
+    Ok(session)
+}
+
 /// Loads a spare session on its own thread.
 fn load_spare(assets: &std::path::Path) -> mpsc::Receiver<Result<Session, String>> {
     let (send, receive) = mpsc::channel();
@@ -171,7 +185,7 @@ fn load_spare(assets: &std::path::Path) -> mpsc::Receiver<Result<Session, String
         .name("skate-gta-spare".into())
         .stack_size(32 * 1024 * 1024)
         .spawn(move || {
-            let _ = send.send(Session::new(&assets, floor(), vec![], [0., 0., 0.], 0.));
+            let _ = send.send(new_session(&assets));
         });
     receive
 }
@@ -239,7 +253,7 @@ fn take_over(
 
 fn run(assets: &std::path::Path, jobs: &mpsc::Receiver<Job>, publish: &mpsc::Sender<Event>) -> Result<(), String> {
     let started = std::time::Instant::now();
-    let mut session = Session::new(assets, floor(), vec![], [0., 0., 0.], 0.)?;
+    let mut session = new_session(assets)?;
     let mut spare_loading = Some(load_spare(assets));
     let mut spare: Option<Session> = None;
     let mut options: Option<Options> = None;
@@ -442,6 +456,23 @@ mod spare_tests {
         eprintln!("1 s later: moved {moved}, state {}, speed {}", pose.state, pose.velocity.length());
         assert!(moved.dot(ahead) > 3., "rolled ahead: {moved}");
         assert!(!pose.state.contains("Wipeout"), "no bail: {}", pose.state);
+    }
+
+    #[test]
+    #[ignore = "reads the real Skate data (about 10 s)"]
+    fn the_d_pad_plays_a_gesture_without_failing() {
+        // Test 10-10 20:26: d-pad up (with LB) took SK8V's engine down
+        // ("CharacterGesture needs the actual skater gesture selections").
+        let assets = &std::path::PathBuf::from(std::env::var("SKATE_ASSETS").expect("SKATE_ASSETS = the converted Skate 3 data"));
+        let mut session = new_session(assets).unwrap();
+        let prepared = build_collision(&session.collision_builder(), ground(), None, vec![]).unwrap();
+        session.install_collision(prepared).unwrap();
+        session.activate([3., 0.1, 5.], 0.).unwrap();
+        for tick in 0..120u32 {
+            let buttons = if tick % 40 < 20 { 0x0101 } else { 0 };
+            session.collect(InputFrame::from_pad(buttons, [0, 0], [0, 0], [0, 0], tick), 1. / 60.);
+            session.advance().unwrap();
+        }
     }
 
     #[test]
