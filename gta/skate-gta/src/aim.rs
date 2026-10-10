@@ -6,7 +6,7 @@
 //! IK) and the hand holds the gun along it. An aim further round than the
 //! spine can turn steers the board slowly that way.
 
-use bevy::math::{Mat3, Mat4, Quat, Vec2, Vec3};
+use bevy_math::{Mat3, Mat4, Quat, Vec2, Vec3};
 
 /// How far the spine turns from the hips, at most (degrees).
 pub const TWIST_LIMIT: f32 = 75.;

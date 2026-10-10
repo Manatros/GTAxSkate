@@ -688,7 +688,7 @@ mod tests {
         let skeleton = root.join("mp_m_freemode_01.yft.xml");
         write(&skeleton, skeleton::TEST_SKELETON.as_bytes()).unwrap();
         let out = root.join("out");
-        build(&Options { assets, skeleton, out: out.clone(), converter: None, game: None, texture_size: 512, max_per_slot: 0, import_decks: None, boards_only: false, weapon: false, boards: None }).unwrap();
+        build(&Options { assets, skeleton, out: out.clone(), converter: None, game: None, texture_size: 512, max_per_slot: 0, import_decks: None, boards_only: false, weapon: false, boards: None, prepare_boards: false, engine: None, python: None }).unwrap();
         let files = out.join("x64/models/cdimages/skate3/skate3_skater");
         assert!(files.join("jbib_000_u.ydd.xml").is_file());
         assert!(files.join("jbib_000_u/jbib_normal_000.dds").is_file());

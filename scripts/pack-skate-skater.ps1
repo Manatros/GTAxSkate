@@ -34,20 +34,28 @@
 param(
     [Parameter(Mandatory)] [string]$Gta,
     [Parameter(Mandatory)] [string]$CodeWalker,
-    [string]$Skater = (Join-Path $PSScriptRoot 'skate3-skater'),
+    [string]$Skater = '',
     # Test packs for finding what in a pack GTA cannot load: 'meta' has only
     # the data files (no clothes archive), 'small' only two pieces of
     # clothing per slot, 'bare' the archive with only the variations file
     # and the body (no clothes), 'body' only the body, 'empty' an empty
     # archive.
     [ValidateSet('full', 'meta', 'small', 'bare', 'body', 'empty')] [string]$Variant = 'full',
-    [ValidateSet('pack', 'skeleton', 'dlclist', 'boards', 'reference', 'weapon')] [string]$Mode = 'pack',
+    [ValidateSet('pack', 'skeleton', 'dlclist', 'boards', 'reference', 'weapon', 'icon')] [string]$Mode = 'pack',
+    # -Mode icon: GTA's hud.gfx with the skateboard's weapon-wheel icon (B98), made by
+    # SK8V's converter (its build-board-icon.py), into the mods folder's update.rpf.
+    [string]$Icon = '',
     [string]$Out,
-    [string]$Weapon = (Join-Path $PSScriptRoot 'skate3-weapon'),
+    [string]$Weapon = '',
     # Only the board part props, no WEAPON_SKATEBOARD of our own: with SK8V
     # as the core its skatev pack has the weapon (decision A28).
     [switch]$PropsOnly
 )
+# Defaults here: $PSScriptRoot is empty inside param defaults when the
+# script is run directly.
+$repo = Split-Path -Parent $PSScriptRoot
+if (-not $Skater) { $Skater = Join-Path $repo 'build\skate3-skater' }
+if (-not $Weapon) { $Weapon = Join-Path $repo 'build\skate3-weapon' }
 $ErrorActionPreference = 'Stop'
 $pack = 'skate3'
 $boardPack = 'skate3boards'
@@ -100,9 +108,13 @@ if (-not (Test-Path -LiteralPath $updateRpf)) {
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $updateRpf) | Out-Null
     Copy-Item -LiteralPath $original -Destination $updateRpf
 }
-$old = Join-Path $PSScriptRoot '_old'
+$old = Join-Path (Split-Path -Parent $PSScriptRoot) '_old'
 New-Item -ItemType Directory -Force -Path $old | Out-Null
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+# Only the newest kept pack of each kind stays (each is up to 240 MB; the
+# folder had grown to 2 GB, B94).
+Get-ChildItem -LiteralPath $old -Filter '*-dlc-*.rpf' -File | Group-Object { $_.Name -replace '-dlc-.*$', '' } |
+    ForEach-Object { $_.Group | Sort-Object LastWriteTime -Descending | Select-Object -Skip 1 | Remove-Item -Force }
 
 # --- CodeWalker's library ----------------------------------------------------
 # Windows marks DLLs from a downloaded ZIP as from the internet, and .NET
@@ -226,6 +238,30 @@ function Add-DlcList([string[]]$names = @($pack, $boardPack)) {
         [IO.File]::WriteAllText((Join-Path $old "dlclist-$stamp.xml"), $before)
         [void]$RpfFile::CreateFile($list.Parent, 'dlclist.xml', [Text.Encoding]::UTF8.GetBytes($text), $true)
     }
+}
+
+# The weapon wheel's skateboard icon: GTA's hud.gfx (in update.rpf's
+# x64\data\cdimages\scaleform_generic.rpf) replaced in the mods folder by the
+# one with the board's frame; the one there first is kept in _old.
+function Set-WheelIcon([string]$gfx) {
+    if (-not (Test-Path -LiteralPath $gfx)) { Fail "No $gfx (the converter's wheel-icon stage makes it)." }
+    Say 'Adding the skateboard icon to the weapon wheel...'
+    $update = Open-Rpf $updateRpf 'mods\update\update.rpf'
+    $entry = $null
+    foreach ($rpf in All-Rpfs $update) {
+        $entry = $rpf.AllEntries | Where-Object { $_.NameLower -eq 'hud.gfx' -and $_.Path -match '\\scaleform_generic\.rpf\\hud\.gfx$' } | Select-Object -First 1
+        if ($entry) { break }
+    }
+    if (-not $entry) { Fail 'No scaleform_generic.rpf\hud.gfx in mods\update\update.rpf.' }
+    $kept = Join-Path $old 'hud-original.gfx'
+    if (-not (Test-Path -LiteralPath $kept)) { [IO.File]::WriteAllBytes($kept, (Raw-Of $entry)) }
+    # GTA's archive is NG-encrypted, which CodeWalker cannot write without
+    # extra tables: made OPEN first (GTA reads open archives from mods).
+    if ($entry.File.Encryption -ne [CodeWalker.GameFiles.RpfEncryption]::OPEN) {
+        $RpfFile::SetEncryptionType($entry.File, [CodeWalker.GameFiles.RpfEncryption]::OPEN)
+    }
+    [void]$RpfFile::CreateFile($entry.Parent, 'hud.gfx', [IO.File]::ReadAllBytes($gfx), $true)
+    Say '  the board has its icon in the weapon wheel' 'Green'
 }
 
 # A new dlc.rpf at mods\update\x64\dlcpacks\<name>, the one there kept in _old.
@@ -612,7 +648,8 @@ function Pack-Weapon {
 # --- The smaller jobs ----------------------------------------------------------
 if ($Mode -eq 'dlclist') { Add-DlcList; return }
 if ($Mode -eq 'boards') { Pack-Boards; Add-DlcList @($boardPack); return }
-if ($Mode -eq 'weapon') { Pack-Weapon; Add-DlcList @($weaponPack); return }
+if ($Mode -eq 'weapon') { Pack-Weapon; Add-DlcList @($weaponPack); if ($Icon) { Set-WheelIcon $Icon }; return }
+if ($Mode -eq 'icon') { Set-WheelIcon $Icon; return }
 if ($Mode -eq 'reference') {
     if (-not $Out) { Fail 'No -Out folder for the reference files.' }
     New-Item -ItemType Directory -Force -Path $Out | Out-Null

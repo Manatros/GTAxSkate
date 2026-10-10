@@ -156,7 +156,7 @@ fn run() {
                         .objects
                         .iter()
                         .zip(&gta)
-                        .map(|(skate, gta)| crate::rig::blend_bone(&bevy::math::Mat4::from_cols_array(skate), gta, t).to_cols_array())
+                        .map(|(skate, gta)| crate::rig::blend_bone(&bevy_math::Mat4::from_cols_array(skate), gta, t).to_cols_array())
                         .collect();
                     super::memory::write_raw(pose.global, &mix);
                     mixed[slot] = Some((Arc::clone(&pose), mix));

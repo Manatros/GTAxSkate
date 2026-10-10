@@ -8,7 +8,7 @@
 //! Either is skinned to the Skate pose every frame like the mashup skins
 //! its board.
 
-use bevy::math::{Mat4, Vec3, Vec4};
+use bevy_math::{Mat4, Vec3, Vec4};
 use skate_boards::Board;
 
 use crate::coords::from_skate;
@@ -325,7 +325,7 @@ impl BoardLook {
 /// along `right`, its face turned `angle` radians over from facing
 /// `toward` (all Skate-space directions), centred on the origin.
 pub fn showcase(rest: &Rest, right: Vec3, up: Vec3, toward: Vec3, angle: f32) -> Vec<Mat4> {
-    use bevy::math::{Mat3, Quat};
+    use bevy_math::{Mat3, Quat};
     let [long, wide, thin] = rest.axes;
     let roll = Quat::from_axis_angle(right.normalize_or(Vec3::X), angle);
     let target = Mat3::from_cols(right, roll * up, roll * toward);

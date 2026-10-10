@@ -118,7 +118,11 @@ fn choices_round_trip_through_text() {
     assert_eq!(text, "a841a65d5c4dd593:0123abcd,,87d0fa0ea0366b23:ff");
     assert_eq!(BoardChoice::from_text(&text), choice);
     assert_eq!(BoardChoice::from_text("garbage"), BoardChoice::default());
-    assert_eq!(BoardChoice::from_text("zz:yy,,").get(Part::Deck), None, "not hex");
+    assert_eq!(BoardChoice::from_text("z-z:y y,,").get(Part::Deck), None, "not an id");
+    // Painted parts are kept too (they were lost on every load: B71).
+    let painted = BoardChoice::from_text("paint:paint_redm,c6f01c93097b7fb5:2c7f381700172b7a,paint:paint_goldx");
+    assert_eq!(painted.get(Part::Deck), Some(&PartRef::new("paint", "paint_redm")));
+    assert_eq!(painted.get(Part::Wheels), Some(&PartRef::new("paint", "paint_goldx")));
 }
 
 #[test]

@@ -3,7 +3,7 @@
 //! crates, dropped anywhere while skating. The world scan finds them like
 //! any other ground, so they ride, grind and launch as they look.
 
-use bevy::math::Vec3;
+use bevy_math::Vec3;
 use skate_park::{Dropper, Event, Pad, ParkObject};
 
 use super::natives as n;

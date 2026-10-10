@@ -7,7 +7,7 @@
 
 use super::natives as n;
 use crate::coords::joaat;
-use bevy::math::{Mat3, Mat4, Quat};
+use bevy_math::{Mat3, Mat4, Quat};
 use skate_boards::{BoardChoice, Part};
 
 /// The model of `part` on `choice` (unchosen: the default board's).

@@ -24,6 +24,7 @@ pub mod hud;
 pub mod live;
 pub mod options;
 pub mod parks;
+pub mod ped_rig;
 pub mod rig;
 pub mod rolling;
 pub mod shop;
@@ -40,3 +41,7 @@ pub mod worker;
 
 #[cfg(any(windows, feature = "check-windows"))]
 mod win;
+
+/// For the core's runtime, which links the plugin in (no `asi` feature).
+#[cfg(windows)]
+pub use win::{embedded_keyboard_pad, embedded_tick};

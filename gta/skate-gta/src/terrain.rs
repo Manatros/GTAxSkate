@@ -13,7 +13,7 @@
 //! above all their neighbours are thin things (handrails, fence tops):
 //! they are left out of the mesh and, where they line up, become rails.
 
-use bevy::math::{Vec2, Vec3};
+use bevy_math::{Vec2, Vec3};
 use std::collections::{HashMap, HashSet};
 
 /// The first surface a downward probe met.

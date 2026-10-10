@@ -4,7 +4,7 @@
 
 use super::shv::native;
 use crate::terrain::{Hit, Probe};
-use bevy::math::{Mat4, Quat, Vec3};
+use bevy_math::{Mat4, Quat, Vec3};
 use std::ffi::CString;
 
 /// Script Hook V's `Vector3`: each component in an 8-byte slot.
@@ -147,6 +147,10 @@ pub fn create_object(hash: u32, at: Vec3) -> i32 {
 }
 pub fn player_id() -> i32 {
     int(native!(0x4F8644AF03D0E0D6))
+}
+/// The player's wanted stars (GET_PLAYER_WANTED_LEVEL).
+pub fn wanted_level() -> i32 {
+    int(native!(0xE28E54788CE8F12D, player_id()))
 }
 /// Whether player `index` is in the session (NETWORK_IS_PLAYER_ACTIVE).
 pub fn player_active(index: i32) -> bool {

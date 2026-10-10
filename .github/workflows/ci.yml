@@ -1,0 +1,31 @@
+# Builds and tests every push and pull request on Windows (the mod's only
+# platform). The Skate engine core needs Skate 3's data and is built by the
+# installer on the player's PC; everything else is built and tested here.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        manifest:
+          - gta/skate-gta/Cargo.toml
+          - gta/skate-ped/Cargo.toml
+          - gta/crates/skate_boards/Cargo.toml
+          - gta/crates/skate_input/Cargo.toml
+          - gta/crates/skate_park/Cargo.toml
+          - gta/crates/skate_rules/Cargo.toml
+          - gta/crates/skate_sound/Cargo.toml
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ matrix.manifest }} -> target
+      - name: Test
+        run: cargo test --release --manifest-path ${{ matrix.manifest }}

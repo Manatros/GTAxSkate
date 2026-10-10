@@ -17,13 +17,19 @@ crate-type = ["cdylib", "rlib"]
 # Type-checks the Windows-only Script Hook V layer on other systems
 # (`cargo check --features check-windows`); it is never linked there.
 check-windows = []
-# The older standalone core (the Skate 3 engine from the 2010 Rust Rewrite
-# Mashup): only built by ../skate-gta-own, which adds the engine. Here it is
-# off: SK8V skates and the plugin adds the extras, no mashup needed.
+# Its own SkateGTA.asi (registers with Script Hook V). Off when the core
+# links it in and ticks it (`embedded`).
+default = ["asi"]
+asi = []
+# The plugin's own Skate core (the Skate 3 engine, skate-host): built by
+# ../skate-gta-own, which adds the engine. Off here: this manifest builds and
+# tests everything else without the engine.
 own-core = []
+# The Skate engine is SK8V's overlay (tags for surfaces), not the mashup's.
+sk8v-engine = []
 
 [dependencies]
-bevy = { version = "0.19", default-features = false, features = ["std", "multi_threaded", "bevy_log"] }
+bevy_math = "0.19"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 skate_boards = { path = "../crates/skate_boards" }

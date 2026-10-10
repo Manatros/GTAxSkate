@@ -17,7 +17,7 @@ use crate::coords::{
 use crate::rig::{Retarget, bind_pose, load_reference};
 use crate::terrain::{Probe, Terrain};
 use crate::worker::{Event, Frame, Options, Worker};
-use bevy::math::{EulerRot, Mat4, Quat, Vec3, Vec4};
+use bevy_math::{EulerRot, Mat4, Quat, Vec3, Vec4};
 use std::io::Write;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -61,22 +61,50 @@ pub extern "C" fn on_present(_swap_chain: *mut std::ffi::c_void) {
     hold::write_now();
 }
 
+/// The pose hook could not be put on this game (its bytes differ): the
+/// pose thread (`hold`) writes instead, for the rest of the session.
+static HOOK_FAILED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// GTA's pose to Skate's and back through the hook (ms), as SK8V hands off.
+const HOOK_FADE_MS: i32 = 500;
+
+/// Whether the hook writes the player's pose now.
+fn hooked(mode: PoseWrite) -> bool {
+    mode == PoseWrite::Hook && !HOOK_FAILED.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 /// Puts a pose (each bone relative to the character) on a character the
-/// way the settings say: written now, held against GTA's animation by the
-/// pose thread, or written again as each frame is shown.
-fn show_pose(mode: PoseWrite, slot: hold::Slot, skeleton: &Skeleton, objects: &[Mat4]) {
+/// way the settings say: inside GTA's animation pass (the hook), written
+/// now, held against GTA's animation by the pose thread, or written again
+/// as each frame is shown. Returns what to log (the hook going on).
+fn show_pose(mode: PoseWrite, slot: hold::Slot, ped: i32, skeleton: &Skeleton, objects: &[Mat4]) -> Option<String> {
     if mode == PoseWrite::Off {
-        return;
+        return None;
     }
+    let mut note = None;
+    if hooked(mode) && slot == hold::Slot::Player {
+        let entity = shv::entity_address(ped) as usize;
+        let fresh = !super::pose_hook::installed_for(entity);
+        let mut lines = Vec::new();
+        if super::pose_hook::install(entity, skeleton.address, &mut |line| lines.push(line.to_owned())) {
+            hold::clear(slot);
+            super::pose_hook::fade_in_unless_in(HOOK_FADE_MS);
+            super::pose_hook::publish(objects);
+            return fresh.then(|| lines.join("; ")).filter(|l| !l.is_empty());
+        }
+        HOOK_FAILED.store(true, std::sync::atomic::Ordering::Relaxed);
+        note = Some(format!("{}; the pose thread writes instead", lines.join("; ")));
+    }
+    let mode = if mode == PoseWrite::Hook { PoseWrite::Hold } else { mode };
     let pose = memory::Written::new(skeleton, objects);
     if matches!(mode, PoseWrite::Tick | PoseWrite::Both | PoseWrite::Hold) {
         pose.write();
     }
     match mode {
-        PoseWrite::Hold => hold::set(slot, pose, true),
+        PoseWrite::Hold | PoseWrite::Hook => hold::set(slot, pose, true),
         PoseWrite::Present | PoseWrite::Both => hold::set(slot, pose, false),
         PoseWrite::Off | PoseWrite::Tick => {}
     }
+    note
 }
 
 /// The Skate bones a co-op packet carries when this player's skeleton is
@@ -432,12 +460,12 @@ pub struct Script {
 
 /// `forward` turned by the mouse look: yaw about up, then pitch.
 fn look_turned(forward: Vec3, (yaw, pitch): (f32, f32)) -> Vec3 {
-    let turned = bevy::math::Quat::from_rotation_z(yaw) * forward;
+    let turned = bevy_math::Quat::from_rotation_z(yaw) * forward;
     let right = turned.cross(Vec3::Z).normalize_or_zero();
     if right == Vec3::ZERO {
         return turned;
     }
-    (bevy::math::Quat::from_axis_angle(right, pitch) * turned).normalize_or_zero()
+    (bevy_math::Quat::from_axis_angle(right, pitch) * turned).normalize_or_zero()
 }
 
 /// Seconds after a bail before going back to the checkpoint.
@@ -632,10 +660,12 @@ impl Script {
             .config
             .skate_assets
             .clone()
-            .ok_or("Set SkateAssets in SkateGTA.ini to the mashup's skate-data\\assets folder.")?;
-        if !assets.join("rig.json").is_file() {
+            .ok_or("Set SkateAssets in SkateGTA.ini to the converted Skate 3 data (skate-data\\assets).")?;
+        // Any converter's data has the skater model (the mashup's, SK8V's,
+        // the installer's); rig.json is only the mashup's.
+        if !assets.join("private").join("skater.glb").is_file() {
             return Err(format!(
-                "{} has no rig.json. Skate once in the mashup so it prepares the Skate data, then try again.",
+                "{} has no converted Skate 3 data (private\\skater.glb). Run the installer, then try again.",
                 assets.display()
             ));
         }
@@ -945,7 +975,10 @@ impl Script {
         if self.sources.is_some() {
             return;
         }
-        let Ok(assets) = self.assets() else { return };
+        // The board library alone is enough (install-gta.ps1 makes it from
+        // Skate 3, A29); the rest of the old core's data (rig.json) is not
+        // needed for boards.
+        let Some(assets) = self.config.skate_assets.clone() else { return };
         let library = if skate_boards::Library::exists(&assets) {
             match skate_boards::Library::load(&assets) {
                 Ok(library) => Some(library),
@@ -955,7 +988,7 @@ impl Script {
                 }
             }
         } else {
-            self.log.line("no board library: the mashup has not prepared Skate 3's board catalog");
+            self.log.line("no board library in SkateAssets: run install-gta.ps1");
             None
         };
         let defaults = skate_boards::Board::default_board(&assets, BOARD_TEXTURE);
@@ -1342,9 +1375,10 @@ impl Script {
         match self.read_skeleton(ped) {
             Ok((skeleton, retarget)) => {
                 self.log.line(&format!(
-                    "posing {} GTA bones, {} following Skate bones",
+                    "posing {} GTA bones, {} following Skate bones ({} rig)",
                     skeleton.bones.len(),
-                    retarget.mapped()
+                    retarget.mapped(),
+                    if retarget.uses_ped_rig() { "SK8V's" } else { "the older" }
                 ));
                 if matches!(self.config.pose_write, PoseWrite::Present | PoseWrite::Both) && !self.present_hooked {
                     shv::on_present(on_present);
@@ -1370,9 +1404,20 @@ impl Script {
         let offset = self.vfunc.get_or_insert_with(memory::frag_inst_vfunc_offset).clone()?;
         let skeleton = memory::skeleton(shv::entity_address(ped) as usize, offset)?;
         let gta = bind_pose(&skeleton.bones);
-        let reference = load_reference(&self.assets()?.join("rig.json"))?;
+        let reference = crate::rig::reference_of(&self.assets()?)?;
         let names = self.names.as_deref().ok_or("Skate is not loaded")?;
-        let retarget = Retarget::new(&gta, &reference, names, self.config.facing_degrees)?;
+        let ped_rig = if self.config.sk8v_rig {
+            match crate::ped_rig::PedRig::new(&gta, &reference, names) {
+                Ok(rig) => Some(rig),
+                Err(e) => {
+                    self.log.line(&format!("rig: SK8V's retarget does not fit this ped ({e}); the older one poses it"));
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        let retarget = Retarget::new(&gta, &reference, names, self.config.facing_degrees)?.with_ped_rig(ped_rig);
         if ped == n::player_ped() {
             self.skeleton_cache = Some((ped, skeleton.clone(), retarget.clone()));
         }
@@ -2552,7 +2597,11 @@ impl Script {
             let inverse = entity.inverse();
             let mut local: Vec<Mat4> = world.iter().map(|m| inverse * *m).collect();
             local.truncate(skeleton.bones.len());
-            // From GTA's pose into Skate's as skating begins.
+            // From GTA's pose into Skate's as skating begins (the hook
+            // blends with GTA's live pose itself).
+            if hooked(config.pose_write) {
+                riding.blend_in = None;
+            }
             if let Some((started, from)) = riding.blend_in.as_ref() {
                 let t = blend_progress(*started);
                 if t < 1. {
@@ -2573,7 +2622,9 @@ impl Script {
                 self.log.line(&format!("  write {} bones ({:?})", local.len(), config.pose_write));
             }
             super::crash::phase("posing: writing and handing over the pose");
-            show_pose(config.pose_write, hold::Slot::Player, skeleton, &local);
+            if let Some(note) = show_pose(config.pose_write, hold::Slot::Player, riding.ped, skeleton, &local) {
+                self.log.line(&note);
+            }
         }
         super::crash::phase("posing: the board model and camera");
 
@@ -2887,7 +2938,12 @@ impl Script {
         if !riding.last_pose.is_empty()
             && let Some((skeleton, _)) = riding.skeleton.take()
         {
-            hold::fade_out(hold::Slot::Player, memory::Written::new(&skeleton, &riding.last_pose), BLEND_SECONDS * 1.5);
+            if super::pose_hook::installed_for(shv::entity_address(riding.ped) as usize) {
+                // Skate's last pose fades into GTA's inside the animation pass.
+                super::pose_hook::fade_out(HOOK_FADE_MS);
+            } else {
+                hold::fade_out(hold::Slot::Player, memory::Written::new(&skeleton, &riding.last_pose), BLEND_SECONDS * 1.5);
+            }
         }
         if let Some(worker) = &self.worker {
             worker.suspend();
@@ -2989,7 +3045,9 @@ impl Script {
             let mut local: Vec<Mat4> = world.iter().map(|m| inverse * *m).collect();
             local.truncate(skeleton.bones.len());
             let _ = entity;
-            show_pose(config.pose_write, hold::Slot::Player, skeleton, &local);
+            if let Some(note) = show_pose(config.pose_write, hold::Slot::Player, showroom.ped, skeleton, &local) {
+                self.log.line(&note);
+            }
         }
         // The board they look at, in their hands: GTA's HD part models.
         if parts {
@@ -3048,6 +3106,10 @@ impl Script {
             worker.suspend();
         }
         hold::clear(hold::Slot::Player);
+        if super::pose_hook::installed_for(shv::entity_address(showroom.ped) as usize) {
+            let log = &mut self.log;
+            super::pose_hook::uninstall(&mut |line| log.line(line));
+        }
         if showroom.camera != 0 {
             n::camera_render(showroom.camera, false);
             n::destroy_camera(showroom.camera);
@@ -3170,7 +3232,7 @@ impl Script {
                 shv::on_present(on_present);
                 self.present_hooked = true;
             }
-            show_pose(mode, hold::Slot::Remote, skeleton, &local);
+            let _ = show_pose(mode, hold::Slot::Remote, remote.ped, skeleton, &local);
         } else if remote.stand_in {
             n::set_coords_no_offset(remote.ped, at + Vec3::Z);
             n::set_heading(remote.ped, remote.heading);
@@ -3329,12 +3391,12 @@ fn gta_cinematic(works: &mut Option<bool>, asked: &mut Option<Instant>, log: &mu
 fn sk8v_board_to_parts(board: Mat4, config: &Config) -> Mat4 {
     let turn = Mat4::from_cols(Vec4::new(0., 0., -1., 0.), Vec4::new(1., 0., 0., 0.), Vec4::new(0., -1., 0., 0.), Vec4::W);
     let [rx, ry, rz] = config.board_rotation.map(f32::to_radians);
-    let fine = Mat4::from_translation(Vec3::from_array(config.board_offset)) * Mat4::from_euler(bevy::math::EulerRot::XYZ, rx, ry, rz);
+    let fine = Mat4::from_translation(Vec3::from_array(config.board_offset)) * Mat4::from_euler(bevy_math::EulerRot::XYZ, rx, ry, rz);
     board * turn * fine * Mat4::from_translation(Vec3::new(0., 0., -0.35))
 }
 
 /// `CarryOffset` / `CarryRotation` (ini) on the board weapon in the hand.
 fn hand_adjust(config: &Config) -> Mat4 {
     let [rx, ry, rz] = config.carry_rotation.map(f32::to_radians);
-    Mat4::from_translation(Vec3::from_array(config.carry_offset)) * Mat4::from_euler(bevy::math::EulerRot::XYZ, rx, ry, rz)
+    Mat4::from_translation(Vec3::from_array(config.carry_offset)) * Mat4::from_euler(bevy_math::EulerRot::XYZ, rx, ry, rz)
 }

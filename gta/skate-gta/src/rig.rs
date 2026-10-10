@@ -7,7 +7,7 @@
 //! and helper bones) follow their nearest mapped ancestor.
 
 use crate::coords::transform_from_skate;
-use bevy::math::{Mat4, Quat, Vec3};
+use bevy_math::{Mat4, Quat, Vec3};
 use serde::Deserialize;
 use std::path::Path;
 
@@ -22,6 +22,36 @@ pub struct ReferenceBone {
 pub fn load_reference(path: &Path) -> Result<Vec<ReferenceBone>, String> {
     let data = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
     serde_json::from_slice(&data).map_err(|e| format!("{}: {e}", path.display()))
+}
+
+/// The Skate reference skater from the converted data in `assets`: the
+/// mashup's `rig.json` when it is there, else the skin of `private/skater.glb`
+/// (any converter writes it; its joints' bind is the inverse of their
+/// inverse bind matrices).
+pub fn reference_of(assets: &Path) -> Result<Vec<ReferenceBone>, String> {
+    let rig = assets.join("rig.json");
+    if rig.is_file() {
+        return load_reference(&rig);
+    }
+    reference_from_skater(assets)
+}
+
+/// The Skate reference skater from the skin of `private/skater.glb`.
+pub fn reference_from_skater(assets: &Path) -> Result<Vec<ReferenceBone>, String> {
+    skate_boards::skater_joints(assets)?
+        .into_iter()
+        .map(|joint| {
+            // The mashup's rig.json turns each joint's axes a quarter about
+            // its X (bones along Y there): the same here, so Skate's poses
+            // (in that convention) pair with this bind.
+            let bind = Mat4::from_cols_array(&joint.inverse_bind).inverse() * Mat4::from_rotation_x(std::f32::consts::FRAC_PI_2);
+            if bind.is_finite() {
+                Ok(ReferenceBone { name: joint.name, bind: bind.to_cols_array() })
+            } else {
+                Err(format!("the skater's joint {} has no usable bind", joint.name))
+            }
+        })
+        .collect()
 }
 
 /// A bone of the GTA ped, bind pose in the ped's model space.
@@ -114,6 +144,8 @@ pub struct Retarget {
     /// Forearm roll bones, their hand, and the roll's bind rotation in the
     /// hand's frame: they take half the hand's twist.
     rolls: Vec<(usize, usize, Quat)>,
+    /// SK8V's retarget, when it fits this ped: used before the one here.
+    better: Option<crate::ped_rig::PedRig>,
 }
 
 impl Retarget {
@@ -187,11 +219,22 @@ impl Retarget {
                     let (roll, hand) = (index(roll)?, index(hand)?);
                     Some((roll, hand, rotation(&gta[hand].bind).inverse() * rotation(&gta[roll].bind)))
                 })
-                .collect(),
+                .collect(),            better: None,
         })
     }
 
     /// How many GTA bones follow a Skate bone directly.
+    /// Uses SK8V's retarget (`ped_rig`) for this ped when given.
+    pub fn with_ped_rig(mut self, rig: Option<crate::ped_rig::PedRig>) -> Self {
+        self.better = rig;
+        self
+    }
+
+    /// Whether SK8V's retarget poses this ped.
+    pub fn uses_ped_rig(&self) -> bool {
+        self.better.is_some()
+    }
+
     pub fn mapped(&self) -> usize {
         self.mapped
     }
@@ -206,6 +249,9 @@ impl Retarget {
                 _ => None,
             })
             .collect();
+        if let Some(better) = &self.better {
+            used.extend(better.used());
+        }
         used.sort_unstable();
         used.dedup();
         used
@@ -215,6 +261,9 @@ impl Retarget {
     /// Skate's origin being GTA point `origin`). `still` places bones that
     /// follow nothing.
     pub fn pose(&self, skate: &[Mat4], origin: Vec3, still: Mat4) -> Vec<Mat4> {
+        if let Some(world) = self.better.as_ref().and_then(|rig| rig.pose(skate, origin)) {
+            return world;
+        }
         let mut skins: Vec<Mat4> = Vec::with_capacity(self.plans.len());
         for plan in &self.plans {
             let skin = match *plan {
@@ -434,5 +483,25 @@ mod tests {
     fn a_skeleton_with_nothing_in_common_is_refused() {
         let other = bind_pose(&[("root".into(), None, Quat::IDENTITY, Vec3::ZERO)]);
         assert!(Retarget::new(&other, &[], &[], 0.).is_err());
+    }
+}
+
+#[cfg(test)]
+mod reference_tests {
+    use super::*;
+
+    /// The skater model's skin gives the same bind as the mashup's rig.json
+    /// (SKATE_ASSETS = the mashup's converted data, which has both).
+    #[test]
+    #[ignore = "reads the converted Skate 3 data (SKATE_ASSETS)"]
+    fn the_skater_model_gives_the_rig() {
+        let assets = std::path::PathBuf::from(std::env::var("SKATE_ASSETS").expect("SKATE_ASSETS"));
+        let rig = load_reference(&assets.join("rig.json")).unwrap();
+        let glb = reference_from_skater(&assets).unwrap();
+        for bone in &rig {
+            let other = glb.iter().find(|b| b.name == bone.name).unwrap_or_else(|| panic!("{} missing", bone.name));
+            let (a, b) = (Mat4::from_cols_array(&bone.bind), Mat4::from_cols_array(&other.bind));
+            assert!(a.abs_diff_eq(b, 1e-3), "{}: {a} vs {b}", bone.name);
+        }
     }
 }

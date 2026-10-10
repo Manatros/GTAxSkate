@@ -107,7 +107,8 @@ impl PartRef {
 
     fn from_text(text: &str) -> Option<Self> {
         let (asset, material) = text.split_once(':')?;
-        let id = |s: &str| !s.is_empty() && s.len() <= 32 && s.bytes().all(|b| b.is_ascii_hexdigit());
+        // Skate's ids are hex; painted parts are `paint:paint_<colour>`.
+        let id = |s: &str| !s.is_empty() && s.len() <= 32 && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_');
         (id(asset) && id(material)).then(|| Self::new(&asset.to_ascii_lowercase(), &material.to_ascii_lowercase()))
     }
 }
@@ -851,6 +852,31 @@ pub fn assemble(library: Option<&Library>, defaults: &Board, choice: &BoardChoic
         }
     }
     Ok(board)
+}
+
+/// Every joint of the converted skater model's skin (`private/skater.glb`),
+/// with its inverse bind matrix (Skate space, column-major).
+pub fn skater_joints(assets: &Path) -> Result<Vec<Joint>, String> {
+    let path = assets.join("private").join("skater.glb");
+    let bytes = std::fs::read(&path).map_err(|error| format!("cannot read {}: {error}", path.display()))?;
+    let glb = glb::Glb::parse(&bytes)?;
+    let skin = &glb.json["skins"][0];
+    let skin_joints = skin["joints"].as_array().ok_or("the skater model has no skin")?;
+    let inverse = glb.floats(glb::index(&skin["inverseBindMatrices"])?)?;
+    if inverse.len() != skin_joints.len() * 16 {
+        return Err("the skater model's bind matrices do not match its joints".into());
+    }
+    skin_joints
+        .iter()
+        .enumerate()
+        .map(|(i, joint)| {
+            let node = glb::index(joint)?;
+            let name = glb.json["nodes"][node]["name"].as_str().ok_or_else(|| format!("joint node {node} has no name"))?;
+            let mut inverse_bind = [0f32; 16];
+            inverse_bind.copy_from_slice(&inverse[i * 16..i * 16 + 16]);
+            Ok(Joint { name: name.to_owned(), inverse_bind })
+        })
+        .collect()
 }
 
 /// Reads the skinned primitives `pick` names (by material name) from a GLB:

@@ -6,7 +6,7 @@
 
 use std::ffi::c_void;
 
-use bevy::math::{Mat4, Quat, Vec3};
+use bevy_math::{Mat4, Quat, Vec3};
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]

@@ -258,10 +258,21 @@ pub fn sticker_offers(library: &Library, tier: Tier) -> Vec<Offer> {
             title: format!("{} sticker", s.title),
             price: (price(tier, &format!("sticker:{}", s.id)) / 4).div_ceil(5) * 5,
             preview: s.id.clone(),
-            group: Some(s.group.clone()),
+            // Brand logos by their maker (its black-and-white and colour
+            // versions together, B97); team logos as one group.
+            group: Some(sticker_group(s)),
             goods: Goods::Sticker(s.id.clone()),
         })
         .collect()
+}
+
+/// The group a sticker is listed under: a brand logo's maker (its title
+/// before the version in brackets), else the sticker's own group.
+fn sticker_group(s: &skate_boards::stickers::Sticker) -> String {
+    match s.title.split_once(" (") {
+        Some((maker, _)) if s.group == "Brand logos" => maker.to_owned(),
+        _ => s.group.clone(),
+    }
 }
 
 /// The griptapes on sale: about half a deck's price.
@@ -619,8 +630,8 @@ impl Menu {
 /// knee and head height) and run on straight 0.9 m to either side. Returns
 /// a point on it at `eye`'s height and its normal into the room, the
 /// stretch nearest 3 m away.
-pub fn display_wall(eye: bevy::math::Vec3, mut probe: impl FnMut(bevy::math::Vec3, bevy::math::Vec3) -> Option<bevy::math::Vec3>) -> Option<(bevy::math::Vec3, bevy::math::Vec3)> {
-    use bevy::math::{Vec2, Vec3};
+pub fn display_wall(eye: bevy_math::Vec3, mut probe: impl FnMut(bevy_math::Vec3, bevy_math::Vec3) -> Option<bevy_math::Vec3>) -> Option<(bevy_math::Vec3, bevy_math::Vec3)> {
+    use bevy_math::{Vec2, Vec3};
     const DIRECTIONS: usize = 24;
     let mut best: Option<(f32, Vec3, Vec3)> = None;
     for k in 0..DIRECTIONS {
@@ -673,8 +684,8 @@ pub fn display_wall(eye: bevy::math::Vec3, mut probe: impl FnMut(bevy::math::Vec
 /// room, the floor at `floor`): standing on their tails 0.35 m apart, the
 /// graphic facing out. Each in the board models' frame (length along Z
 /// from the grip, the deck facing -X).
-pub fn display_places(at: bevy::math::Vec3, normal: bevy::math::Vec3, floor: f32, count: usize) -> Vec<bevy::math::Mat4> {
-    use bevy::math::{Mat3, Mat4, Vec3};
+pub fn display_places(at: bevy_math::Vec3, normal: bevy_math::Vec3, floor: f32, count: usize) -> Vec<bevy_math::Mat4> {
+    use bevy_math::{Mat3, Mat4, Vec3};
     let along = Vec3::Z.cross(normal).normalize();
     // X (the wheels' side) out of the wall, Z up.
     let turn = Mat3::from_cols(normal, Vec3::Z.cross(normal), Vec3::Z);
@@ -693,8 +704,8 @@ pub fn display_places(at: bevy::math::Vec3, normal: bevy::math::Vec3, floor: f32
 /// `probe` straight back from the clerk and 0.6 m to either side must meet
 /// one flat wall within 3 m. Returns a point on it at the clerk's height and
 /// its normal (toward the clerk).
-pub fn wall_behind(clerk: bevy::math::Vec3, forward: bevy::math::Vec3, mut probe: impl FnMut(bevy::math::Vec3, bevy::math::Vec3) -> Option<bevy::math::Vec3>) -> Option<(bevy::math::Vec3, bevy::math::Vec3)> {
-    use bevy::math::Vec3;
+pub fn wall_behind(clerk: bevy_math::Vec3, forward: bevy_math::Vec3, mut probe: impl FnMut(bevy_math::Vec3, bevy_math::Vec3) -> Option<bevy_math::Vec3>) -> Option<(bevy_math::Vec3, bevy_math::Vec3)> {
+    use bevy_math::Vec3;
     let back = -forward.truncate().normalize_or_zero().extend(0.);
     if back == Vec3::ZERO {
         return None;
@@ -722,8 +733,8 @@ pub fn wall_behind(clerk: bevy::math::Vec3, forward: bevy::math::Vec3, mut probe
 /// Boards hung behind the till: two on either side of the clerk (the
 /// middle left free for them), their tails at `floor` + 1 m (above the
 /// counter), graphic out, in the board models' frame.
-pub fn till_places(at: bevy::math::Vec3, normal: bevy::math::Vec3, floor: f32) -> Vec<bevy::math::Mat4> {
-    use bevy::math::{Mat3, Mat4, Vec3};
+pub fn till_places(at: bevy_math::Vec3, normal: bevy_math::Vec3, floor: f32) -> Vec<bevy_math::Mat4> {
+    use bevy_math::{Mat3, Mat4, Vec3};
     let along = Vec3::Z.cross(normal).normalize();
     let turn = Mat3::from_cols(normal, Vec3::Z.cross(normal), Vec3::Z);
     [-1.0f32, -0.62, 0.62, 1.0]
@@ -741,15 +752,15 @@ pub fn till_places(at: bevy::math::Vec3, normal: bevy::math::Vec3, floor: f32) -
 #[derive(Clone, Debug, PartialEq)]
 pub struct ShowCase {
     pub store: (i32, i32),
-    pub at: bevy::math::Vec3,
-    pub normal: bevy::math::Vec3,
+    pub at: bevy_math::Vec3,
+    pub normal: bevy_math::Vec3,
     pub floor: f32,
     pub till: bool,
 }
 
 impl ShowCase {
     /// Where each board goes.
-    pub fn places(&self, count: usize) -> Vec<bevy::math::Mat4> {
+    pub fn places(&self, count: usize) -> Vec<bevy_math::Mat4> {
         if self.till {
             till_places(self.at, self.normal, self.floor)
         } else {
@@ -759,7 +770,7 @@ impl ShowCase {
 }
 
 /// The store key of an interior at `place`.
-pub fn store_key(place: bevy::math::Vec3) -> (i32, i32) {
+pub fn store_key(place: bevy_math::Vec3) -> (i32, i32) {
     (place.x.round() as i32, place.y.round() as i32)
 }
 
@@ -795,8 +806,8 @@ pub fn shows_from_text(text: &str) -> Vec<ShowCase> {
             let mut words = line.strip_prefix("show3 ")?.split_whitespace();
             let mut number = || words.next()?.parse::<f32>().ok();
             let store = (number()? as i32, number()? as i32);
-            let at = bevy::math::Vec3::new(number()?, number()?, number()?);
-            let normal = bevy::math::Vec3::new(number()?, number()?, 0.);
+            let at = bevy_math::Vec3::new(number()?, number()?, number()?);
+            let normal = bevy_math::Vec3::new(number()?, number()?, 0.);
             let floor = number()?;
             let till = words.next()? == "till";
             (normal.length() > 0.5).then_some(ShowCase { store, at, normal, floor, till })
@@ -807,8 +818,8 @@ pub fn shows_from_text(text: &str) -> Vec<ShowCase> {
 /// The preview board turned by the mouse as a trackball, in the view's own
 /// axes (X ahead, Y up, Z right): sideways spins it about the up axis,
 /// up and down about the right one, round and round in every direction.
-pub fn trackball(orient: bevy::math::Quat, sideways: f32, up_down: f32) -> bevy::math::Quat {
-    use bevy::math::Quat;
+pub fn trackball(orient: bevy_math::Quat, sideways: f32, up_down: f32) -> bevy_math::Quat {
+    use bevy_math::Quat;
     (Quat::from_rotation_y(sideways * TURN_SPEED) * Quat::from_rotation_z(up_down * TURN_SPEED) * orient).normalize()
 }
 
@@ -817,12 +828,20 @@ const TURN_SPEED: f32 = 0.35;
 
 /// The preview's first look: turned over about its length to show its
 /// graphic at three quarters.
-pub fn preview_start() -> bevy::math::Quat {
-    bevy::math::Quat::from_rotation_z(std::f32::consts::PI - 0.7)
+pub fn preview_start() -> bevy_math::Quat {
+    bevy_math::Quat::from_rotation_z(std::f32::consts::PI - 0.7)
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn stickers_are_grouped_by_maker() {
+        let sticker = |group: &str, title: &str| skate_boards::stickers::Sticker { id: "x".into(), title: title.into(), group: group.into() };
+        assert_eq!(super::sticker_group(&sticker("Brand logos", "Adidas (bw)")), "Adidas");
+        assert_eq!(super::sticker_group(&sticker("Brand logos", "Adidas (colour)")), "Adidas");
+        assert_eq!(super::sticker_group(&sticker("Team logos", "Baker (team)")), "Team logos");
+    }
+
     #[test]
     fn the_part_view_shows_the_part_an_offer_is_about() {
         use super::{Goods, focus_of};
@@ -892,7 +911,7 @@ mod tests {
 
     #[test]
     fn boards_hang_behind_the_till_either_side_of_the_clerk() {
-        use bevy::math::Vec3;
+        use bevy_math::Vec3;
         // The clerk at (0, 0, 1) faces +y (the counter); the wall is at y = -0.8.
         let probe = |a: Vec3, b: Vec3| -> Option<Vec3> {
             let d = b - a;
@@ -910,7 +929,7 @@ mod tests {
 
     #[test]
     fn boards_go_on_show_against_a_flat_wall() {
-        use bevy::math::Vec3;
+        use bevy_math::Vec3;
         // A room: walls at x = 4 (flat) and y = 2.5 (with a doorway: no
         // wall from x 1 to 2.5), the player at the origin.
         let probe = |a: Vec3, b: Vec3| -> Option<Vec3> {
@@ -962,7 +981,7 @@ mod tests {
 
     #[test]
     fn shows_are_kept_and_pick_the_same_decks_every_visit() {
-        use bevy::math::Vec3;
+        use bevy_math::Vec3;
         let decks: Vec<PartRef> = (0..50).map(|i| PartRef::new("deckmodel", &format!("finish{i}"))).collect();
         let a = super::show_picks(&decks, (-1188, -773), 12, 5);
         assert_eq!(a, super::show_picks(&decks, (-1188, -773), 12, 5), "the same store and day, the same decks");
@@ -979,7 +998,7 @@ mod tests {
 
     #[test]
     fn the_preview_turns_all_the_way_round_both_ways() {
-        use bevy::math::{Quat, Vec3};
+        use bevy_math::{Quat, Vec3};
         let start = Quat::IDENTITY;
         let turns = (2. * std::f32::consts::PI / super::TURN_SPEED).round() as usize;
         let mut sideways = start;

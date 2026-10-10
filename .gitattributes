@@ -1,2 +1,4 @@
-# Keep every file byte for byte (the patch is binary-exact).
-* -text
+# Engine patches must stay byte-exact (git apply), whatever core.autocrlf says.
+*.patch -text
+# Windows batch files run with CRLF.
+*.cmd text eol=crlf

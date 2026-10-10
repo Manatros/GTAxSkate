@@ -5,7 +5,7 @@
 //! readable memory before it is followed, so a game update that moves
 //! things makes posing unavailable instead of crashing the game.
 
-use bevy::math::{Mat4, Quat, Vec3};
+use bevy_math::{Mat4, Quat, Vec3};
 use std::ffi::{c_char, c_void};
 
 #[repr(C)]

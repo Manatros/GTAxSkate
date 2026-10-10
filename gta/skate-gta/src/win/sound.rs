@@ -101,13 +101,19 @@ impl BoardSound {
         std::thread::Builder::new()
             .name("skate-gta-sound".into())
             .spawn(move || {
+                // Skate's recordings (hundreds of files) load beside the
+                // output: waiting for them first made the output's 2 s start
+                // check fail ("no sound output"), and the board was silent.
                 if let Some(dir) = grains {
-                    let loaded = Grains::load(&dir);
-                    let hits = Hits::load(&dir.join("hits"));
-                    if let Ok(mut shared) = thread_shared.lock() {
-                        shared.grains = loaded;
-                        shared.hits = hits;
-                    }
+                    let loader_shared = Arc::clone(&thread_shared);
+                    let _ = std::thread::Builder::new().name("skate-gta-sound-load".into()).spawn(move || {
+                        let loaded = Grains::load(&dir);
+                        let hits = Hits::load(&dir.join("hits"));
+                        if let Ok(mut shared) = loader_shared.lock() {
+                            shared.grains = loaded;
+                            shared.hits = hits;
+                        }
+                    });
                 }
                 play(&thread_shared, &thread_running, &ready_send)
             })

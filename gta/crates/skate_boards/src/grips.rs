@@ -14,8 +14,6 @@ pub enum GripLook {
     Checker([u8; 3], [u8; 3], u32),
     /// A deck's graphic printed on the grain.
     Print(PartRef),
-    /// Stars and stripes.
-    America,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -48,7 +46,6 @@ pub fn catalog(library: Option<&Library>) -> Vec<Grip> {
         Grip { id: "checker".into(), name: "Checker".into(), look: GripLook::Checker([235, 235, 230], [30, 30, 32], 4) },
         Grip { id: "checkerred".into(), name: "Checker Red".into(), look: GripLook::Checker([180, 30, 34], [30, 30, 32], 4) },
         Grip { id: "checkerfine".into(), name: "Checker Fine".into(), look: GripLook::Checker([235, 235, 230], [30, 30, 32], 8) },
-        Grip { id: "america".into(), name: "America".into(), look: GripLook::America },
     ];
     if let Some(library) = library {
         for item in library.new_items(Part::Deck).into_iter().step_by(PRINT_EVERY) {
