@@ -19,8 +19,11 @@ pub enum PoseWrite {
     /// In the script tick.
     Tick,
     /// In the script tick, and held there by a thread that writes it again
-    /// whenever GTA's own animation wrote over it (the default).
+    /// whenever GTA's own animation wrote over it (the fallback).
     Hold,
+    /// Inside GTA's own animation pass, right after GTA wrote its pose
+    /// (SK8V's pose hook, the default; Hold when the game differs).
+    Hook,
     /// Just before each frame is presented.
     Present,
     Both,
@@ -101,8 +104,12 @@ pub struct Config {
     /// it began once the textured board was drawn.
     pub board_textures: bool,
     /// Walls taller than the ground probes' start found by looking sideways
-    /// too (	errain::WALL_LOOK). Off: it cost two thirds of the frame rate.
+    /// too (`terrain::WALL_LOOK`). Off: it cost two thirds of the frame rate.
     pub tall_walls: bool,
+    /// Skate's pose on the ped with SK8V's retarget (`ped_rig`: GTA's own
+    /// bone lengths, limb IK onto Skate's feet and hands, roll bones), else
+    /// the older one (`rig::Retarget`).
+    pub sk8v_rig: bool,
     /// The skate parks on GTA's map.
     pub park_blips: bool,
     /// GTA's GPS route to the waypoint while skating, as in a vehicle.
@@ -168,7 +175,7 @@ impl Default for Config {
             toggle_key: 0x78, // F9
             toggle_sticks: true,
             camera: CameraMode::Gta,
-            pose_write: PoseWrite::Hold,
+            pose_write: PoseWrite::Hook,
             facing_degrees: 0.,
             board_model: "v_res_skateboard".into(),
             board_rotation: [0.; 3],
@@ -198,6 +205,7 @@ impl Default for Config {
             board_triangles: 2400,
             board_textures: false,
             tall_walls: true,
+            sk8v_rig: true,
             park_blips: true,
             gps: true,
             shops: true,
@@ -261,10 +269,11 @@ View = auto
 ; Start: foot (pull the board out, on foot) or board (straight on it).
 Start = foot
 
-; PoseMode: how Skate 3's animation is put on your character. hold (written
-; each frame and held against GTA's own animation by a watching thread),
-; tick, present, both, or off (your character keeps GTA's animation).
-PoseMode = hold
+; PoseMode: how Skate 3's animation is put on your character. hook (inside
+; GTA's own animation pass, SK8V's way: smooth), hold (written each frame and
+; held against GTA's animation by a watching thread), tick, present, both,
+; or off (your character keeps GTA's animation).
+PoseMode = hook
 ; FacingExtra: an extra turn of the skater on the GTA skeleton, in degrees.
 ; The facing itself is found from the hips; 0 unless the body looks turned.
 FacingExtra = 0
@@ -284,6 +293,9 @@ BoardTextures = off
 ; skater rides through them, and through shop windows). Off saves about 1 ms
 ; a frame.
 TallWalls = on
+; Rig: how Skate's animation is put on your character. sk8v (SK8V's: GTA's
+; own proportions, feet and grabbing hands on Skate's) or classic (the older one).
+Rig = sk8v
 ; ParkBlips: GTA's skate spots on the map (Vespucci Beach, Hawick, Little
 ; Seoul, Strawberry, La Mesa).
 ParkBlips = on
@@ -487,6 +499,7 @@ impl Config {
                     "off" => PoseWrite::Off,
                     "tick" => PoseWrite::Tick,
                     "hold" => PoseWrite::Hold,
+                    "hook" => PoseWrite::Hook,
                     "present" => PoseWrite::Present,
                     "both" => PoseWrite::Both,
                     _ => return Err(bad()),
@@ -565,6 +578,13 @@ impl Config {
             "boardtriangles" => self.board_triangles = number(value, 100., 10000.).ok_or_else(bad)? as usize,
             "boardtextures" => self.board_textures = on_off(value).ok_or_else(bad)?,
             "tallwalls" => self.tall_walls = on_off(value).ok_or_else(bad)?,
+            "rig" => {
+                self.sk8v_rig = match value.to_ascii_lowercase().as_str() {
+                    "sk8v" => true,
+                    "classic" => false,
+                    _ => return Err(bad()),
+                }
+            }
             "parkblips" => self.park_blips = on_off(value).ok_or_else(bad)?,
             "gps" => self.gps = on_off(value).ok_or_else(bad)?,
             "shops" => self.shops = on_off(value).ok_or_else(bad)?,

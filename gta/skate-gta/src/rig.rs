@@ -7,7 +7,7 @@
 //! and helper bones) follow their nearest mapped ancestor.
 
 use crate::coords::transform_from_skate;
-use bevy::math::{Mat4, Quat, Vec3};
+use bevy_math::{Mat4, Quat, Vec3};
 use serde::Deserialize;
 use std::path::Path;
 
@@ -114,6 +114,8 @@ pub struct Retarget {
     /// Forearm roll bones, their hand, and the roll's bind rotation in the
     /// hand's frame: they take half the hand's twist.
     rolls: Vec<(usize, usize, Quat)>,
+    /// SK8V's retarget, when it fits this ped: used before the one here.
+    better: Option<crate::ped_rig::PedRig>,
 }
 
 impl Retarget {
@@ -187,11 +189,22 @@ impl Retarget {
                     let (roll, hand) = (index(roll)?, index(hand)?);
                     Some((roll, hand, rotation(&gta[hand].bind).inverse() * rotation(&gta[roll].bind)))
                 })
-                .collect(),
+                .collect(),            better: None,
         })
     }
 
     /// How many GTA bones follow a Skate bone directly.
+    /// Uses SK8V's retarget (`ped_rig`) for this ped when given.
+    pub fn with_ped_rig(mut self, rig: Option<crate::ped_rig::PedRig>) -> Self {
+        self.better = rig;
+        self
+    }
+
+    /// Whether SK8V's retarget poses this ped.
+    pub fn uses_ped_rig(&self) -> bool {
+        self.better.is_some()
+    }
+
     pub fn mapped(&self) -> usize {
         self.mapped
     }
@@ -206,6 +219,9 @@ impl Retarget {
                 _ => None,
             })
             .collect();
+        if let Some(better) = &self.better {
+            used.extend(better.used());
+        }
         used.sort_unstable();
         used.dedup();
         used
@@ -215,6 +231,9 @@ impl Retarget {
     /// Skate's origin being GTA point `origin`). `still` places bones that
     /// follow nothing.
     pub fn pose(&self, skate: &[Mat4], origin: Vec3, still: Mat4) -> Vec<Mat4> {
+        if let Some(world) = self.better.as_ref().and_then(|rig| rig.pose(skate, origin)) {
+            return world;
+        }
         let mut skins: Vec<Mat4> = Vec::with_capacity(self.plans.len());
         for plan in &self.plans {
             let skin = match *plan {

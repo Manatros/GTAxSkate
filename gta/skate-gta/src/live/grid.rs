@@ -2,7 +2,7 @@
 // 2026 becaring) at 1.0.6 (01789f8): skatev-runtime/src/grid.rs. Changes: module paths.
 //! XY bucket grid of items by the cells their XY bounds touch, with the
 //! barycentric height tests its users run on the triangles found there.
-use bevy::math::Vec3;
+use bevy_math::Vec3;
 use std::collections::HashMap;
 
 #[derive(Debug, Default)]

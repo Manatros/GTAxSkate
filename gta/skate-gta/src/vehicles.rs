@@ -8,7 +8,7 @@
 //! to Skate as collision where each one stands this frame; a vehicle the
 //! skater stands on carries them along.
 
-use bevy::math::{Mat4, Vec2, Vec3};
+use bevy_math::{Mat4, Vec2, Vec3};
 
 /// Spacing of the survey grid, metres.
 pub const SPACING: f32 = 0.3;
@@ -307,7 +307,7 @@ pub fn knock_damage(speed: f32) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bevy::math::Quat;
+    use bevy_math::Quat;
 
     #[test]
     fn skating_into_people_hurts_but_never_kills() {

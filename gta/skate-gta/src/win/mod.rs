@@ -1,8 +1,11 @@
-//! The Script Hook V plugin: `SkateGTA.asi`.
+//! The Script Hook V plugin: `SkateGTA.asi`, or (without the `asi`
+//! feature) linked into the core's runtime, which calls [`embedded_tick`]
+//! from its own script each frame (one mod, A31).
 #![cfg_attr(not(windows), allow(dead_code))]
 
 mod character;
 mod hold;
+mod pose_hook;
 mod crash;
 mod fast_start;
 mod traffic;
@@ -59,7 +62,7 @@ extern "C" fn script_main() {
     }
 }
 
-#[cfg(windows)]
+#[cfg(all(windows, feature = "asi"))]
 #[unsafe(no_mangle)]
 pub extern "system" fn DllMain(module: *mut c_void, reason: u32, _reserved: *mut c_void) -> i32 {
     const PROCESS_ATTACH: u32 = 1;
@@ -78,6 +81,43 @@ pub extern "system" fn DllMain(module: *mut c_void, reason: u32, _reserved: *mut
         _ => {}
     }
     1
+}
+
+thread_local! {
+    static EMBEDDED: std::cell::RefCell<Option<script::Script>> = const { std::cell::RefCell::new(None) };
+}
+
+/// One frame of the plugin inside the core's script (its script thread,
+/// right after its WAIT(0)). The first call starts it, with the game's
+/// folder for the ini and the saves.
+pub fn embedded_tick() {
+    EMBEDDED.with(|cell| {
+        let mut slot = cell.borrow_mut();
+        if slot.is_none() {
+            let folder = plugin_folder();
+            fast_start::start(folder.clone());
+            match std::panic::catch_unwind(|| script::Script::new(folder)) {
+                Ok(script) => *slot = Some(script),
+                Err(_) => return,
+            }
+        }
+        let Some(script) = slot.as_mut() else { return };
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| script.tick()));
+        if let Err(panic) = result {
+            let what = panic
+                .downcast_ref::<String>()
+                .cloned()
+                .or_else(|| panic.downcast_ref::<&str>().map(|s| (*s).to_owned()))
+                .unwrap_or_default();
+            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| script.recover(&what)));
+        }
+    });
+}
+
+/// Fills `out` with the keyboard and mouse as a controller (1 when renewed
+/// within 200 ms), as `SkateModsKeyboardPad` does for the ASI.
+pub fn embedded_keyboard_pad(out: *mut std::ffi::c_void) -> i32 {
+    sk8v::SkateModsKeyboardPad(out.cast())
 }
 
 #[cfg(not(windows))]

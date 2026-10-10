@@ -8,7 +8,7 @@
 use std::net::{SocketAddr, UdpSocket};
 use std::time::{Duration, Instant};
 
-use bevy::math::Vec3;
+use bevy_math::Vec3;
 
 use super::natives as n;
 use crate::coop::{Packet, newer};

@@ -48,7 +48,7 @@ pub struct Store {
     turn: f32,
     /// The HD preview's turn in the view's axes, from the mouse while the
     /// left button is held.
-    orient: bevy::math::Quat,
+    orient: bevy_math::Quat,
     /// The script shows the character: no floating board.
     pub posed: bool,
     /// The preview as the pack's HD part models, when it has them.
@@ -57,7 +57,7 @@ pub struct Store {
     previewed: bool,
     /// Boards on show against a wall of the store the player is in: each
     /// one's place and look, and its models.
-    display: Vec<(bevy::math::Mat4, BoardChoice, super::board_parts::Parts)>,
+    display: Vec<(bevy_math::Mat4, BoardChoice, super::board_parts::Parts)>,
     /// When the store's walls are looked at next (until boards are on
     /// show: the player walks in from the door), and whether a miss was
     /// logged this visit.
@@ -68,7 +68,7 @@ pub struct Store {
     /// The ridden deck's scuff stage.
     scuff: Option<u8>,
     /// The middle of this store's boards on show, while they stand.
-    show_at: Option<bevy::math::Vec3>,
+    show_at: Option<bevy_math::Vec3>,
     /// Every store's boards on show, kept (`SkateGTA-display.txt`).
     shows: Vec<crate::shop::ShowCase>,
     shows_path: PathBuf,
@@ -269,12 +269,12 @@ impl Store {
             let show = match self.shows.iter().find(|s| s.store == store) {
                 Some(kept) => kept.clone(),
                 None => {
-                    let eye = n::entity_coords(ped) + bevy::math::Vec3::Z * 0.3;
-                    let probe = |a: bevy::math::Vec3, b: bevy::math::Vec3| n::probe_line(a, b, 1 | 16, ped).map(|(p, _)| p);
+                    let eye = n::entity_coords(ped) + bevy_math::Vec3::Z * 0.3;
+                    let probe = |a: bevy_math::Vec3, b: bevy_math::Vec3| n::probe_line(a, b, 1 | 16, ped).map(|(p, _)| p);
                     // Behind the till first: the clerk stands before that wall.
                     let till = Self::clerk(ped).and_then(|clerk| {
                         let m = n::entity_matrix(clerk);
-                        let from = m.w_axis.truncate() + bevy::math::Vec3::Z * 0.3;
+                        let from = m.w_axis.truncate() + bevy_math::Vec3::Z * 0.3;
                         crate::shop::wall_behind(from, m.y_axis.truncate(), |a, b| n::probe_line(a, b, 1 | 16, clerk).map(|(p, _)| p))
                     });
                     let found = till.map(|w| (w, true)).or_else(|| crate::shop::display_wall(eye, probe).map(|w| (w, false)));
@@ -285,7 +285,7 @@ impl Store {
                         return;
                     };
                     let above = at + normal * 0.3;
-                    let floor = n::probe_line(above, above - bevy::math::Vec3::Z * 4., 1 | 16, ped).map_or(eye.z - 1.3, |(p, _)| p.z);
+                    let floor = n::probe_line(above, above - bevy_math::Vec3::Z * 4., 1 | 16, ped).map_or(eye.z - 1.3, |(p, _)| p.z);
                     let show = crate::shop::ShowCase { store, at, normal, floor, till };
                     self.shows.push(show.clone());
                     let _ = std::fs::write(&self.shows_path, crate::shop::shows_to_text(&self.shows));
@@ -326,7 +326,9 @@ impl Store {
 
     fn counter(&mut self, config: &Config, library: Option<&Library>, defaults: Option<&Board>, skating: bool) -> bool {
         let ped = n::player_ped();
-        let here = (config.shops && !skating && !n::is_dead(ped) && !n::in_vehicle(ped))
+        // Wanted: GTA closes its own shops then, and its notice and ours
+        // took turns each frame (the prompt flickered, B90).
+        let here = (config.shops && !skating && !n::is_dead(ped) && !n::in_vehicle(ped) && n::wanted_level() == 0)
             .then(|| Self::tier_here(config, ped))
             .flatten();
         let Some(tier) = here else {
@@ -353,7 +355,7 @@ impl Store {
             if near {
                 match library {
                     None => n::notify(
-                        "Skate 3: the skateboard catalog is not prepared. Start the mashup once and accept the board catalog.",
+                        "Skate 3: the skateboard catalog is not prepared. Run install-gta.ps1 (it makes the catalog from your Skate 3).",
                     ),
                     Some(library) => {
                         let sections = stock(library, tier);
@@ -552,8 +554,8 @@ impl Store {
             // Beside the character, clear of it, far enough not to fill the
             // view when the store's camera comes close.
             let origin = eye + forward * 1.6 + right * 0.5 + up * 0.05;
-            let turn = bevy::math::Mat3::from_cols(forward, up, right) * bevy::math::Mat3::from_quat(self.orient);
-            let at = bevy::math::Mat4::from_translation(origin) * bevy::math::Mat4::from_mat3(turn) * bevy::math::Mat4::from_translation(bevy::math::Vec3::new(0., 0., -0.35));
+            let turn = bevy_math::Mat3::from_cols(forward, up, right) * bevy_math::Mat3::from_quat(self.orient);
+            let at = bevy_math::Mat4::from_translation(origin) * bevy_math::Mat4::from_mat3(turn) * bevy_math::Mat4::from_translation(bevy_math::Vec3::new(0., 0., -0.35));
             let extras = self.extras_shown();
             let focus = if self.part_view { crate::shop::focus_of(&offer.goods) } else { None };
             self.parts.show_only(&wanted, &extras, super::board_parts::Place::At(at), focus);

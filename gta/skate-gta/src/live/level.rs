@@ -32,7 +32,7 @@
 //! the type flags are not FOLIAGE. That drops GTA's bullet-only copies of the
 //! map, vehicle-/cover-/animal-only bits and foliage. The decoding, shapes,
 //! vegetation and repeat rules are the bake's (`svwc::bounds`, `svwc::clean`).
-use bevy::math::Vec3;
+use bevy_math::Vec3;
 use std::ffi::c_void;
 use super::Tri;
 use super::bounds::{skater_collides, solid_to_sight, Counts, Place};

@@ -179,25 +179,6 @@ pub fn design(look: &GripLook, grain: &[f32], print: Option<&Texture>) -> Textur
                     let square = (HEIGHT / (*across).max(1)).max(1);
                     tone(if (x / square + y / square) % 2 == 0 { *a } else { *b }, g)
                 }
-                GripLook::America => {
-                    // Seven red and six white stripes along the board; the
-                    // blue field with its stars at the nose end, across four
-                    // stripes' worth of the width.
-                    let stripe = (y * 13 / HEIGHT) as usize;
-                    let (fw, fh) = (WIDTH * 2 / 5, HEIGHT * 7 / 13);
-                    if x >= WIDTH - fw && y < fh {
-                        let (sx, sy) = (WIDTH - 1 - x, y);
-                        let (cell_w, cell_h) = (fw / 10, fh / 6);
-                        let (cx, cy) = (sx % cell_w, sy % cell_h);
-                        let row = sy / cell_h;
-                        let offset = if row % 2 == 0 { 0 } else { cell_w / 2 };
-                        let dx = (cx + cell_w - offset) % cell_w;
-                        let star = dx.abs_diff(cell_w / 2) * dx.abs_diff(cell_w / 2) + cy.abs_diff(cell_h / 2) * cy.abs_diff(cell_h / 2) <= 6;
-                        tone(if star { [235, 235, 230] } else { [35, 50, 120] }, g)
-                    } else {
-                        tone(if stripe % 2 == 0 { [180, 30, 40] } else { [235, 235, 230] }, g)
-                    }
-                }
                 GripLook::Print(_) => {
                     let base = tone([38, 38, 40], g);
                     match print {

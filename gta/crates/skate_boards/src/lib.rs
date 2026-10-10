@@ -107,7 +107,8 @@ impl PartRef {
 
     fn from_text(text: &str) -> Option<Self> {
         let (asset, material) = text.split_once(':')?;
-        let id = |s: &str| !s.is_empty() && s.len() <= 32 && s.bytes().all(|b| b.is_ascii_hexdigit());
+        // Skate's ids are hex; painted parts are `paint:paint_<colour>`.
+        let id = |s: &str| !s.is_empty() && s.len() <= 32 && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_');
         (id(asset) && id(material)).then(|| Self::new(&asset.to_ascii_lowercase(), &material.to_ascii_lowercase()))
     }
 }

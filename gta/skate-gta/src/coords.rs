@@ -4,7 +4,7 @@
 //! turning left. Skate 3: metres, Y up. Skate runs around a local origin,
 //! the place skate mode was switched on, to keep its numbers small.
 
-use bevy::math::{Mat3, Mat4, Quat, Vec3, Vec4};
+use bevy_math::{Mat3, Mat4, Quat, Vec3, Vec4};
 
 pub fn to_skate(gta: Vec3) -> Vec3 {
     Vec3::new(gta.x, gta.z, -gta.y)

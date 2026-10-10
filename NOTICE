@@ -3,15 +3,16 @@ Copyright 2026 Manatros
 
 Licensed under the Apache License, Version 2.0 (see LICENSE).
 
-This project builds on and includes code from SK8V, https://github.com/becaring/SK8V,
+This project includes code from SK8V, https://github.com/becaring/SK8V,
 Copyright 2026 becaring, Apache License 2.0:
+- gta/skate-gta/src/ped_rig.rs: SK8V's retarget (skatev-runtime/src/ped.rs), ported.
+- gta/skate-gta/src/win/pose_hook.rs: SK8V's pose hook (host/src/pose_hook.cpp), ported to Rust.
 - gta/skate-gta/src/live/ (bounds.rs, clean.rs, grid.rs, level.rs, rails.rs, and locate.rs, a
   Rust port of host/src/physics_level.cpp); SK8V's live reader is adapted from Sol4ra's
   LS-Skate-LiveCollision.
-- sk8v-patches/ are changes to SK8V.
 
-The installer runs, but does not include, the Skate 3 Rust Engine's tools/asset_pipeline
-(https://github.com/SK8-ENGINE/skate-3-rust-engine, Apache-2.0 for tools/asset_pipeline by
-chasmlol's grant) from SK8V's release folder.
+The Skate engine core (skate-host) comes from the 2010 Rust Rewrite Mashup,
+https://github.com/chasmlol/2010-rust-rewrite-mashup, Apache License 2.0. It is not included
+here; it is built from that repository.
 
 No Skate 3, skate., GTA V or other retail assets are included.

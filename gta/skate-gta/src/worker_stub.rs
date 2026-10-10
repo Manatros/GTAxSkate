@@ -3,7 +3,7 @@
 //! engine, so without the 2010 Rust Rewrite Mashup (A29). The same shape as
 //! `worker.rs`; a worker never starts.
 
-use bevy::math::{Mat3, Mat4, Vec3};
+use bevy_math::{Mat3, Mat4, Vec3};
 use std::path::PathBuf;
 
 use crate::core_types::{MarkerView, ScoreView};

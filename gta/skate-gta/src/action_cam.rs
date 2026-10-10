@@ -8,7 +8,7 @@
 //! (the maintainer, 10-10: "die Cam mehr von der Auto-Version"). Each shot is worked
 //! out from where the skater is and goes; the script keeps it out of walls.
 
-use bevy::math::Vec3;
+use bevy_math::Vec3;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Shot {

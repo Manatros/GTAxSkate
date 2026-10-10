@@ -4,7 +4,7 @@
 //! bones the other needs to pose and draw it, its board, what the board
 //! does (for its sounds) and the objects it dropped.
 
-use bevy::math::{Mat4, Quat, Vec3};
+use bevy_math::{Mat4, Quat, Vec3};
 
 const MAGIC: &[u8; 4] = b"SK8C";
 const VERSION: u8 = 1;

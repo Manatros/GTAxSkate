@@ -1,0 +1,38 @@
+# SkateGTA.asi as it is played: the plugin (../skate-gta/src) with its own
+# Skate core, the Skate 3 engine (skate-host) from ../../external/mashup-src
+# (A31: our mod is the base; SK8V's better parts are ported into it).
+# ../skate-gta builds the same source without the engine (tests, embedding).
+[package]
+name = "skate-gta"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "Apache-2.0"
+
+[workspace]
+
+[lib]
+name = "skate_gta"
+path = "../skate-gta/src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["own-core", "asi"]
+asi = []
+check-windows = []
+own-core = []
+
+[dependencies]
+bevy_math = "0.19"
+skate-host = { path = "../../external/mashup-src/skate/crates/skate-host" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+skate_boards = { path = "../crates/skate_boards" }
+skate_input = { path = "../crates/skate_input" }
+skate_rules = { path = "../crates/skate_rules" }
+skate_park = { path = "../crates/skate_park" }
+skate_sound = { path = "../crates/skate_sound" }
+
+[profile.release]
+opt-level = 3
+codegen-units = 16

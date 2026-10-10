@@ -23,7 +23,7 @@
 
 use std::collections::HashMap;
 
-use bevy::math::Vec3;
+use bevy_math::Vec3;
 
 const INCH: f32 = 0.0254;
 

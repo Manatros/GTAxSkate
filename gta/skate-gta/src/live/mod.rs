@@ -17,7 +17,7 @@ pub mod level;
 pub mod locate;
 pub mod rails;
 
-use bevy::math::Vec3;
+use bevy_math::Vec3;
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 

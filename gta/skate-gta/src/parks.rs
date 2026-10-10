@@ -6,7 +6,7 @@
 //! take the place of the probed ground, and their sharp top edges (coping,
 //! ledges, rails) are rails to grind.
 
-use bevy::math::{Vec2, Vec3};
+use bevy_math::{Vec2, Vec3};
 use std::collections::HashMap;
 use std::path::Path;
 

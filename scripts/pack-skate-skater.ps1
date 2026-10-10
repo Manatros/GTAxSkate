@@ -34,7 +34,7 @@
 param(
     [Parameter(Mandatory)] [string]$Gta,
     [Parameter(Mandatory)] [string]$CodeWalker,
-    [string]$Skater = (Join-Path $PSScriptRoot 'skate3-skater'),
+    [string]$Skater = (Join-Path (Split-Path -Parent $PSScriptRoot) 'build\skate3-skater'),
     # Test packs for finding what in a pack GTA cannot load: 'meta' has only
     # the data files (no clothes archive), 'small' only two pieces of
     # clothing per slot, 'bare' the archive with only the variations file
@@ -43,7 +43,7 @@ param(
     [ValidateSet('full', 'meta', 'small', 'bare', 'body', 'empty')] [string]$Variant = 'full',
     [ValidateSet('pack', 'skeleton', 'dlclist', 'boards', 'reference', 'weapon')] [string]$Mode = 'pack',
     [string]$Out,
-    [string]$Weapon = (Join-Path $PSScriptRoot 'skate3-weapon'),
+    [string]$Weapon = (Join-Path (Split-Path -Parent $PSScriptRoot) 'build\skate3-weapon'),
     # Only the board part props, no WEAPON_SKATEBOARD of our own: with SK8V
     # as the core its skatev pack has the weapon (decision A28).
     [switch]$PropsOnly
@@ -100,9 +100,13 @@ if (-not (Test-Path -LiteralPath $updateRpf)) {
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $updateRpf) | Out-Null
     Copy-Item -LiteralPath $original -Destination $updateRpf
 }
-$old = Join-Path $PSScriptRoot '_old'
+$old = Join-Path (Split-Path -Parent $PSScriptRoot) '_old'
 New-Item -ItemType Directory -Force -Path $old | Out-Null
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+# Only the newest kept pack of each kind stays (each is up to 240 MB; the
+# folder had grown to 2 GB, B94).
+Get-ChildItem -LiteralPath $old -Filter '*-dlc-*.rpf' -File | Group-Object { $_.Name -replace '-dlc-.*$', '' } |
+    ForEach-Object { $_.Group | Sort-Object LastWriteTime -Descending | Select-Object -Skip 1 | Remove-Item -Force }
 
 # --- CodeWalker's library ----------------------------------------------------
 # Windows marks DLLs from a downloaded ZIP as from the internet, and .NET

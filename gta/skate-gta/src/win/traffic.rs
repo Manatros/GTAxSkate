@@ -6,7 +6,7 @@
 use super::natives as n;
 use super::shv;
 use crate::vehicles::{self, Shape, Survey};
-use bevy::math::{Mat4, Vec3};
+use bevy_math::{Mat4, Vec3};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
@@ -45,6 +45,9 @@ pub struct Traffic {
     drift: Vec3,
     /// When each person last reacted.
     reacted: HashMap<i32, Instant>,
+    /// People knocked over, kept from dying until they are up again
+    /// (GTA's ragdoll landing hurt killed them: B91).
+    protected: HashMap<i32, Instant>,
     /// The skater goes faster than a person can stand: people are no
     /// collision then, they get knocked over (as collision, the skater
     /// crashed into them, lost the speed and lay there, the maintainer: video 19-54
@@ -83,6 +86,7 @@ impl Traffic {
             carrier: None,
             drift: Vec3::ZERO,
             reacted: HashMap::new(),
+            protected: HashMap::new(),
             fast: false,
             fast_sent: false,
             last_pelvis: None,
@@ -328,6 +332,13 @@ impl Traffic {
         let mut knocked = 0;
         let now = Instant::now();
         self.reacted.retain(|_, at| at.elapsed() < Duration::from_secs(20));
+        self.protected.retain(|handle, until| {
+            let keep = now < *until;
+            if !keep {
+                n::set_invincible(*handle, false);
+            }
+            keep
+        });
         let people: Vec<(i32, Mat4)> = self.bodies.iter().filter(|b| b.person).map(|b| (b.handle, b.transform)).collect();
         for (handle, transform) in people {
             let at = transform.w_axis.truncate();
@@ -341,9 +352,14 @@ impl Traffic {
                 if mission {
                     continue;
                 }
-                let push = velocity * 0.9 + Vec3::Z * (1. + 0.15 * speed);
+                // Pushed along and a little up, not flung: and safe from
+                // dying until they are up again.
+                let push = velocity * 0.6 + Vec3::Z * 0.8;
+                let down = 2500 + (speed * 150.) as i32;
                 super::crash::did("a person was knocked over");
-                n::knock_down(handle, 2500 + (speed * 150.) as i32, push);
+                n::set_invincible(handle, true);
+                self.protected.insert(handle, now + Duration::from_millis(down as u64 * 2 + 1000));
+                n::knock_down(handle, down, push);
                 // Hurt as by a blow with the board, more the faster, but
                 // never killed (the maintainer, video 10-10 09:29 02:42: speed squared,
                 // up to 150, killed people just skated into).
