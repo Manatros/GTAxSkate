@@ -1,0 +1,13 @@
+SkateGTA (GTA V plugin, skate-ped, skate-music)
+
+skate-gta/src/live/ (bounds.rs, clean.rs, grid.rs, level.rs, rails.rs, and
+locate.rs as a Rust port of host/src/physics_level.cpp) is taken from SK8V,
+https://github.com/becaring/SK8V, Copyright 2026 becaring, licensed under the
+Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0).
+SK8V's live reader is adapted from Sol4ra's LS-Skate-LiveCollision.
+
+The Skate crates this builds on come from
+https://github.com/chasmlol/2010-rust-rewrite-mashup (see its licenses).
+
+No Skate 3, GTA V or other retail assets are included: the scripts build
+everything from the player's own copies.
