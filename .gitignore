@@ -1,0 +1,5 @@
+# Made on your PC by the build and the installer; never committed.
+target/
+/build/
+/external/
+/tools/
