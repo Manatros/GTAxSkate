@@ -660,10 +660,12 @@ impl Script {
             .config
             .skate_assets
             .clone()
-            .ok_or("Set SkateAssets in SkateGTA.ini to the mashup's skate-data\\assets folder.")?;
-        if !assets.join("rig.json").is_file() {
+            .ok_or("Set SkateAssets in SkateGTA.ini to the converted Skate 3 data (skate-data\\assets).")?;
+        // Any converter's data has the skater model (the mashup's, SK8V's,
+        // the installer's); rig.json is only the mashup's.
+        if !assets.join("private").join("skater.glb").is_file() {
             return Err(format!(
-                "{} has no rig.json. Skate once in the mashup so it prepares the Skate data, then try again.",
+                "{} has no converted Skate 3 data (private\\skater.glb). Run the installer, then try again.",
                 assets.display()
             ));
         }
@@ -1402,7 +1404,7 @@ impl Script {
         let offset = self.vfunc.get_or_insert_with(memory::frag_inst_vfunc_offset).clone()?;
         let skeleton = memory::skeleton(shv::entity_address(ped) as usize, offset)?;
         let gta = bind_pose(&skeleton.bones);
-        let reference = load_reference(&self.assets()?.join("rig.json"))?;
+        let reference = crate::rig::reference_of(&self.assets()?)?;
         let names = self.names.as_deref().ok_or("Skate is not loaded")?;
         let ped_rig = if self.config.sk8v_rig {
             match crate::ped_rig::PedRig::new(&gta, &reference, names) {

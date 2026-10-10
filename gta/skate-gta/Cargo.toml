@@ -25,6 +25,8 @@ asi = []
 # ../skate-gta-own, which adds the engine. Off here: this manifest builds and
 # tests everything else without the engine.
 own-core = []
+# The Skate engine is SK8V's overlay (tags for surfaces), not the mashup's.
+sk8v-engine = []
 
 [dependencies]
 bevy_math = "0.19"

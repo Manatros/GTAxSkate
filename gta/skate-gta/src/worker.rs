@@ -176,6 +176,26 @@ fn load_spare(assets: &std::path::Path) -> mpsc::Receiver<Result<Session, String
     receive
 }
 
+/// Builds collision with Skate 3's ground surface per triangle, on either
+/// engine: SK8V's (its tags carry the physics surface in bits 7..11, as
+/// Skate reads it: `sk8v-engine`) or the mashup's (`build_with_surfaces`).
+fn build_collision(
+    builder: &skate_host::bridge::CollisionBuilder,
+    triangles: Vec<[[f32; 3]; 3]>,
+    surfaces: Option<Vec<Surface>>,
+    rails: Vec<Vec<[f32; 3]>>,
+) -> Result<PreparedCollision, String> {
+    #[cfg(feature = "sk8v-engine")]
+    {
+        let tags = surfaces.map(|s| s.into_iter().map(|s| (s as u32) << 7).collect()).unwrap_or_default();
+        builder.build_tagged(triangles, tags, rails)
+    }
+    #[cfg(not(feature = "sk8v-engine"))]
+    {
+        builder.build_with_surfaces(triangles, surfaces, rails)
+    }
+}
+
 /// Where the skater was at the last good frame: the deck's place (Skate
 /// space), the heading, and whether on foot.
 #[derive(Clone, Copy)]
@@ -206,7 +226,7 @@ fn take_over(
         session.set_hippie_jump(o.hippie_jump)?;
     }
     if let Some((triangles, surfaces, rails)) = collision {
-        let prepared = session.collision_builder().build_with_surfaces(triangles.clone(), surfaces.clone(), rails.clone())?;
+        let prepared = build_collision(&session.collision_builder(), triangles.clone(), surfaces.clone(), rails.clone())?;
         session.install_collision(prepared)?;
     }
     let pose = match place {
@@ -248,7 +268,7 @@ fn run(assets: &std::path::Path, jobs: &mpsc::Receiver<Job>, publish: &mpsc::Sen
                 while let Ok(newer) = builds.try_recv() {
                     job = newer;
                 }
-                if built_send.send(builder.build_with_surfaces(job.0, job.1, job.2)).is_err() {
+                if built_send.send(build_collision(&builder, job.0, job.1, job.2)).is_err() {
                     break;
                 }
             }
@@ -287,7 +307,7 @@ fn run(assets: &std::path::Path, jobs: &mpsc::Receiver<Job>, publish: &mpsc::Sen
             }
             Job::Collision { triangles, surfaces, rails, now: true } => {
                 collision = Some((triangles.clone(), surfaces.clone(), rails.clone()));
-                let prepared = session.collision_builder().build_with_surfaces(triangles, surfaces, rails)?;
+                let prepared = build_collision(&session.collision_builder(), triangles, surfaces, rails)?;
                 session.install_collision(prepared)?;
             }
             Job::Collision { triangles, surfaces, rails, now: false } => {
@@ -406,7 +426,7 @@ mod spare_tests {
     fn getting_on_at_a_run_rolls_on() {
         let assets = &std::path::PathBuf::from(std::env::var("SKATE_ASSETS").expect("SKATE_ASSETS = the converted Skate 3 data"));
         let mut session = Session::new(assets, floor(), vec![], [0., 0., 0.], 0.).unwrap();
-        let prepared = session.collision_builder().build_with_surfaces(ground(), None, vec![]).unwrap();
+        let prepared = build_collision(&session.collision_builder(), ground(), None, vec![]).unwrap();
         session.install_collision(prepared).unwrap();
         let heading = 1.0f32;
         session.activate([3., 0.1, 5.], heading).unwrap();
@@ -431,7 +451,7 @@ mod spare_tests {
         let mut session = Session::new(assets, floor(), vec![], [0., 0., 0.], 0.).unwrap();
         let spare = load_spare(assets).recv().unwrap().unwrap();
         let build = (ground(), None, vec![]);
-        let prepared = session.collision_builder().build_with_surfaces(build.0.clone(), None, vec![]).unwrap();
+        let prepared = build_collision(&session.collision_builder(), build.0.clone(), None, vec![]).unwrap();
         session.install_collision(prepared).unwrap();
         session.activate([3., 0.1, 5.], 1.0).unwrap();
         for _ in 0..120 {

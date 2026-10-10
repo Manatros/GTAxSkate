@@ -16,6 +16,9 @@ Each version is a tag on GitHub; `main` holds the newest confirmed one, `dev` th
 - Shop prompt no longer flickers while wanted.
 - America griptape removed (the USA print looks better).
 - Our own Skate core is the base again; SK8V is a code source, not needed to play.
+- **Merged Skate engine**: our engine changes on top of SK8V 1.1.0's 47 engine fixes (skitching, moving
+  geometry, stability), prepared automatically from the public sources: no 2010 Rust Rewrite Mashup install needed.
+- **Installer**: `Install GTAxSkate.cmd` makes the mod from your own Skate 3 and GTA V and installs it.
 
 ## 0.2.0-experimental (2026-10-10)
 

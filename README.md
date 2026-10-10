@@ -57,31 +57,49 @@ Thanks to becaring for SK8V and for releasing it under Apache-2.0.
 
 ## What you need
 
-- **GTA V Legacy** 1.0.3889.0 (story mode, BattlEye off) with **Script Hook V** and **OpenIV.asi**
-- **Skate 3** (Xbox 360), extracted to a folder
-- **[CodeWalker](https://github.com/dexyfex/CodeWalker/releases)** (packs the board models)
-- Git and **Rust** (rustup), to build the mod
+- **GTA V Legacy** 1.0.3889.0 (story mode, BattlEye off) with **OpenIV.asi**
+  ([OpenIV](https://openiv.com) > Tools > ASI Manager > OpenIV.ASI; the board models load from the `mods` folder)
+- **Skate 3** (Xbox 360): your disc image (ISO) or its extracted folder
+- **[CodeWalker](https://www.gta5-mods.com/tools/codewalker-gtav-interactive-3d-map)**, unzipped anywhere (it packs the board models)
+
+Everything else the installer gets by itself: Git and Rust if they are missing, Script Hook V, and the
+tools that read Skate 3 (from the [SK8V](https://github.com/becaring/SK8V) release: its Python and
+converters).
 
 ## Install
 
-A one-click installer (a batch file that builds the mod from your Skate 3 and GTA V and puts it in
-place) is being written. Until then the mod is built from source:
+1. Download this repository (green **Code** button > **Download ZIP**) and unzip it, or `git clone` it.
+2. Close GTA V.
+3. Double-click **`Install GTAxSkate.cmd`**.
 
-1. `gta/skate-gta-own` builds `SkateGTA.asi` (the plugin with its Skate core; the core is the
-   [2010 Rust Rewrite Mashup](https://github.com/chasmlol/2010-rust-rewrite-mashup)'s skate-host,
-   checked out at `external/mashup-src`).
-2. `gta/skate-ped` makes the board library and the HD board part models from your Skate 3 data;
-   `scripts/pack-skate-skater.ps1` packs them as a DLC in GTA's `mods` folder.
+It finds GTA V and CodeWalker by itself and asks only for what it cannot find (your Skate 3 disc or
+folder). Then it:
+
+| Step | |
+|---|---|
+| 1 tools | gets Git, Rust, Python and the Skate 3 converters if they are missing |
+| 2 data | converts Skate 3's data from your disc (into `GTA V\GTAxSkate`) |
+| 3 engine | prepares the Skate engine: the mashup's Skate workspace + SK8V's patches + ours (`gta/engine`) |
+| 4 plugin | builds `SkateGTA.asi` (the first build takes 10–30 minutes) |
+| 5 boards | the board library from your Skate 3, every part as a HD model, packed as a DLC |
+| 6 sounds | Skate 3's board sounds |
+| 7 parks | GTA's skate parks' exact collision |
+| 8 install | puts it into GTA V (and Script Hook V if missing); your settings are kept |
+
+Every step is remembered: if anything stops it, run it again and it goes on where it stopped.
+`scripts\install.ps1 -Redo <step>` runs a step again (for example `-Redo boards` after adding your own decks).
 
 ## Layout
 
 | Path | What |
 |---|---|
+| `Install GTAxSkate.cmd` | the installer (runs `scripts/install.ps1`) |
 | `gta/skate-gta` | the Script Hook V plugin's source (Rust); its tests run without the game |
-| `gta/skate-gta-own` | builds the plugin with its Skate core |
+| `gta/skate-gta-sk8v` | builds the plugin with its Skate core (the merged engine) |
+| `gta/engine` | our engine patches, applied on top of SK8V's |
 | `gta/skate-ped` | the board library, board part models, griptapes and stickers from your Skate 3 data |
 | `gta/crates` | board catalog, input, rules, park and sound crates |
-| `scripts` | the DLC packer |
+| `scripts` | the installer and the steps it runs (DLC packer, sounds, parks) |
 | `custom-assets` | your own decks |
 
 ## Legal
