@@ -90,6 +90,14 @@ if (-not (Test-Path (Join-Path $private 'boards\library.json'))) {
     & $ped --assets $assets --prepare-boards --game $Skate3 --engine $engine --python $python
     if ($LASTEXITCODE) { Fail 'Preparing the board library failed.' }
 }
+# Your own deck graphics: every image in custom-assets\decks (subfolders too)
+# becomes a deck in the store, under the brand its folder or name is
+# called after (else "Custom"). Run the installer again after adding some.
+$customDecks = Join-Path $here 'custom-assets\decks'
+if (Get-ChildItem $customDecks -Recurse -File -Include *.png, *.jpg, *.jpeg, *.bmp, *.tga, *.dds, *.webp -ErrorAction SilentlyContinue) {
+    & $ped --assets $assets --import-decks $customDecks --out (Join-Path $here 'board-models')
+    if ($LASTEXITCODE) { Fail 'Importing your decks failed.' }
+}
 
 # --- 3. The extras plugin ----------------------------------------------------
 Step '3/5 SkateGTA.asi'

@@ -88,6 +88,8 @@ type GetOutput = unsafe extern "C" fn(*const c_void, *mut SvOutput) -> u32;
 type GetLifecycle = unsafe extern "C" fn(*const c_void, *mut SvLifecycleState) -> u32;
 type GetBoardPose = unsafe extern "C" fn(*const c_void, *mut SvBoardPose) -> u32;
 type GetRuntime = unsafe extern "C" fn() -> *mut c_void;
+type SetPlayerSetup = unsafe extern "C" fn(*mut c_void, f32, f32, *const f32, u32) -> u32;
+type SetDifficulty = unsafe extern "C" fn(*mut c_void, u32) -> u32;
 
 #[link(name = "kernel32")]
 unsafe extern "system" {
@@ -101,6 +103,9 @@ pub struct Core {
     output: GetOutput,
     lifecycle: GetLifecycle,
     board: GetBoardPose,
+    /// The fork's `sv_set_player_setup` (none in an older fork).
+    setup: Option<SetPlayerSetup>,
+    difficulty: Option<SetDifficulty>,
 }
 
 /// What the plugin needs of SK8V each frame.
@@ -139,12 +144,43 @@ impl Core {
             if runtime.is_null() || output.is_null() || lifecycle.is_null() || board.is_null() {
                 return None;
             }
+            let setup = get(dll, c"sv_set_player_setup");
+            let difficulty = get(dll, c"sv_set_difficulty");
             Some(Self {
+                setup: (!setup.is_null()).then(|| std::mem::transmute::<*mut c_void, SetPlayerSetup>(setup)),
+                difficulty: (!difficulty.is_null()).then(|| std::mem::transmute::<*mut c_void, SetDifficulty>(difficulty)),
                 runtime: std::mem::transmute::<*mut c_void, GetRuntime>(runtime),
                 output: std::mem::transmute::<*mut c_void, GetOutput>(output),
                 lifecycle: std::mem::transmute::<*mut c_void, GetLifecycle>(lifecycle),
                 board: std::mem::transmute::<*mut c_void, GetBoardPose>(board),
             })
+        }
+    }
+
+    /// Hands SK8V the options menu's setup (trucks, wheels, the 11 tuning
+    /// multipliers, hold-fakie); false when the fork has no such export or
+    /// Skate is not loaded yet.
+    pub fn player_setup(&self, trucks: f32, wheels: f32, tuning: &[f32; 11], hold_fakie: bool) -> bool {
+        let Some(set) = self.setup else { return false };
+        unsafe {
+            let rt = (self.runtime)();
+            !rt.is_null() && set(rt, trucks, wheels, tuning.as_ptr(), hold_fakie as u32) != 0
+        }
+    }
+
+    /// Skate 3's difficulty (`easy`, `normal`, `hardcore`, `motorized`).
+    pub fn difficulty(&self, name: &str) -> bool {
+        let index = match name.to_ascii_lowercase().as_str() {
+            "easy" => 0,
+            "normal" => 1,
+            "hardcore" => 2,
+            "motorized" => 3,
+            _ => return false,
+        };
+        let Some(set) = self.difficulty else { return false };
+        unsafe {
+            let rt = (self.runtime)();
+            !rt.is_null() && set(rt, index) != 0
         }
     }
 

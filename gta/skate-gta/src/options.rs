@@ -81,6 +81,34 @@ pub fn rows() -> Vec<Setting> {
     rows
 }
 
+/// The rows that do something with SK8V as the core: Skate's setup and
+/// tuning (handed to SK8V), the keyboard and mouse, the store and the keys.
+/// The rest only steered the plugin's older own core (its camera, start,
+/// drawn board, sounds, checkpoint, fall damage, radio) and is hidden.
+pub fn rows_for(sk8v: bool) -> Vec<Setting> {
+    let mut rows = rows();
+    if sk8v {
+        rows.retain(|row| {
+            !matches!(
+                row,
+                Setting::FallDamage
+                    | Setting::Surfaces
+                    | Setting::Camera
+                    | Setting::View
+                    | Setting::Start
+                    | Setting::BoardLook
+                    | Setting::BoardDetail
+                    | Setting::BoardTriangles
+                    | Setting::BoardSound
+                    | Setting::Checkpoint
+                    | Setting::ShowControls
+                    | Setting::Radio
+            )
+        });
+    }
+    rows
+}
+
 fn on_off(v: bool) -> String {
     if v { "On".into() } else { "Off".into() }
 }
@@ -455,6 +483,19 @@ mod tests {
         assert_eq!(Setting::Bind(0).adjust(&mut config, &mut controls, 1), Changed::None);
         assert!(Setting::Bind(18).value(&config, &controls).ends_with("(off)"), "modern keys off");
         assert_eq!(rows().iter().filter(|r| matches!(r, Setting::Bind(_))).count(), ACTIONS.len());
+    }
+
+    #[test]
+    fn with_sk8v_the_menu_keeps_the_setup_tuning_and_keys() {
+        let all = rows_for(false);
+        let sk8v = rows_for(true);
+        assert_eq!(all.len(), rows().len());
+        for kept in [Setting::Difficulty, Setting::Trucks, Setting::Wheels, Setting::HoldFakie, Setting::Scheme, Setting::Mouse, Setting::Shops, Setting::ShopView, Setting::ResetKeys] {
+            assert!(sk8v.contains(&kept), "{kept:?}");
+        }
+        assert_eq!(sk8v.iter().filter(|r| matches!(r, Setting::Tune(_))).count(), TUNING.len());
+        assert_eq!(sk8v.iter().filter(|r| matches!(r, Setting::Bind(_))).count(), ACTIONS.len());
+        assert!(!sk8v.contains(&Setting::Camera) && !sk8v.contains(&Setting::Start));
     }
 
     #[test]

@@ -272,10 +272,10 @@ fn cut_out_finishes_show_the_part_under_them_not_the_world() {
 }
 
 #[test]
-#[ignore = "reads the real board library and the player's imported decks"]
+#[ignore = "reads the real board library (SKATE_ASSETS) and the player's imported decks"]
 fn imported_decks_join_the_catalog_with_their_maker() {
-    let assets = std::path::Path::new(r"E:\Games\2010-Rust-Rewrite-Mashup\skate-data\assets");
-    let library = Library::load(assets).unwrap();
+    let assets = std::path::PathBuf::from(std::env::var("SKATE_ASSETS").expect("SKATE_ASSETS = the board library's assets folder"));
+    let library = Library::load(&assets).unwrap();
     let decks = library.new_items(Part::Deck);
     let custom: Vec<_> = decks.iter().filter(|i| i.material.starts_with("c057")).map(|i| (i.label.clone(), i.brand.clone())).collect();
     eprintln!("{custom:?}");

@@ -346,6 +346,9 @@ pub struct Script {
     /// its state this frame (`super::sk8v`).
     core: Option<super::sk8v::Core>,
     core_looked: Option<Instant>,
+    /// The setup and difficulty last handed to SK8V (sent again on change).
+    core_setup: Option<(f32, f32, [f32; 11], bool)>,
+    core_difficulty: Option<String>,
     core_frame: Option<super::sk8v::Frame>,
     /// F pressed in SK8V's skate mode: Y is held for SK8V until then.
     put_away_until: Option<Instant>,
@@ -580,6 +583,8 @@ impl Script {
             gps_to: None,
             core: None,
             core_looked: None,
+            core_setup: None,
+            core_difficulty: None,
             core_frame: None,
             put_away_until: None,
             core_diag_at: None,
@@ -1383,6 +1388,57 @@ impl Script {
     /// With SK8V as the core: its skater and board, our store, HD board
     /// parts, paints, stickers, scuffs, garage per character, GPS, park
     /// blips and options. SK8V's own board is hidden (`DrawBoard=0`).
+    /// The options menu's Skate settings (difficulty, trucks, wheels or the
+    /// wheel paint's hardness, the tuning with stamina, hold-fakie) go to
+    /// SK8V whenever they change. The difficulty is also written to
+    /// SkateVLegacy.ini, so SK8V's own menu shows the same.
+    fn core_options(&mut self) {
+        let Some(core) = self.core.as_ref() else { return };
+        if self.core_frame.is_none() {
+            return;
+        }
+        let o = self.options();
+        let setup = (o.trucks, o.wheels, o.tuning, o.hold_fakie);
+        if self.core_setup != Some(setup) {
+            if core.player_setup(o.trucks, o.wheels, &o.tuning, o.hold_fakie) {
+                if self.core_setup.is_none() {
+                    self.log.line(&format!("core: options to SK8V: trucks {:.2} wheels {:.2} tuning {:?} hold fakie {}", o.trucks, o.wheels, o.tuning, o.hold_fakie));
+                }
+            } else if self.core_setup.is_none() {
+                self.log.line("core: SK8V took no options (a fork without sv_set_player_setup?)");
+            }
+            self.core_setup = Some(setup);
+        }
+        if self.core_difficulty.as_deref() != Some(o.difficulty.as_str()) {
+            if core.difficulty(&o.difficulty) {
+                self.log.line(&format!("core: difficulty {} to SK8V", o.difficulty));
+                let ini = self.dir.join("SkateVLegacy.ini");
+                if let Ok(text) = std::fs::read_to_string(&ini) {
+                    let name = {
+                        let mut c = o.difficulty.chars();
+                        c.next().map(|f| f.to_uppercase().chain(c).collect::<String>()).unwrap_or_default()
+                    };
+                    let mut found = false;
+                    let lines: Vec<String> = text
+                        .lines()
+                        .map(|line| {
+                            if line.trim_start().starts_with("Difficulty=") {
+                                found = true;
+                                format!("Difficulty={name}")
+                            } else {
+                                line.to_owned()
+                            }
+                        })
+                        .collect();
+                    if found {
+                        let _ = std::fs::write(&ini, lines.join("\r\n") + "\r\n");
+                    }
+                }
+            }
+            self.core_difficulty = Some(o.difficulty.clone());
+        }
+    }
+
     fn extras_tick(&mut self) {
         if self.core.is_none() && self.core_looked.is_none_or(|at| at.elapsed() > Duration::from_secs(2)) {
             self.core_looked = Some(Instant::now());
@@ -1392,6 +1448,7 @@ impl Script {
             }
         }
         self.core_frame = self.core.as_ref().and_then(|c| c.frame());
+        self.core_options();
         // Once a second in skate mode: what SK8V reports and where our board
         // is, to find what the board does (in the hand, on the feet).
         if let Some(f) = self.core_frame
@@ -2639,7 +2696,7 @@ impl Script {
     /// The options menu for this frame.
     fn options_tick(&mut self) {
         n::disable_player_controls();
-        let rows = options::rows();
+        let rows = options::rows_for(super::sk8v::Core::loaded());
         let Some(menu) = self.menu.as_mut() else { return };
         let mut changed = Changed::None;
         if let Some(index) = menu.capture {

@@ -1,7 +1,7 @@
 From 6bf35e59df2acd815371c671af3922a1d1e5efb3 Mon Sep 17 00:00:00 2001
 From: Manatros <Manatros@users.noreply.github.com>
 Date: Sat, 10 Oct 2026 13:34:39 +0200
-Subject: [PATCH 2/2] SkateMods: keyboard and mouse through SkateGTA.asi's pad
+Subject: [PATCH 2/4] SkateMods: keyboard and mouse through SkateGTA.asi's pad
  (SkateModsKeyboardPad) while GTA has the keyboard
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

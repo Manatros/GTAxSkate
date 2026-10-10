@@ -315,10 +315,10 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "reads the exported parks"]
+    #[ignore = "reads the exported parks (SKATE_ASSETS)"]
     fn real_parks_load() {
-        let dir = Path::new(r"E:\Games\2010-Rust-Rewrite-Mashup\skate-data\assets\parks");
-        for (park, mesh) in load_all(dir) {
+        let dir = std::path::PathBuf::from(std::env::var("SKATE_ASSETS").expect("SKATE_ASSETS = the assets folder")).join("parks");
+        for (park, mesh) in load_all(&dir) {
             let length: f32 = mesh.rails.iter().flat_map(|r| r.windows(2)).map(|w| w[0].distance(w[1])).sum();
             println!("{}: {} triangles, {} rails ({length:.0} m)", park.id, mesh.triangles.len(), mesh.rails.len());
         }
