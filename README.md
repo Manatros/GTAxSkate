@@ -41,8 +41,9 @@ GTA's camera, `CameraView=Skate` Skate 3's; **V** switches while skating.
 | Key | Does |
 |---|---|
 | Weapon wheel: skateboard | skate mode (walking with the board) |
+| **F** | board out and skate (on foot, no vehicle near) |
 | **E** / hold **E** | get on or off the board / put it away |
-| **F** | back to GTA in one press |
+| **F** (skating) | back to GTA in one press |
 | **W A S D** | steer, lean, walk |
 | **Shift** | push |
 | **Space** | ollie: hold to crouch, let go |

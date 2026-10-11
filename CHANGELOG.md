@@ -26,6 +26,9 @@ have yet, each part also offered to SK8V as a pull request. Not yet confirmed in
 - Skating tunes the radio to Self Radio (Skate 3's soundtrack); `,` / `.` change station, M stays GTA's
   interaction menu.
 - The ridden board wears until it shows Skate 3's worn finish.
+- The store preview shows (it never did: its matrix was a mirror); **Tab** shows the part alone.
+- **F** on foot (no vehicle near) gets on the board; `/` (SK8V's menu) is listed with the keys.
+- People the board knocks over get up again (`PedsSurvive`, "Knocked peds survive" in the menu).
 - **Installer** rebuilt: SK8V's own setup, then GTAxSkate's ready builds and the board parts; no Rust,
   Visual Studio, OpenIV or CodeWalker needed. Your SK8V settings are kept.
 
