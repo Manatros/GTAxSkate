@@ -9,6 +9,12 @@ Each version is a tag on GitHub; `main` holds the newest confirmed one, `dev` th
 GTAxSkate now builds on **SK8V** (1.1.5): SK8V does the skating, GTAxSkate adds what it does not
 have yet, each part also offered to SK8V as a pull request. Not yet confirmed in a game test.
 
+- Street prices by part (deck 45-95 $ … griptape 10-20 $); worn look from half wear; blows with the board wear it.
+- The board picked in the weapon wheel stays in hand: swing it, E or F gets on (`CarryBoard`).
+- A limp after hard bails (`Injuries`). M opens GTA's interaction menu while skating too.
+- Keyboard layouts: standard or Skate's (I J K L trick stick). First person looks the right way; the third person camera aims at chest height.
+- Griptape over the deck's rounded edge; matte, gloss and metallic paints clearly apart; Skate 3's own spec maps on the parts.
+- The SK8V Community Additions are no longer in the build.
 - **Installer: choose the parts** (tick boxes, remembered; `-Choose`, `-Parts all`).
 - **SK8V Community Additions 1.2.5** by MaybeJason included: AI skaters (off by default), skitch assist and towing,
   car exit onto the board, the shoulder cat.

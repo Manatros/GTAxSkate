@@ -18,9 +18,14 @@ const LIFT: f32 = 0.002;
 /// Grain this bright is a bolt head.
 const BOLT: f32 = 1.7;
 
-/// Triangles facing this far toward -X (the deck's grip side in the weapon
-/// frame) are the grip.
+/// Triangles facing this far toward +X (the deck's graphic side in the
+/// weapon frame) are the graphic.
 const GRIP_FACING: f32 = 0.7;
+/// The grip wraps over the deck's rounded top edge, as real griptape is cut
+/// to it (about 63 degrees from flat): with the flat top alone (45) the edge
+/// showed as a light rim round the grip; at 75 it reached the side wall and
+/// showed from below.
+const GRIP_WRAP: f32 = 0.45;
 
 /// The faces of `laid` facing `side` (-1: the grip, +1: the graphic): their
 /// corners, uvs and the uvs' box.
@@ -34,7 +39,8 @@ pub(crate) fn faces(laid: &Laid, side: f32) -> (Vec<[Vec3; 3]>, Vec<[Vec2; 3]>) 
             let n = (normals[a] + normals[b] + normals[c]).normalize_or_zero();
             let v = (uv[a].y + uv[b].y + uv[c].y) / 3.;
             let half = if side < 0. { v < 0.5 } else { v > 0.5 };
-            if n.x * side > GRIP_FACING && half {
+            let facing = if side < 0. { GRIP_WRAP } else { GRIP_FACING };
+            if n.x * side > facing && half {
                 tris.push([positions[a], positions[b], positions[c]]);
                 uvs.push([uv[a], uv[b], uv[c]]);
             }
@@ -254,9 +260,15 @@ pub fn write_grips(dir: &std::path::Path, library: &Library, defaults: &Board, f
         let mut normals = Vec::new();
         let mut mapped = Vec::new();
         for (t, uv) in tris.iter().zip(&uvs) {
-            let n = (t[1] - t[0]).cross(t[2] - t[0]).normalize_or_zero();
+            // The face's normal turned to the grip side (-X; some faces are wound
+            // the other way): lifted along it, an edge face does not stand out
+            // sideways.
+            let mut n = (t[1] - t[0]).cross(t[2] - t[0]).normalize_or_zero();
+            if n.x > 0. {
+                n = -n;
+            }
             for (p, q) in t.iter().zip(uv) {
-                positions.push(*p - Vec3::X * LIFT);
+                positions.push(*p + n * LIFT);
                 normals.push(n);
                 mapped.push((*q - region.0) / size);
             }
