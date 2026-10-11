@@ -144,7 +144,7 @@ $catalog = @(
     @{ N = 'stamina'; T = 'Stamina: skating trains it, it sets push and pop';                On = $true;  Ini = @{ Stamina = '1', '0' } },
     @{ N = 'peds';    T = 'People knocked over survive';                                     On = $true;  Ini = @{ PedsSurvive = '1', '0' } },
     @{ N = 'hurt';    T = 'A limp after hard bails';                                         On = $true;  Ini = @{ Injuries = '1', '0' } },
-    @{ N = 'carry';   T = 'The board from the weapon wheel stays in hand (swing it; E or F gets on)'; On = $true; Ini = @{ CarryBoard = '1', '0' } }
+    @{ N = 'carry';   T = 'The board from the weapon wheel stays in hand (swing it; E or F gets on)'; On = $false; Ini = @{ CarryBoard = '1', '0' } }
 )
 function Choose-Parts {
     $form = New-Object System.Windows.Forms.Form
@@ -359,6 +359,6 @@ Done 'install'
 
 Say ''
 Say 'GTAxSkate is installed.' 'Green'
-Say 'In GTA V (story mode): pick the skateboard in the weapon wheel (it stays in hand; E or F gets on), or press F. WASD, Shift push, Space ollie, arrows tricks,' 'White'
+Say 'In GTA V (story mode): pick the skateboard in the weapon wheel or press F to skate. WASD, Shift push, Space ollie, arrows tricks,' 'White'
 Say 'E on/off the board, F back to GTA, V camera, R cinematic camera. G in Binco, the Discount Store or Suburban opens the board shop.' 'White'
 Say 'Settings: the SK8V menu (F10; keys and camera on its pages), or SkateVLegacy.ini; keys: SkateVKeys.txt.' 'White'
