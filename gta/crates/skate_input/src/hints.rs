@@ -94,6 +94,10 @@ pub fn keyboard(controls: &Controls, on_foot: bool) -> Vec<Hint> {
     push(&mut out, c, false, "", &["x"], "X");
     push(&mut out, c, false, "", &["b"], "B");
     push(&mut out, c, false, "", &["y"], "Get off");
+    // LB + d-pad: SK8V's radio (left/right) and Skate's session marker (down/up).
+    push(&mut out, c, false, "", &["retry", "object_dropper"], "Radio: previous, next station");
+    push(&mut out, c, false, "", &["marker_place"], "Set a marker");
+    push(&mut out, c, false, "", &["marker_return"], "Hold: back to the marker");
     out
 }
 

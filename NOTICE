@@ -11,8 +11,13 @@ Copyright 2026 becaring, Apache License 2.0:
   Rust port of host/src/physics_level.cpp); SK8V's live reader is adapted from Sol4ra's
   LS-Skate-LiveCollision.
 
+The GTAxSkate-bin.zip release builds (SkateVLegacy.asi, SkateVRuntime.dll,
+prepare-board-parts.py, _common.py) are SK8V, modified: SK8V 1.1.3 with GTAxSkate's additions
+(keyboard and mouse, board shop, camera views, trainer tuning and stamina, map helpers), built
+from https://github.com/Manatros/SK8V (branch skatemods). The changed files say what was added.
+
 The Skate engine core (skate-host) comes from the 2010 Rust Rewrite Mashup,
 https://github.com/chasmlol/2010-rust-rewrite-mashup, Apache License 2.0. It is not included
-here; it is built from that repository.
+in this repository's source; the release builds contain it compiled, as SK8V's own do.
 
 No Skate 3, skate., GTA V or other retail assets are included.
