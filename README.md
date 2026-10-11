@@ -27,6 +27,8 @@ is made from your own copies of the games.
 | Customization | griptapes (colours, checkers, prints), painted decks, wheels and truck parts (matte, gloss, metallic; painted wheels ride as hard as their paint) |
 | Boards on show | each store shows five boards behind the till or on a wall, new ones every game day |
 | Your own decks | images in `custom-assets/decks/` become decks in the shop ([how](custom-assets/README.md)) |
+| Cars | cars SK8V only knows as boxes are measured once, so their roof, hood and trunk can be ridden and hippie jumped (adjustable height; 1.6 clears a car) |
+| People | optionally only knocked over, not killed |
 | Cameras | **V**: Skate 3's camera or GTA's own (near, middle, far, first person), turned with the mouse. **R**: a cinematic camera that cuts like GTA's in a car, then a fisheye skate filmer |
 | Tuning | pop, grind pop, push, braking, steering, wobble, grip, turn power, manual drag, hold fakie in SK8V's menu |
 | Stamina | GTA's stamina skill sets push and pop; skating at speed trains it |
@@ -55,8 +57,8 @@ GTA's camera, `CameraView=Skate` Skate 3's; **V** switches while skating.
 | **,** / **.** | radio: previous / next station |
 | **N** / hold **J** | set a session marker / back to it |
 | **M** | GTA's interaction menu (also while skating) |
-| **G** | board shop (in a clothing store) |
-| **/** | SK8V's settings menu |
+| **G**, or **E** looking at the boards on show | board shop (in a clothing store); **Tab** shows the part alone |
+| **F10** (or **/** on a US keyboard) | SK8V's settings menu; page *Keyboard keys* rebinds every key |
 
 A controller works as in SK8V; the keyboard is used whenever none is connected.
 
@@ -105,6 +107,18 @@ Afterwards, in GTA V: Settings > Audio > Self Radio > Full Scan once for the sou
 The SK8V additions themselves live in the fork [Manatros/SK8V](https://github.com/Manatros/SK8V)
 (branches `contrib/keyboard-mouse`, `contrib/board-shop`, `contrib/gta-camera`,
 `contrib/trainer-tuning`, `contrib/map-helpers`, `contrib/skate-radio`), each offered to SK8V as a pull request.
+
+## How it works and why
+
+GTAxSkate began as its own Skate 3 mod with its own Skate core. SK8V does the
+core better (Skate's own audio engine, the pose hook, live collision, Hall of
+Meat), so GTAxSkate now builds on SK8V and only adds what SK8V does not have,
+each part in SK8V's own code and style, in its own branch of the fork
+[Manatros/SK8V](https://github.com/Manatros/SK8V), and offered to SK8V as a
+pull request. Options that change how SK8V plays are off in SK8V itself; this
+installer turns on what GTAxSkate prefers (GTA's camera, people surviving).
+The fork's [GTAXSKATE.md](https://github.com/Manatros/SK8V/blob/skatemods/GTAXSKATE.md)
+lists every branch, how it works and the reasons.
 
 ## Thanks
 

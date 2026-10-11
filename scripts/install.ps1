@@ -40,7 +40,7 @@ $settings = Join-Path $receipts 'folders.json'
 New-Item -ItemType Directory -Force $receipts, $tools, $external, $bin | Out-Null
 
 # SK8V: pinned to the release our additions are built on.
-$Sk8vTag = '1.1.4'
+$Sk8vTag = '1.1.5'
 $Sk8vZip = "https://github.com/becaring/SK8V/releases/download/$Sk8vTag/SK8V-$Sk8vTag.zip"
 # GTAxSkate's builds for players without the build tools (a release asset).
 $BinZip = 'https://github.com/Manatros/GTAxSkate/releases/latest/download/GTAxSkate-bin.zip'
@@ -288,7 +288,7 @@ if (Test-Path $iniKeep) {
     foreach ($line in $kept) { if ($line -match '^([A-Za-z0-9_]+)=(.*)$') { Add-Key $Matches[1] $Matches[2] } }
 }
 $defaults = [ordered]@{ Keyboard = '1'; KeyboardHints = '1'; BoardShop = '1'; WheelsFromPaint = '1'; DrawBoard = '1'; DrawSkater = '1';
-                        GpsWhileSkating = '1'; SkateSpots = '1'; Stamina = '1'; CameraView = 'Near'; PedsSurvive = '1' }
+                        GpsWhileSkating = '1'; SkateSpots = '1'; Stamina = '1'; CameraView = 'Near'; PedsSurvive = '1'; HippieJump = '1.6'; VehicleShapes = '1' }
 # With the soundtrack on Self Radio, skating plays it.
 if (Is-Done 'music') { $defaults['SkateRadio'] = 'RADIO_19_USER' }
 foreach ($key in $defaults.Keys) { Add-Key $key $defaults[$key] }

@@ -6,10 +6,10 @@ Each version is a tag on GitHub; `main` holds the newest confirmed one, `dev` th
 
 ## Unreleased (`dev`)
 
-GTAxSkate now builds on **SK8V** (1.1.4): SK8V does the skating, GTAxSkate adds what it does not
+GTAxSkate now builds on **SK8V** (1.1.5): SK8V does the skating, GTAxSkate adds what it does not
 have yet, each part also offered to SK8V as a pull request. Not yet confirmed in a game test.
 
-- Built on SK8V 1.1.4 (Trick Analyzer, wheel tracks in sand and snow, no snow on the board).
+- Built on SK8V 1.1.5 (Trick Analyzer, wheel tracks in sand and snow, no snow on the board).
 - Keyboard and mouse work with a controller connected too (Steam Input, DS4Windows, a wheel):
   whichever was used last plays.
 - **Keyboard and mouse** for SK8V: GTA-like keys (WASD, Shift push, Space ollie, arrow keys for the
@@ -29,6 +29,10 @@ have yet, each part also offered to SK8V as a pull request. Not yet confirmed in
 - The store preview shows (it never did: its matrix was a mirror); **Tab** shows the part alone.
 - **F** on foot (no vehicle near) gets on the board; `/` (SK8V's menu) is listed with the keys.
 - People the board knocks over get up again (`PedsSurvive`, "Knocked peds survive" in the menu).
+- **Cars** SK8V only knows as boxes are measured once (roof, hood, trunk to ride; gap to hippie jump);
+  the **hippie jump** height is adjustable (1.6 clears a car).
+- **F10** opens the menu; every key can be rebound in it (*Keyboard keys*). **E** at the boards on show
+  opens the shop. A *Camera* menu page.
 - **Installer** rebuilt: SK8V's own setup, then GTAxSkate's ready builds and the board parts; no Rust,
   Visual Studio, OpenIV or CodeWalker needed. Your SK8V settings are kept.
 
