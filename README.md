@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/Manatros/GTAxSkate/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/Manatros/GTAxSkate/actions/workflows/ci.yml)
 
+**Download: [GTAxSkate-Setup.zip](https://github.com/Manatros/GTAxSkate/releases/latest/download/GTAxSkate-Setup.zip)**, unzip, close GTA V, double-click `Install GTAxSkate.cmd`. ([All downloads](https://github.com/Manatros/GTAxSkate/releases/latest), [how to install](#download))
+
 **GTAxSkate** adds to **[SK8V](https://github.com/becaring/SK8V)** by becaring, the mod that runs
 the real **Skate 3** engine in **GTA V story mode**. SK8V does the skating (Skate's own physics,
 tricks, animations, audio, collision, Hall of Meat). GTAxSkate fills the gaps around it:
