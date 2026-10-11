@@ -145,7 +145,7 @@ $catalog = @(
     @{ N = 'peds';    T = 'People knocked over survive';                                     On = $true;  Ini = @{ PedsSurvive = '1', '0' } },
     @{ N = 'skitch';  T = 'Skitch assist: cars slow down to be caught (community, MaybeJason)'; On = $true;  Ini = @{ SkitchTrafficAssist = '1', '0' } },
     @{ N = 'ai';      T = 'AI skaters: your followers skate with you (community, test version)'; On = $false; Ini = @{ AiFollowers = '1', '0' } },
-    @{ N = 'cat';     T = 'Shoulder cat for a follower cat (community)';                     On = $true;  Ini = @{ ShoulderCat = '1', '0' } }
+    @{ N = 'cat';     T = 'Shoulder cat (needs a cat follower from a trainer mod; community)'; On = $false; Ini = @{ ShoulderCat = '1', '0' } }
 )
 function Choose-Parts {
     $form = New-Object System.Windows.Forms.Form

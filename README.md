@@ -39,12 +39,14 @@ copy its two files into the GTA V folder (back up yours first).
 | Keyboard and mouse | play Skate without a controller: WASD, Shift push, Space ollie, arrow keys for the trick stick, every key rebindable in the menu (F10 > *Keyboard keys*) or `SkateVKeys.txt`, your keys on screen while skating |
 | Skateboard shop | **G** in Binco, the Discount Store and Suburban: complete boards, and every deck (by maker), truck, wheel, griptape and paint on its own, paid with the character's cash |
 | Your board | the board you buy is the one you ride, with Skate 3's own models: trucks turn and wheels spin; Michael, Franklin and Trevor each keep their own boards |
-| Wear | the board wears with riding, grinds, slides and bails until it shows Skate 3's worn finish; a new one starts fresh |
-| Customization | griptapes (colours, checkers, prints), painted decks, wheels and truck parts (matte, gloss, metallic; painted wheels ride as hard as their paint) |
+| Wear | the board wears with riding, grinds, slides and bails and shows Skate 3's worn finish from half worn; a new one starts fresh |
+| Customization | griptapes (colours, checkers, prints), painted decks, wheels and truck parts (matte, gloss, metallic; painted wheels ride as hard as their paint), at street prices (deck 55-80 $, trucks 45-70 $, wheels 30-45 $, griptape 10-15 $) |
 | Boards on show | each store hangs four boards on a rack behind the till (or stands five along a wall), new ones every game day; look at them and press **E** |
 | Your own decks | images in `custom-assets/decks/` become decks in the shop ([how](custom-assets/README.md)) |
 | Cars | cars SK8V only knows as boxes are measured once, so their roof, hood and trunk can be ridden and hippie jumped (adjustable height; 1.6 clears a car) |
 | People | optionally only knocked over, not killed |
+| Injuries | after a hard bail your character limps on foot for 30 s to 2 min with GTA's injured walk |
+| Skate buddies | F10 > *Skate buddies*: call up to 3 skaters as your crew; with the AI skaters on they ride along on boards from the shop |
 | Cameras | **V**: near, middle, far (a third person camera that follows the skater, or the board, and never swings into them; the mouse turns it), the skater's eyes (first person), Skate 3's camera. The view is kept between walking and skating; the standard view is set in the menu. **R**: a cinematic camera that cuts like GTA's in a car (wide bars, film look, shallow focus), then a skate filmer (4:3, handheld) |
 | Tuning | pop, grind pop, push, braking, steering, wobble, grip, turn power, manual drag, hold fakie in SK8V's menu |
 | Stamina | GTA's stamina skill sets push and pop; skating at speed trains it |
@@ -62,7 +64,7 @@ sets the standard view, what it follows and the cinematic camera's look.
 | AI skaters | F10 > *AI skater followers* > on (off by default; a test version), then F10 > *Skate buddies* > *Call a skater friend* (GTAxSkate's; up to 3, no trainer needed). Your followers skate with you while you skate |
 | Skitch assist | hold **B** (controller: RB) behind a car: it slows down so you can grab it, then tows you; F10 > *Skating* sets the towing speed and towing to your waypoint |
 | Out of a car onto the board | controller: hold **LB** and press **Y** to leave the car |
-| Shoulder cat | a cat follower (from a trainer) rides on your shoulder while you skate; F10 > *Shoulder cat* |
+| Shoulder cat | optional, off: only for a cat follower made with a trainer mod (F10 > *Shoulder cat*) |
 
 ## Controls (keyboard and mouse)
 
@@ -82,7 +84,7 @@ sets the standard view, what it follows and the cinematic camera's look.
 | **R** | cinematic camera, skate filmer |
 | **,** / **.** | radio: previous / next station |
 | **N** / hold **J** | set a session marker / back to it |
-| **M** | GTA's interaction menu (on foot) |
+| **M** | GTA's interaction menu on foot; while skating (for now) an Interaction page: GPS to the nearest clothing store or skate spot |
 | **G**, or **E** looking at the boards on show | board shop (in a clothing store); **Tab** shows the part alone, **W A S D** or the mouse turn it, the wheel zooms |
 | **F10** (or **/** on a US keyboard) | SK8V's settings menu; page *Keyboard keys* rebinds every key |
 | **Tab** / mouse buttons | gun out or away (hold Tab: GTA's weapon wheel); with a gun out, right mouse aims and left shoots |

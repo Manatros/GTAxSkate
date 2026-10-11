@@ -18,9 +18,13 @@ const LIFT: f32 = 0.002;
 /// Grain this bright is a bolt head.
 const BOLT: f32 = 1.7;
 
-/// Triangles facing this far toward -X (the deck's grip side in the weapon
-/// frame) are the grip.
+/// Triangles facing this far toward +X (the deck's graphic side in the
+/// weapon frame) are the graphic.
 const GRIP_FACING: f32 = 0.7;
+/// The grip wraps over the deck's rounded top edge, as real griptape is cut
+/// to it (about 75 degrees from flat): with the flat top alone the edge
+/// showed as a light rim round the grip, brightest at nose and tail.
+const GRIP_WRAP: f32 = 0.25;
 
 /// The faces of `laid` facing `side` (-1: the grip, +1: the graphic): their
 /// corners, uvs and the uvs' box.
@@ -34,7 +38,8 @@ pub(crate) fn faces(laid: &Laid, side: f32) -> (Vec<[Vec3; 3]>, Vec<[Vec2; 3]>) 
             let n = (normals[a] + normals[b] + normals[c]).normalize_or_zero();
             let v = (uv[a].y + uv[b].y + uv[c].y) / 3.;
             let half = if side < 0. { v < 0.5 } else { v > 0.5 };
-            if n.x * side > GRIP_FACING && half {
+            let facing = if side < 0. { GRIP_WRAP } else { GRIP_FACING };
+            if n.x * side > facing && half {
                 tris.push([positions[a], positions[b], positions[c]]);
                 uvs.push([uv[a], uv[b], uv[c]]);
             }
