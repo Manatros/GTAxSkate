@@ -399,6 +399,26 @@ pub(crate) fn write_model_decal(dir: &std::path::Path, name: &str, surfaces: &La
 }
 
 #[allow(clippy::too_many_arguments)]
+/// `image` twice as large, bilinear (normal maps stay smooth).
+fn double_smooth(image: &dds::Image) -> dds::Image {
+    let (w, h) = (image.width as usize, image.height as usize);
+    let at = |x: usize, y: usize, c: usize| f32::from(image.rgba[(y.min(h - 1) * w + x.min(w - 1)) * 4 + c]);
+    let mut rgba = vec![0u8; w * h * 16];
+    for y in 0..h * 2 {
+        for x in 0..w * 2 {
+            let (fx, fy) = (((x as f32 - 0.5) / 2.0).max(0.0), ((y as f32 - 0.5) / 2.0).max(0.0));
+            let (x0, y0) = (fx as usize, fy as usize);
+            let (tx, ty) = (fx - x0 as f32, fy - y0 as f32);
+            for c in 0..4 {
+                let v = at(x0, y0, c) * (1. - tx) * (1. - ty) + at(x0 + 1, y0, c) * tx * (1. - ty)
+                    + at(x0, y0 + 1, c) * (1. - tx) * ty + at(x0 + 1, y0 + 1, c) * tx * ty;
+                rgba[(y * w * 2 + x) * 4 + c] = v.round().clamp(0., 255.) as u8;
+            }
+        }
+    }
+    dds::Image { width: image.width * 2, height: image.height * 2, rgba }
+}
+
 fn write_model_full(dir: &std::path::Path, name: &str, surfaces: &Laid, textures: &[skate_boards::Texture], raw: bool, shine: u8, decal: bool, normals: &[Option<skate_boards::Texture>]) -> Result<(Vec3, Vec3), String> {
     let mut used: Vec<usize> = surfaces.iter().map(|s| s.4).collect();
     used.sort_unstable();
@@ -441,10 +461,19 @@ fn write_model_full(dir: &std::path::Path, name: &str, surfaces: &Laid, textures
         match normals.get(t).and_then(Option::as_ref) {
             Some(normal) => {
                 let bump = format!("{}_n", texture_of(t));
-                let image = dds::Image { width: normal.width, height: normal.height, rgba: normal.rgba.clone() }.power_of_two(2048);
+                let mut image = dds::Image { width: normal.width, height: normal.height, rgba: normal.rgba.clone() }.power_of_two(2048);
                 // Small ones (a wheel's 64 px) uncompressed: DXT's 4 px
                 // blocks broke their curves up.
-                let small = image.width * image.height <= 128 * 128;
+                let mut small = image.width * image.height <= 128 * 128;
+                // A shiny paint's tight highlight showed every texel of the
+                // normal map (pixelated metallic, the maintainer 10-11): smoothly
+                // enlarged to 256 px and uncompressed.
+                if shine >= 100 {
+                    while image.width < 256 || image.height < 256 {
+                        image = double_smooth(&image);
+                    }
+                    small = true;
+                }
                 images.push((bump.clone(), image, small, "NORMAL"));
                 bumps.push(bump);
             }
