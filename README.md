@@ -103,7 +103,7 @@ Afterwards, in GTA V: Settings > Audio > Self Radio > Full Scan once for the sou
 
 The SK8V additions themselves live in the fork [Manatros/SK8V](https://github.com/Manatros/SK8V)
 (branches `contrib/keyboard-mouse`, `contrib/board-shop`, `contrib/gta-camera`,
-`contrib/trainer-tuning`, `contrib/map-helpers`), each offered to SK8V as a pull request.
+`contrib/trainer-tuning`, `contrib/map-helpers`, `contrib/skate-radio`), each offered to SK8V as a pull request.
 
 ## Thanks
 
