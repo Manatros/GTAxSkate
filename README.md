@@ -46,7 +46,7 @@ copy its two files into the GTA V folder (back up yours first).
 | People | optionally only knocked over, not killed |
 | Injuries | after a hard bail your character limps on foot for 30 s to 2 min with GTA's injured walk |
 | Board in hand | optional (`CarryBoard=1`, off by default): the board picked in the weapon wheel stays in your hand in GTA, swung with GTA's melee; E or F gets on |
-| Cameras | **V**: near, middle, far (a third person camera that follows the skater, or the board, and never swings into them; the mouse turns it), the skater's eyes (first person), Skate 3's camera. The view is kept between walking and skating; the standard view is set in the menu. **R**: a cinematic camera that cuts like GTA's in a car (wide bars, film look, shallow focus), then a skate filmer (4:3, handheld) |
+| Cameras | **V**: near, middle, far (a calm third person camera that follows the skater, or the board: only walls pull it in, never closer than 1.6 m or under the ground; the mouse turns it), the skater's eyes (first person), Skate 3's camera. The view is kept between walking and skating; the standard view is set in the menu. **R**: a cinematic camera that cuts like GTA's in a car (wide bars, film look, shallow focus), then a skate filmer (4:3, handheld) |
 | Tuning | pop, grind pop, push, braking, steering, wobble, grip, turn power, manual drag, hold fakie in SK8V's menu |
 | Stamina | GTA's stamina skill sets push and pop; skating at speed trains it |
 | Map | GTA's GPS route stays on while skating; GTA's skate parks are on the map |
@@ -81,6 +81,16 @@ sets the standard view, what it follows and the cinematic camera's look.
 | **B** (hold, behind a moving car) | skitch |
 
 A controller works as in SK8V; the keyboard is used whenever none is connected.
+
+## Known issues
+
+- **M** while skating does not open GTA's interaction menu yet (it does on foot).
+- Printed griptapes still show a seam at the deck's edge; a thin seam between the deck's middle and its nose and tail.
+- Riding sideways along an edge the board does not always stick to it; a board hit while bailing can drag the body.
+- The board shop registers at most 240 new part models a session (GTA's limit); restart GTA to see more.
+
+Skate's own postures and riding styles are on F10 > *Skating*. Problems: open an
+[issue](https://github.com/Manatros/GTAxSkate/issues) with your logs from `%LOCALAPPDATA%\SkateV`.
 
 ## What you need
 
