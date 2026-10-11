@@ -9,6 +9,7 @@ Each version is a tag on GitHub; `main` holds the newest confirmed one, `dev` th
 GTAxSkate now builds on **SK8V** (1.1.5): SK8V does the skating, GTAxSkate adds what it does not
 have yet, each part also offered to SK8V as a pull request. Not yet confirmed in a game test.
 
+- v0.5.2: calmer third person camera (only walls pull it in, never under the ground, never closer than 1.6 m, slower swing); the board lit by the tunnel or room it is in while skating.
 - v0.5.1: fixed the script stopping after a long store visit (GTA's model registration is guarded); gentler cars (push and dent settings on F10 > Peds and vehicles); the deck's own grip as a griptape choice; smooth highlights on shiny paints.
 - Street prices by part (deck 45-95 $ … griptape 10-20 $); worn look from half wear; blows with the board wear it.
 - The board picked in the weapon wheel stays in hand: swing it, E or F gets on (`CarryBoard`).
