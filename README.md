@@ -86,7 +86,7 @@ sets the standard view, what it follows and the cinematic camera's look.
 | **N** / hold **J** | set a session marker / back to it |
 | **M** | GTA's interaction menu on foot; while skating (for now) an Interaction page: GPS to the nearest clothing store or skate spot |
 | **G**, or **E** looking at the boards on show | board shop (in a clothing store); **Tab** shows the part alone, **W A S D** or the mouse turn it, the wheel zooms |
-| **F10** (or **/** on a US keyboard) | SK8V's settings menu; page *Keyboard keys* rebinds every key |
+| **F10** (or **/** on a US keyboard) | SK8V's settings menu; page *Keyboard keys* rebinds every key or switches the layout (standard, or Skate's with I J K L as the trick stick) |
 | **Tab** / mouse buttons | gun out or away (hold Tab: GTA's weapon wheel); with a gun out, right mouse aims and left shoots |
 | **B** (hold, behind a moving car) | skitch |
 
