@@ -59,7 +59,7 @@ sets the standard view, what it follows and the cinematic camera's look.
 
 | | How |
 |---|---|
-| AI skaters | F10 > *AI skater followers* > on (off by default; a test version). Your GTA followers (bodyguards from a trainer, or mission companions) skate with you while you skate |
+| AI skaters | F10 > *AI skater followers* > on (off by default; a test version), then F10 > *Skate buddies* > *Call a skater friend* (GTAxSkate's; up to 3, no trainer needed). Your followers skate with you while you skate |
 | Skitch assist | hold **B** (controller: RB) behind a car: it slows down so you can grab it, then tows you; F10 > *Skating* sets the towing speed and towing to your waypoint |
 | Out of a car onto the board | controller: hold **LB** and press **Y** to leave the car |
 | Shoulder cat | a cat follower (from a trainer) rides on your shoulder while you skate; F10 > *Shoulder cat* |
