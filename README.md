@@ -57,8 +57,10 @@ GTA's camera, `CameraView=Skate` Skate 3's; **V** switches while skating.
 | **,** / **.** | radio: previous / next station |
 | **N** / hold **J** | set a session marker / back to it |
 | **M** | GTA's interaction menu (also while skating) |
-| **G**, or **E** looking at the boards on show | board shop (in a clothing store); **Tab** shows the part alone |
+| **G**, or **E** looking at the boards on show | board shop (in a clothing store); **Tab** shows the part alone, **W A S D** or the mouse turn it, the wheel zooms |
 | **F10** (or **/** on a US keyboard) | SK8V's settings menu; page *Keyboard keys* rebinds every key |
+| **Tab** / mouse buttons | gun out or away (hold Tab: GTA's weapon wheel); with a gun out, right mouse aims and left shoots |
+| **B** (hold, behind a moving car) | skitch |
 
 A controller works as in SK8V; the keyboard is used whenever none is connected.
 

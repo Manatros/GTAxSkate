@@ -12,7 +12,7 @@ Copyright 2026 becaring, Apache License 2.0:
   LS-Skate-LiveCollision.
 
 The GTAxSkate-bin.zip release builds (SkateVLegacy.asi, SkateVRuntime.dll,
-prepare-board-parts.py, _common.py) are SK8V, modified: SK8V 1.1.6 with GTAxSkate's additions
+prepare-board-parts.py, _common.py) are SK8V, modified: SK8V 1.1.7 with GTAxSkate's additions
 (keyboard and mouse, board shop, camera views, trainer tuning and stamina, map helpers, skate radio, gentle peds, vehicle shapes), built
 from https://github.com/Manatros/SK8V (branch skatemods). The changed files say what was added.
 
