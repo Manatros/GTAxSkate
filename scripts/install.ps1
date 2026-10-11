@@ -289,6 +289,8 @@ if (Test-Path $iniKeep) {
 }
 $defaults = [ordered]@{ Keyboard = '1'; KeyboardHints = '1'; BoardShop = '1'; WheelsFromPaint = '1'; DrawBoard = '1'; DrawSkater = '1';
                         GpsWhileSkating = '1'; SkateSpots = '1'; Stamina = '1'; CameraView = 'Near' }
+# With the soundtrack on Self Radio, skating plays it.
+if (Is-Done 'music') { $defaults['SkateRadio'] = 'RADIO_19_USER' }
 foreach ($key in $defaults.Keys) { Add-Key $key $defaults[$key] }
 foreach ($key in 'DrawBoard', 'DrawSkater') { $text = $text -replace "(?m)^$key=0", "$key=1" }
 $text = ($text -replace "`r+`n", "`n") -replace "`n", "`r`n"

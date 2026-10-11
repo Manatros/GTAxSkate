@@ -23,6 +23,7 @@ is made from your own copies of the games.
 | Keyboard and mouse | play Skate without a controller: WASD, Shift push, Space ollie, arrow keys for the trick stick, every key rebindable in `SkateVKeys.txt`, your keys on screen while skating |
 | Skateboard shop | **G** in Binco, the Discount Store and Suburban: complete boards, and every deck (by maker), truck, wheel, griptape and paint on its own, paid with the character's cash |
 | Your board | the board you buy is the one you ride, with Skate 3's own models: trucks turn and wheels spin; Michael, Franklin and Trevor each keep their own boards |
+| Wear | the board wears with riding, grinds, slides and bails until it shows Skate 3's worn finish; a new one starts fresh |
 | Customization | griptapes (colours, checkers, prints), painted decks, wheels and truck parts (matte, gloss, metallic; painted wheels ride as hard as their paint) |
 | Boards on show | each store shows five boards behind the till or on a wall, new ones every game day |
 | Your own decks | images in `custom-assets/decks/` become decks in the shop ([how](custom-assets/README.md)) |
@@ -30,7 +31,7 @@ is made from your own copies of the games.
 | Tuning | pop, grind pop, push, braking, steering, wobble, grip, turn power, manual drag, hold fakie in SK8V's menu |
 | Stamina | GTA's stamina skill sets push and pop; skating at speed trains it |
 | Map | GTA's GPS route stays on while skating; GTA's skate parks are on the map |
-| Music | Skate 3's soundtrack on GTA's Self Radio |
+| Music | Skate 3's soundtrack on GTA's Self Radio, tuned in whenever you start skating; `,` / `.` change station |
 
 Prefer it more like GTA or more like Skate 3? `CameraView=Near` (the installer's default) uses
 GTA's camera, `CameraView=Skate` Skate 3's; **V** switches while skating.
@@ -50,6 +51,9 @@ GTA's camera, `CameraView=Skate` Skate 3's; **V** switches while skating.
 | **T** / **Ctrl** | Skate's X / B |
 | **V** | camera views |
 | **R** | cinematic camera, skate filmer |
+| **,** / **.** | radio: previous / next station |
+| **N** / hold **J** | set a session marker / back to it |
+| **M** | GTA's interaction menu (also while skating) |
 | **G** | board shop (in a clothing store) |
 | **/** | SK8V's settings menu |
 

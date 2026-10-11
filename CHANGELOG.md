@@ -20,6 +20,9 @@ have yet, each part also offered to SK8V as a pull request. Not yet confirmed in
   and a fisheye skate filmer.
 - **Tuning** in SK8V's menu (pop, push, braking, steering, grip, ...) and **stamina**.
 - GPS route while skating, GTA's skate parks on the map.
+- Skating tunes the radio to Self Radio (Skate 3's soundtrack); `,` / `.` change station, M stays GTA's
+  interaction menu.
+- The ridden board wears until it shows Skate 3's worn finish.
 - **Installer** rebuilt: SK8V's own setup, then GTAxSkate's ready builds and the board parts; no Rust,
   Visual Studio, OpenIV or CodeWalker needed. Your SK8V settings are kept.
 
