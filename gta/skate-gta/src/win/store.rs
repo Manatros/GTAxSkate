@@ -63,6 +63,8 @@ pub struct Store {
     /// logged this visit.
     display_next: Option<std::time::Instant>,
     display_missed: bool,
+    /// How many boards on show were out last frame (logged when it changes).
+    display_out: usize,
     /// Lines for the plugin's log.
     pub notes: Vec<String>,
     /// The ridden deck's scuff stage.
@@ -143,6 +145,7 @@ impl Store {
             display: Vec::new(),
             display_next: None,
             display_missed: false,
+            display_out: 0,
             notes: Vec::new(),
             scuff: None,
             show_at: None,
@@ -248,6 +251,7 @@ impl Store {
         self.show_at = None;
         self.display_next = None;
         self.display_missed = false;
+        self.display_out = 0;
     }
 
     /// Boards from the stock on show against a flat stretch of the store's
@@ -309,22 +313,29 @@ impl Store {
                 self.display.push((place, choice, Default::default()));
             }
         }
+        let mut out = 0;
         for (place, choice, parts) in &mut self.display {
-            parts.show(choice, &Default::default(), super::board_parts::Place::At(*place));
+            out += usize::from(parts.show(choice, &Default::default(), super::board_parts::Place::At(*place)));
+        }
+        if !self.display.is_empty() && out != self.display_out {
+            self.display_out = out;
+            self.notes.push(format!("store: {out} of {} boards on show are out", self.display.len()));
         }
     }
 
     /// Runs the counter for this frame. True when the board ridden changed.
-    pub fn tick(&mut self, config: &Config, library: Option<&Library>, defaults: Option<&Board>, skating: bool) -> bool {
+    /// `display_only`: SK8V's board shop sells the boards; only the boards
+    /// on show are ours then.
+    pub fn tick(&mut self, config: &Config, library: Option<&Library>, defaults: Option<&Board>, skating: bool, display_only: bool) -> bool {
         self.previewed = false;
-        let changed = self.counter(config, library, defaults, skating);
+        let changed = self.counter(config, library, defaults, skating, display_only);
         if !self.previewed && self.parts.shown() {
             self.parts.clear();
         }
         changed
     }
 
-    fn counter(&mut self, config: &Config, library: Option<&Library>, defaults: Option<&Board>, skating: bool) -> bool {
+    fn counter(&mut self, config: &Config, library: Option<&Library>, defaults: Option<&Board>, skating: bool, display_only: bool) -> bool {
         let ped = n::player_ped();
         // Wanted: GTA closes its own shops then, and its notice and ours
         // took turns each frame (the prompt flickered, B90).
@@ -336,7 +347,17 @@ impl Store {
             self.clear_display();
             return false;
         };
+        // SK8V's shop with its own boards on show: nothing of ours in the store.
+        if display_only && super::sk8v::Core::has_display() {
+            self.menu = None;
+            self.clear_display();
+            return false;
+        }
         self.show_display(library, ped, tier);
+        if display_only {
+            self.menu = None;
+            return false;
+        }
         if self.menu.is_none() {
             // At the boards on show: GTA's own prompt, as at the store's
             // other goods, and only there. A store without them: a line at the

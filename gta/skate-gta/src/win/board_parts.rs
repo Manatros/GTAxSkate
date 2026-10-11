@@ -145,6 +145,8 @@ impl Parts {
                     continue;
                 }
                 n::set_collision(object, false);
+                // In a store: into the player's room, or GTA does not draw it.
+                n::keep_in_room_of(object, n::player_ped());
                 self.objects[i] = object;
                 self.models[i] = hash;
             }

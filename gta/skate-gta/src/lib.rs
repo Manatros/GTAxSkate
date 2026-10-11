@@ -11,6 +11,9 @@
 //! tested on any system; the plugin itself is Windows-only.
 
 pub mod action_cam;
+/// Skate 3's own audio engine (SK8V's AEMS port), on SK8V's engine only.
+#[cfg(feature = "sk8v-engine")]
+pub mod aems;
 pub mod aim;
 pub mod board_look;
 pub mod cam_cycle;

@@ -6,6 +6,23 @@ Each version is a tag on GitHub; `main` holds the newest confirmed one, `dev` th
 
 ## Unreleased (`dev`)
 
+GTAxSkate now builds on **SK8V** (1.1.3): SK8V does the skating, GTAxSkate adds what it does not
+have yet, each part also offered to SK8V as a pull request. Not yet confirmed in a game test.
+
+- **Keyboard and mouse** for SK8V: GTA-like keys (WASD, Shift push, Space ollie, arrow keys for the
+  trick stick, E board, Q hippie jump, F back to GTA), rebindable in `SkateVKeys.txt`, your keys on
+  screen while skating.
+- **Board shop** in SK8V: every Skate 3 deck, truck, wheel, griptape and paint, a garage per
+  character, the bought board ridden with Skate 3's own models (trucks turn, wheels spin), five boards
+  on show in every store, painted wheels as hard as their paint. The part models load from loose
+  files: no OpenIV or CodeWalker needed any more.
+- **Cameras**: GTA's own camera while skating (mouse), **V** cycles views, **R** a cinematic camera
+  and a fisheye skate filmer.
+- **Tuning** in SK8V's menu (pop, push, braking, steering, grip, ...) and **stamina**.
+- GPS route while skating, GTA's skate parks on the map.
+- **Installer** rebuilt: SK8V's own setup, then GTAxSkate's ready builds and the board parts; no Rust,
+  Visual Studio, OpenIV or CodeWalker needed. Your SK8V settings are kept.
+
 ## 0.3.0 (2026-10-10)
 
 Tested in the game: skating, tricks, the board shop and bought boards work; installed by the installer

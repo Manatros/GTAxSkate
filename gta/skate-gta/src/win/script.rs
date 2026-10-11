@@ -14,7 +14,7 @@ use crate::coords::{
     basis, camera_rotation, entity_transform, from_skate, gta_heading, joaat, rotation_quaternion, skate_heading,
     to_skate, transform_from_skate,
 };
-use crate::rig::{Retarget, bind_pose, load_reference};
+use crate::rig::{Retarget, bind_pose};
 use crate::terrain::{Probe, Terrain};
 use crate::worker::{Event, Frame, Options, Worker};
 use bevy_math::{EulerRot, Mat4, Quat, Vec3, Vec4};
@@ -307,6 +307,8 @@ pub struct Script {
     /// reader thread, the area it built last, and the table search.
     live: crate::live::Service,
     live_area: Option<crate::live::Area>,
+    /// The live area and Skate origin last sent as Skate's static collision.
+    live_sent: Option<([u32; 3], [u32; 3])>,
     live_search: Option<std::sync::mpsc::Receiver<Option<usize>>>,
     live_next: Option<Instant>,
     /// The camera V has cycled to (see `crate::cam_cycle`).
@@ -561,6 +563,7 @@ impl Script {
             view: crate::cam_cycle::View::Gta(0),
             live: Default::default(),
             live_area: None,
+            live_sent: None,
             live_search: None,
             live_next: None,
             look: (0., 0.),
@@ -679,6 +682,13 @@ impl Script {
         match self.assets().and_then(Worker::start) {
             Ok(worker) => {
                 self.log.line("loading the Skate session");
+                // Skate 3's own audio engine (SK8V's AEMS port) from the
+                // converter's audio banks beside the Skate data.
+                #[cfg(feature = "sk8v-engine")]
+                if let Some(audio) = self.assets().ok().and_then(|a| Some(a.parent()?.parent()?.join("audio"))) {
+                    let started = super::aems_out::start(audio.clone());
+                    self.log.line(&format!("audio: Skate 3's audio engine from {} ({})", audio.display(), if started { "starting" } else { "not there" }));
+                }
                 self.worker = Some(worker);
             }
             Err(e) => self.log.line(&format!("not loading Skate: {e}")),
@@ -879,7 +889,7 @@ impl Script {
             for note in std::mem::take(&mut self.store.notes) {
                 self.log.line(&note);
             }
-            if self.store.tick(&self.config, library, defaults, self.riding.is_some()) {
+            if self.store.tick(&self.config, library, defaults, self.riding.is_some(), false) {
                 self.drawn = None;
                 // A new part bought: its wear (and scuffs) start over.
                 self.scuff_known = false;
@@ -1439,6 +1449,10 @@ impl Script {
     /// SkateVLegacy.ini, so SK8V's own menu shows the same.
     fn core_options(&mut self) {
         let Some(core) = self.core.as_ref() else { return };
+        // SK8V sets trucks, wheels, tuning, stamina and difficulty itself now.
+        if super::sk8v::Core::has_trainer() {
+            return;
+        }
         if self.core_frame.is_none() {
             return;
         }
@@ -1516,8 +1530,8 @@ impl Script {
             self.store.update_scuff(Some(library));
             self.scuff_known = true;
         }
-        self.park_blips();
-        self.board_gps();
+        // GPS while skating and the skate spots on the map are SK8V's now
+        // (contributed: contrib/map-helpers, A33).
         let options_key = input::vk_down(self.config.options_key);
         if options_key && !self.options_key_was_down && input::game_focused() && !self.store.open() {
             self.menu = match self.menu.take() {
@@ -1527,32 +1541,9 @@ impl Script {
         }
         self.options_key_was_down = options_key;
         let riding = self.core_frame.is_some_and(|f| f.riding);
-        // SK8V reads only a controller: the keyboard and mouse with the maintainer's
-        // layout (A3) go to it as a pad (`sk8v::SkateModsKeyboardPad`).
-        let typing = self.menu.is_none() && !self.store.open() && input::game_focused() && n::using_keyboard();
-        // F in skate mode (A2): back to GTA in one press, through SK8V's own
-        // way out (Y held 600 ms puts the board away): Y held 750 ms.
-        let skate_mode = self.core_frame.is_some_and(|f| f.phase != super::sk8v::phase::INACTIVE);
-        if skate_mode && typing && n::disabled_control_just_pressed(0, super::carry::ENTER) && self.put_away_until.is_none() {
-            self.put_away_until = Some(Instant::now() + Duration::from_millis(750));
-            self.log.line("extras: F: leaving skate mode (SK8V's Y held)");
-        }
-        let put_away = self.put_away_until.is_some_and(|until| Instant::now() < until);
-        if !put_away {
-            self.put_away_until = None;
-        }
-        if typing {
-            let dt = n::frame_time().clamp(0., 0.1);
-            let mouse = input::mouse_motion(self.config.mouse_scale);
-            let mut pad = super::sk8v::XInputGamepad::from_pad(&self.keyboard.update(&self.controls, input::key_down, mouse, dt));
-            if put_away {
-                pad.buttons |= 0x8000; // XINPUT_GAMEPAD_Y
-            }
-            super::sk8v::publish_keyboard_pad(Some(pad));
-        } else {
-            self.keyboard.reset();
-            super::sk8v::publish_keyboard_pad(None);
-        }
+        // Keyboard and mouse are SK8V's own now (contributed:
+        // contrib/keyboard-mouse, A33): it reads SkateVKeys.txt itself.
+        let sk8v_shop = super::sk8v::Core::has_shop();
         if self.menu.is_some() {
             self.options_tick();
         } else {
@@ -1561,7 +1552,9 @@ impl Script {
             for note in std::mem::take(&mut self.store.notes) {
                 self.log.line(&note);
             }
-            if self.store.tick(&self.config, library, defaults, riding) {
+            // SK8V with the board shop sells the boards itself; the boards
+            // on show stay ours.
+            if self.store.tick(&self.config, library, defaults, riding, sk8v_shop) {
                 self.scuff_known = false;
             }
         }
@@ -1572,7 +1565,7 @@ impl Script {
         let extras = self.store.extras();
         // On the board: our parts where SK8V's board is.
         match self.core_frame {
-            Some(frame) if frame.riding => {
+            Some(frame) if frame.riding && !sk8v_shop => {
                 let at = sk8v_board_to_parts(frame.board_entity.unwrap_or(frame.board), &self.config);
                 if !self.ride_parts.shown() {
                     self.log.line(&format!("extras: board parts on SK8V's board (native pose {}) at {:?}", frame.board_entity.is_some(), at.w_axis.truncate()));
@@ -2124,7 +2117,28 @@ impl Script {
             let (_, right, _) = n::camera_axes();
             sound.set_space(crate::space::Space::heard(n::camera_coord().to_array(), right.to_array(), deck.to_array(), self.closed_in));
         }
-        if let Some(sound) = &self.sound {
+        // Skate 3's audio engine plays the board and body: the older
+        // sounds stay quiet while it does.
+        #[cfg(feature = "sk8v-engine")]
+        let engine_audio = {
+            for note in super::aems_out::take_notes() {
+                self.log.line(&note);
+            }
+            let ready = super::aems_out::ready();
+            if ready {
+                let (_, right, _) = n::camera_axes();
+                let at = n::camera_coord() - riding.origin;
+                super::aems_out::set_listener(at.to_array(), right.to_array(), self.closed_in, (self.config.board_sound / 0.25).clamp(0., 4.));
+            }
+            ready
+        };
+        #[cfg(not(feature = "sk8v-engine"))]
+        let engine_audio = false;
+        if engine_audio {
+            if let Some(sound) = &self.sound {
+                sound.quiet();
+            }
+        } else if let Some(sound) = &self.sound {
             sound.update(
                 &frame.state,
                 frame.velocity.length(),
@@ -2385,17 +2399,32 @@ impl Script {
 
     /// As `send_collision`, from GTA's own collision: its triangles and rails
     /// within the scan round `centre`, the vehicles and people as before.
-    fn send_live_collision(&mut self, origin: Vec3, centre: Vec3, now: bool, revision: u64) -> u64 {
+    fn send_live_collision(&mut self, origin: Vec3, _centre: Vec3, now: bool, revision: u64) -> u64 {
         let Some(area) = self.live_area.as_ref() else { return revision };
-        let reach = self.config.scan_radius + 6.;
-        let near = |p: Vec3| (p - centre).truncate().length() <= reach && (p.z - centre.z).abs() < 30.;
-        let mut triangles = Vec::new();
-        let mut surfaces = Vec::new();
+        // Vehicles and people: the engine's moving layer, every call (SK8V's
+        // way). Mixed into the static collision, every car that moved
+        // rebuilt the whole ground and the board floated and fell through.
+        let bodies: Vec<[[f32; 3]; 3]> = self.traffic.triangles().iter().map(|t| t.map(|p| to_skate(p - origin).to_array())).collect();
+        self.traffic.mark_sent();
+        let moving = cfg!(feature = "sk8v-engine");
+        if moving && let Some(worker) = &self.worker {
+            worker.dynamic(bodies.iter().copied().filter(|t| t.iter().all(|p| p.iter().all(|v| v.is_finite()))).collect());
+        }
+        // The static map: the whole area (128 m across) once per area and
+        // Skate origin, built off the Skate thread; the skater is never near
+        // its edge before the next one is in.
+        let key = (area.centre.to_array().map(f32::to_bits), origin.to_array().map(f32::to_bits));
+        if self.live_sent == Some(key) && !now {
+            return revision;
+        }
+        let first = self.live_sent.is_none_or(|(_, o)| o != key.1);
+        self.live_sent = Some(key);
+        let mut triangles: Vec<[[f32; 3]; 3]> = Vec::with_capacity(area.triangles.len());
+        let mut surfaces = Vec::with_capacity(area.triangles.len());
         for (t, g) in area.triangles.iter().zip(&area.grounds) {
-            let mid = (t[0] + t[1] + t[2]) / 3.;
-            // Big ones (a street) by their nearest corner too.
-            if near(mid) || t.iter().any(|p| near(*p)) || (mid - centre).truncate().length() < reach + 20. && (t[0] - t[1]).length().max((t[1] - t[2]).length()) > 10. {
-                triangles.push(t.map(|p| to_skate(p - origin).to_array()));
+            let t = t.map(|p| to_skate(p - origin).to_array());
+            if t.iter().all(|p| p.iter().all(|v| v.is_finite())) {
+                triangles.push(t);
                 surfaces.push(*g);
             }
         }
@@ -2403,28 +2432,25 @@ impl Script {
         let rails: Vec<Vec<[f32; 3]>> = area
             .rails
             .iter()
-            .filter(|r| r.iter().any(|p| near(*p)))
-            .cloned()
-            .chain(self.traffic.rails().into_iter().filter(|r| r.iter().any(|p| p.z - centre.z <= crate::terrain::MAX_RAIL_HEIGHT)))
             .map(|r| r.iter().map(|p| to_skate(*p - origin).to_array()).collect())
             .filter(|r: &Vec<[f32; 3]>| r.len() >= 2 && r.iter().all(|p| p.iter().all(|v| v.is_finite())))
             .collect();
-        let bodies = self.traffic.triangles();
-        triangles.extend(bodies.iter().map(|t| t.map(|p| to_skate(p - origin).to_array())));
-        surfaces.resize(triangles.len(), 1);
-        self.traffic.mark_sent();
-        if now {
-            self.log.line(&format!("collision (GTA's own): {statics} triangles, {} of vehicles and people, {} rails", bodies.len(), rails.len()));
+        if !moving {
+            // The mashup's engine has no moving layer: vehicles and people
+            // go in with the static map, as before.
+            triangles.extend(bodies.iter().copied());
+            surfaces.resize(triangles.len(), 1);
         }
-        let finite = |p: &[f32; 3]| p.iter().all(|v| v.is_finite());
-        let keep: Vec<bool> = triangles.iter().map(|t| t.iter().all(finite)).collect();
-        let mut k = keep.iter();
-        triangles.retain(|_| *k.next().unwrap_or(&true));
-        let mut k = keep.iter();
-        surfaces.retain(|_| *k.next().unwrap_or(&true));
+        self.log.line(&format!(
+            "collision (GTA's own): {statics} triangles, {} rails round {:.0} {:.0}{}",
+            rails.len(),
+            area.centre.x,
+            area.centre.y,
+            if first || now { ", installed now" } else { ", built in the background" }
+        ));
         let surfaces = self.config.surfaces.then_some(surfaces);
         if let Some(worker) = &self.worker {
-            worker.collision(triangles, surfaces, rails, now);
+            worker.collision(triangles, surfaces, rails, first || now);
         }
         revision
     }

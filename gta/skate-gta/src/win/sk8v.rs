@@ -189,6 +189,33 @@ impl Core {
         unsafe { !GetModuleHandleA(c"SkateVLegacy.asi".as_ptr().cast()).is_null() }
     }
 
+    /// SK8V's runtime has the board shop (contrib/board-shop): it sells and
+    /// shows the boards itself, so the extras leave the store and the
+    /// ridden board's parts to it.
+    pub fn has_trainer() -> bool {
+        // SK8V's own trainer tuning and stamina (contrib/trainer-tuning):
+        // its SkateVLegacy.ini and menu set them, not ours.
+        unsafe {
+            let dll = GetModuleHandleA(c"SkateVRuntime.dll".as_ptr().cast());
+            !dll.is_null() && !GetProcAddress(dll, c"sv_set_trainer".as_ptr().cast()).is_null()
+        }
+    }
+
+    /// SK8V's shop shows the boards in the store itself (sv_shop_display).
+    pub fn has_display() -> bool {
+        unsafe {
+            let dll = GetModuleHandleA(c"SkateVRuntime.dll".as_ptr().cast());
+            !dll.is_null() && !GetProcAddress(dll, c"sv_shop_display".as_ptr().cast()).is_null()
+        }
+    }
+
+    pub fn has_shop() -> bool {
+        unsafe {
+            let dll = GetModuleHandleA(c"SkateVRuntime.dll".as_ptr().cast());
+            !dll.is_null() && !GetProcAddress(dll, c"sv_shop_start".as_ptr().cast()).is_null()
+        }
+    }
+
     /// This frame's state; none before Skate is loaded.
     pub fn frame(&self) -> Option<Frame> {
         unsafe {

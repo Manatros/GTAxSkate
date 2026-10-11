@@ -30,9 +30,9 @@ pub struct Tri {
 }
 
 /// Half the side of the square of collision built round the skater.
-pub const HALF: f32 = 48.0;
+pub const HALF: f32 = 64.0;
 /// Moved this far from where the area was built, a new one is asked for.
-pub const RECENTRE: f32 = 20.0;
+pub const RECENTRE: f32 = 24.0;
 
 /// The static map round a point, ready for Skate.
 pub struct Area {

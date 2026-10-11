@@ -17,6 +17,8 @@ mod script;
 mod shv;
 mod store;
 mod sound;
+#[cfg(feature = "sk8v-engine")]
+mod aems_out;
 mod dropper;
 mod coop;
 mod carry;
