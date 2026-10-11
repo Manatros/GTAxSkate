@@ -490,6 +490,17 @@ pub fn interior_place(entity: i32) -> Option<Vec3> {
     native!(0x252BDC06B73FA6EA, interior, &mut position as *mut Vector3, &mut hash as *mut u32);
     Some(position.vec())
 }
+/// Keeps `entity` in the room `of` stands in (an interior draws only what is
+/// in its rooms), or out of any room when `of` is outside.
+pub fn keep_in_room_of(entity: i32, of: i32) {
+    let interior = int(native!(0x2107BA504071A6BB, of));
+    let room = if interior != 0 { int(native!(0x47C2A06D4F5F424B, of)) } else { 0 };
+    if interior != 0 && room != 0 {
+        native!(0x52923C4710DD9907, entity, interior, room);
+    } else {
+        native!(0xB365FC0C4E27FFA7, entity);
+    }
+}
 pub fn interior_name(entity: i32) -> Option<u32> {
     let interior = int(native!(0x2107BA504071A6BB, entity));
     if interior == 0 {

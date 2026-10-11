@@ -53,6 +53,7 @@ impl Worker {
     pub fn collision(&self, _triangles: Vec<[[f32; 3]; 3]>, _surfaces: Option<Vec<u8>>, _rails: Vec<Vec<[f32; 3]>>, _now: bool) {}
     pub fn activate(&self, _spawn: [f32; 3], _heading: f32, _on_foot: bool, _speed: f32) {}
     pub fn step(&self, _dt: f32, _aspect_ratio: f32, _pad: Option<skate_input::Pad>) {}
+    pub fn dynamic(&self, _triangles: Vec<[[f32; 3]; 3]>) {}
     pub fn suspend(&self) {}
     pub fn retry(&self) {}
     pub fn events(&self) -> Vec<Event> {

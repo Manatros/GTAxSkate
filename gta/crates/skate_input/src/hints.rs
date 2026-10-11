@@ -72,6 +72,35 @@ pub fn skating(controls: &Controls, pad: bool, on_foot: bool) -> Vec<Hint> {
     out
 }
 
+/// The keyboard controls for a host that has no Skate session tools (no
+/// markers, checkpoints or object dropper): what each of the player's keys
+/// does while walking with the board or riding it.
+pub fn keyboard(controls: &Controls, on_foot: bool) -> Vec<Hint> {
+    let mut out = Vec::new();
+    let c = controls;
+    let stick = ["lean_forward", "steer_left", "lean_back", "steer_right"];
+    if on_foot {
+        push(&mut out, c, false, "", &stick, "Walk");
+        push(&mut out, c, false, "", &["y"], "Get on the board");
+        return out;
+    }
+    push(&mut out, c, false, "", &stick, "Steer / lean");
+    push(&mut out, c, false, "", &["a"], "Push");
+    push(&mut out, c, false, "", &["pop"], "Hold: crouch, let go: ollie");
+    push(&mut out, c, false, "", &["trick_up", "trick_left", "trick_down", "trick_right"], "Trick stick (flick)");
+    push(&mut out, c, false, "", &["manual", "nose_manual"], "Manual / nose manual");
+    push(&mut out, c, false, "", &["lt", "rt"], "Grabs");
+    push(&mut out, c, false, "", &["hippie"], "Hippie jump");
+    push(&mut out, c, false, "", &["x"], "X");
+    push(&mut out, c, false, "", &["b"], "B");
+    push(&mut out, c, false, "", &["y"], "Get off");
+    // LB + d-pad: SK8V's radio (left/right) and Skate's session marker (down/up).
+    push(&mut out, c, false, "", &["retry", "object_dropper"], "Radio: previous, next station");
+    push(&mut out, c, false, "", &["marker_place"], "Set a marker");
+    push(&mut out, c, false, "", &["marker_return"], "Hold: back to the marker");
+    out
+}
+
 /// The object dropper's controls.
 pub fn dropper(controls: &Controls, pad: bool) -> Vec<Hint> {
     let mut out = Vec::new();

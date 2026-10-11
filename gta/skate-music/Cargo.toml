@@ -1,0 +1,16 @@
+[package]
+name = "skate-music"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Turns the Skate 3 soundtrack on the player's own extracted game into MP3s for GTA V's Self Radio"
+license = "GPL-3.0-or-later"
+
+# Its own workspace, like the GTA plugin beside it.
+[workspace]
+
+[dependencies]
+miniz_oxide = "0.8"
+
+[profile.release]
+opt-level = 3

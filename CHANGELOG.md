@@ -6,6 +6,43 @@ Each version is a tag on GitHub; `main` holds the newest confirmed one, `dev` th
 
 ## Unreleased (`dev`)
 
+GTAxSkate now builds on **SK8V** (1.1.5): SK8V does the skating, GTAxSkate adds what it does not
+have yet, each part also offered to SK8V as a pull request. Not yet confirmed in a game test.
+
+- **Installer: choose the parts** (tick boxes, remembered; `-Choose`, `-Parts all`).
+- **SK8V Community Additions 1.2.5** by MaybeJason included: AI skaters (off by default), skitch assist and towing,
+  car exit onto the board, the shoulder cat.
+- Third person camera follows the skater (or the board: `CameraFocus`), first person is the skater's eyes.
+- Keyboard: Tab and the mouse buttons for guns on the board; B held behind a car skitches; F on foot leaves at once.
+- Shop: GTA's help box at the boards on show (E), boards hang level behind the till; WASD/wheel turn and zoom.
+- Dev: `ShowInputs` shows the keys and pad on screen.
+- Built on SK8V 1.1.8 (Trick Analyzer, wheel tracks in sand and snow, no snow on the board).
+- Keyboard and mouse work with a controller connected too (Steam Input, DS4Windows, a wheel):
+  whichever was used last plays.
+- **Keyboard and mouse** for SK8V: GTA-like keys (WASD, Shift push, Space ollie, arrow keys for the
+  trick stick, E board, Q hippie jump, F back to GTA), rebindable in `SkateVKeys.txt`, your keys on
+  screen while skating.
+- **Board shop** in SK8V: every Skate 3 deck, truck, wheel, griptape and paint, a garage per
+  character, the bought board ridden with Skate 3's own models (trucks turn, wheels spin), five boards
+  on show in every store, painted wheels as hard as their paint. The part models load from loose
+  files: no OpenIV or CodeWalker needed any more.
+- **Cameras**: GTA's own camera while skating (mouse), **V** cycles views, **R** a cinematic camera
+  and a fisheye skate filmer.
+- **Tuning** in SK8V's menu (pop, push, braking, steering, grip, ...) and **stamina**.
+- GPS route while skating, GTA's skate parks on the map.
+- Skating tunes the radio to Self Radio (Skate 3's soundtrack); `,` / `.` change station, M stays GTA's
+  interaction menu.
+- The ridden board wears until it shows Skate 3's worn finish.
+- The store preview shows (it never did: its matrix was a mirror); **Tab** shows the part alone.
+- **F** on foot (no vehicle near) gets on the board; `/` (SK8V's menu) is listed with the keys.
+- People the board knocks over get up again (`PedsSurvive`, "Knocked peds survive" in the menu).
+- **Cars** SK8V only knows as boxes are measured once (roof, hood, trunk to ride; gap to hippie jump);
+  the **hippie jump** height is adjustable (1.6 clears a car).
+- **F10** opens the menu; every key can be rebound in it (*Keyboard keys*). **E** at the boards on show
+  opens the shop. A *Camera* menu page.
+- **Installer** rebuilt: SK8V's own setup, then GTAxSkate's ready builds and the board parts; no Rust,
+  Visual Studio, OpenIV or CodeWalker needed. Your SK8V settings are kept.
+
 ## 0.3.0 (2026-10-10)
 
 Tested in the game: skating, tricks, the board shop and bought boards work; installed by the installer

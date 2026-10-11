@@ -61,6 +61,9 @@ enum Job {
     Activate { spawn: [f32; 3], heading: f32, on_foot: bool, speed: f32 },
     Step { dt: f32, aspect_ratio: f32, pad: Option<skate_input::Pad> },
     Suspend,
+    /// Vehicles and people (Skate space), the engine's moving layer
+    /// (SK8V's engine; the static collision stays as it is).
+    Dynamic(Vec<[[f32; 3]; 3]>),
     /// Back to the session marker, or the checkpoint before the last trick.
     Retry,
 }
@@ -135,6 +138,12 @@ impl Worker {
     /// no input.
     pub fn step(&self, dt: f32, aspect_ratio: f32, pad: Option<skate_input::Pad>) {
         self.post(Job::Step { dt, aspect_ratio, pad });
+    }
+
+    /// Vehicles and people as Skate collision of their own, replaced each
+    /// call (only on SK8V's engine, which has the moving layer).
+    pub fn dynamic(&self, triangles: Vec<[[f32; 3]; 3]>) {
+        self.post(Job::Dynamic(triangles));
     }
 
     pub fn suspend(&self) {
@@ -292,6 +301,9 @@ fn run(assets: &std::path::Path, jobs: &mpsc::Receiver<Job>, publish: &mpsc::Sen
     let mut packet = 0u32;
     let mut last_input;
     let mut accumulated = 0f32;
+    // Skate 3's audio engine reads the session after every tick.
+    #[cfg(feature = "sk8v-engine")]
+    let mut audio_state = crate::aems::map::State::default();
     while let Ok(job) = jobs.recv() {
         if spare.is_none()
             && let Some(loading) = spare_loading.as_ref()
@@ -349,8 +361,17 @@ fn run(assets: &std::path::Path, jobs: &mpsc::Receiver<Job>, publish: &mpsc::Sen
             Job::Suspend => {
                 accumulated = 0.;
                 session.suspend_input();
+                #[cfg(feature = "sk8v-engine")]
+                crate::aems::deactivate();
             }
             Job::Retry => session.return_to_checkpoint(),
+            #[cfg(feature = "sk8v-engine")]
+            Job::Dynamic(triangles) => {
+                let tagged: Vec<([[f32; 3]; 3], u32)> = triangles.into_iter().map(|t| (t, 0)).collect();
+                session.set_dynamic_triangles(&tagged);
+            }
+            #[cfg(not(feature = "sk8v-engine"))]
+            Job::Dynamic(_) => {}
             Job::Step { dt, aspect_ratio, pad } => {
                 while let Ok(prepared) = built.try_recv() {
                     match prepared {
@@ -380,6 +401,11 @@ fn run(assets: &std::path::Path, jobs: &mpsc::Receiver<Job>, publish: &mpsc::Sen
                     if let Err(e) = session.advance() {
                         failed = Some(format!("{e} (last input: {last_input}; on foot: {})", session.on_foot()));
                         break;
+                    }
+                    #[cfg(feature = "sk8v-engine")]
+                    if crate::aems::wanted() {
+                        let pose = session.pose();
+                        crate::aems::on_tick(&session, &pose, &mut audio_state);
                     }
                     advanced = true;
                 }
