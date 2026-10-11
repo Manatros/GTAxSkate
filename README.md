@@ -29,7 +29,7 @@ is made from your own copies of the games.
 | Your own decks | images in `custom-assets/decks/` become decks in the shop ([how](custom-assets/README.md)) |
 | Cars | cars SK8V only knows as boxes are measured once, so their roof, hood and trunk can be ridden and hippie jumped (adjustable height; 1.6 clears a car) |
 | People | optionally only knocked over, not killed |
-| Cameras | **V**: Skate 3's camera or GTA's own (near, middle, far, first person) or the skater's eyes (the mouse looks round). **R**: a cinematic camera that cuts like GTA's in a car, then a fisheye skate filmer |
+| Cameras | **V**: near, middle, far (they follow the board and never swing into the skater; the mouse turns them), first person, the skater's eyes, Skate 3's camera. The view is kept between walking and skating; the standard view is set in the menu. **R**: a cinematic camera that cuts like GTA's in a car (wide bars, film look, shallow focus), then a skate filmer (4:3, handheld) |
 | Tuning | pop, grind pop, push, braking, steering, wobble, grip, turn power, manual drag, hold fakie in SK8V's menu |
 | Stamina | GTA's stamina skill sets push and pop; skating at speed trains it |
 | Map | GTA's GPS route stays on while skating; GTA's skate parks are on the map |

@@ -40,7 +40,7 @@ $settings = Join-Path $receipts 'folders.json'
 New-Item -ItemType Directory -Force $receipts, $tools, $external, $bin | Out-Null
 
 # SK8V: pinned to the release our additions are built on.
-$Sk8vTag = '1.1.5'
+$Sk8vTag = '1.1.6'
 $Sk8vZip = "https://github.com/becaring/SK8V/releases/download/$Sk8vTag/SK8V-$Sk8vTag.zip"
 # GTAxSkate's builds for players without the build tools (a release asset).
 $BinZip = 'https://github.com/Manatros/GTAxSkate/releases/latest/download/GTAxSkate-bin.zip'
@@ -301,4 +301,4 @@ Say ''
 Say 'GTAxSkate is installed.' 'Green'
 Say 'In GTA V (story mode): pick the skateboard in the weapon wheel to skate. On the keyboard: WASD, Shift push, Space ollie, arrows tricks,' 'White'
 Say 'E on/off the board, F back to GTA, V camera, R cinematic camera. G in Binco, the Discount Store or Suburban opens the board shop.' 'White'
-Say 'Settings: the SK8V menu (/), or SkateVLegacy.ini; keys: SkateVKeys.txt.' 'White'
+Say 'Settings: the SK8V menu (F10; keys and camera on its pages), or SkateVLegacy.ini; keys: SkateVKeys.txt.' 'White'
