@@ -7,36 +7,57 @@ the real **Skate 3** engine in **GTA V story mode**. SK8V does the skating (Skat
 tricks, animations, audio, collision, Hall of Meat). GTAxSkate fills the gaps around it:
 **keyboard and mouse controls**, a **skateboard shop** with every Skate 3 deck, truck, wheel,
 griptape and paint, **GTA's own camera** and a **cinematic camera**, trainer tuning and stamina,
-and the GPS route while skating.
+the GPS route while skating, skateable cars, and **AI skaters** and skitch assist from the
+SK8V community (MaybeJason's *Community Additions*). All of it in one install, each part optional.
 
 For **GTA V Legacy** (1.0.3889.0, story mode) on PC. No game files are in this repository: the mod
 is made from your own copies of the games.
 
-> **Status:** work in progress. Every addition is also offered to SK8V itself as a pull request
-> (one per feature), so it can become part of SK8V. `main` holds the newest version confirmed in a
-> game test, `dev` the work in progress. See the [changelog](CHANGELOG.md).
+> **Status:** beta. Tested by its author on one PC; please report problems as an
+> [issue](https://github.com/Manatros/GTAxSkate/issues) with your logs from `%LOCALAPPDATA%\SkateV`.
+> Every addition is also offered to SK8V itself (one branch per feature). `main` holds the released
+> version, `dev` the work in progress. See the [changelog](CHANGELOG.md).
+
+## Download
+
+**[Latest release](https://github.com/Manatros/GTAxSkate/releases/latest)**, two ways:
+
+| You have | Download | Do |
+|---|---|---|
+| SK8V 1.1.8 installed and working | `GTAxSkate-dropin-for-SK8V-1.1.8.zip` | copy its `SkateVLegacy.asi` and `SkateVRuntime.dll` into the GTA V folder (back up yours first). Everything except the board shop. |
+| Nothing yet, or you want the board shop | **Source code (zip)** | unzip, close GTA V, double-click `Install GTAxSkate.cmd`, tick the parts you want (see [Install](#install)). |
 
 ## Features (on top of SK8V)
 
 | | |
 |---|---|
-| Keyboard and mouse | play Skate without a controller: WASD, Shift push, Space ollie, arrow keys for the trick stick, every key rebindable in `SkateVKeys.txt`, your keys on screen while skating |
+| Keyboard and mouse | play Skate without a controller: WASD, Shift push, Space ollie, arrow keys for the trick stick, every key rebindable in the menu (F10 > *Keyboard keys*) or `SkateVKeys.txt`, your keys on screen while skating |
 | Skateboard shop | **G** in Binco, the Discount Store and Suburban: complete boards, and every deck (by maker), truck, wheel, griptape and paint on its own, paid with the character's cash |
 | Your board | the board you buy is the one you ride, with Skate 3's own models: trucks turn and wheels spin; Michael, Franklin and Trevor each keep their own boards |
 | Wear | the board wears with riding, grinds, slides and bails until it shows Skate 3's worn finish; a new one starts fresh |
 | Customization | griptapes (colours, checkers, prints), painted decks, wheels and truck parts (matte, gloss, metallic; painted wheels ride as hard as their paint) |
-| Boards on show | each store shows five boards behind the till or on a wall, new ones every game day |
+| Boards on show | each store hangs four boards on a rack behind the till (or stands five along a wall), new ones every game day; look at them and press **E** |
 | Your own decks | images in `custom-assets/decks/` become decks in the shop ([how](custom-assets/README.md)) |
 | Cars | cars SK8V only knows as boxes are measured once, so their roof, hood and trunk can be ridden and hippie jumped (adjustable height; 1.6 clears a car) |
 | People | optionally only knocked over, not killed |
-| Cameras | **V**: near, middle, far (they follow the board and never swing into the skater; the mouse turns them), first person, the skater's eyes, Skate 3's camera. The view is kept between walking and skating; the standard view is set in the menu. **R**: a cinematic camera that cuts like GTA's in a car (wide bars, film look, shallow focus), then a skate filmer (4:3, handheld) |
+| Cameras | **V**: near, middle, far (a third person camera that follows the skater, or the board, and never swings into them; the mouse turns it), the skater's eyes (first person), Skate 3's camera. The view is kept between walking and skating; the standard view is set in the menu. **R**: a cinematic camera that cuts like GTA's in a car (wide bars, film look, shallow focus), then a skate filmer (4:3, handheld) |
 | Tuning | pop, grind pop, push, braking, steering, wobble, grip, turn power, manual drag, hold fakie in SK8V's menu |
 | Stamina | GTA's stamina skill sets push and pop; skating at speed trains it |
 | Map | GTA's GPS route stays on while skating; GTA's skate parks are on the map |
-| Music | Skate 3's soundtrack on GTA's Self Radio, tuned in whenever you start skating; `,` / `.` change station |
+| Radio | skating tunes the radio to a station you choose (`SkateRadio=`); `,` / `.` change station. Skate 3's soundtrack on Self Radio: the installer's music step does not find the songs yet (it is being fixed), so it may be skipped |
 
-Prefer it more like GTA or more like Skate 3? `CameraView=Near` (the installer's default) uses
-GTA's camera, `CameraView=Skate` Skate 3's; **V** switches while skating.
+Prefer it more like GTA or more like Skate 3? `CameraView=Near` (the installer's default) is the
+third person camera, `CameraView=Skate` Skate 3's; **V** switches while skating, and F10 > *Camera*
+sets the standard view, what it follows and the cinematic camera's look.
+
+### From the SK8V Community Additions (MaybeJason)
+
+| | How |
+|---|---|
+| AI skaters | F10 > *AI skater followers* > on (off by default; a test version). Your GTA followers (bodyguards from a trainer, or mission companions) skate with you while you skate |
+| Skitch assist | hold **B** (controller: RB) behind a car: it slows down so you can grab it, then tows you; F10 > *Skating* sets the towing speed and towing to your waypoint |
+| Out of a car onto the board | controller: hold **LB** and press **Y** to leave the car |
+| Shoulder cat | a cat follower (from a trainer) rides on your shoulder while you skate; F10 > *Shoulder cat* |
 
 ## Controls (keyboard and mouse)
 
@@ -56,7 +77,7 @@ GTA's camera, `CameraView=Skate` Skate 3's; **V** switches while skating.
 | **R** | cinematic camera, skate filmer |
 | **,** / **.** | radio: previous / next station |
 | **N** / hold **J** | set a session marker / back to it |
-| **M** | GTA's interaction menu (also while skating) |
+| **M** | GTA's interaction menu (on foot) |
 | **G**, or **E** looking at the boards on show | board shop (in a clothing store); **Tab** shows the part alone, **W A S D** or the mouse turn it, the wheel zooms |
 | **F10** (or **/** on a US keyboard) | SK8V's settings menu; page *Keyboard keys* rebinds every key |
 | **Tab** / mouse buttons | gun out or away (hold Tab: GTA's weapon wheel); with a gun out, right mouse aims and left shoots |
@@ -78,7 +99,11 @@ and GTAxSkate's ready builds. No OpenIV, CodeWalker, Rust or Visual Studio neede
 2. Close GTA V.
 3. Double-click **`Install GTAxSkate.cmd`**.
 
-It finds GTA V by itself and asks only for your Skate 3 disc or folder. Then it:
+It finds GTA V by itself, asks for your Skate 3 disc or folder, and shows a list of the parts with
+tick boxes: board shop, Skate 3 music, keyboard and mouse, GTA-style camera, skateable cars, GPS and
+skate parks, stamina, people surviving, skitch assist, AI skaters (test version) and the shoulder cat.
+Untick what you don't want (it is remembered; `-Choose` asks again, `-Parts all` skips the question).
+Then it:
 
 | Step | |
 |---|---|
@@ -86,13 +111,13 @@ It finds GTA V by itself and asks only for your Skate 3 disc or folder. Then it:
 | 2 sk8v | runs SK8V's own setup: Skate 3's data from your disc, installed into GTA V (10–30 minutes) |
 | 3 bin | GTAxSkate's builds (SK8V with our additions, the board tool) |
 | 4 boards | the board library from your Skate 3 and every part as a GTA model |
-| 5 music | Skate 3's soundtrack on Self Radio (`-NoMusic` skips it) |
+| 5 music | Skate 3's soundtrack on Self Radio (not finding the songs yet; skipped if it fails) |
 | 6 install | our SK8V build over SK8V's, our settings on (yours are kept) |
 
 Every step is remembered: if anything stops it, run it again and it goes on where it stopped.
 `scripts\install.ps1 -Redo <step>` runs a step again (for example `-Redo boards` after adding your own decks).
 
-Afterwards, in GTA V: Settings > Audio > Self Radio > Full Scan once for the soundtrack.
+Afterwards, in GTA V: **F10** opens the settings menu (on a controller: Back + LB).
 
 ## Layout
 
@@ -108,7 +133,9 @@ Afterwards, in GTA V: Settings > Audio > Self Radio > Full Scan once for the sou
 
 The SK8V additions themselves live in the fork [Manatros/SK8V](https://github.com/Manatros/SK8V)
 (branches `contrib/keyboard-mouse`, `contrib/board-shop`, `contrib/gta-camera`,
-`contrib/trainer-tuning`, `contrib/map-helpers`, `contrib/skate-radio`), each offered to SK8V as a pull request.
+`contrib/trainer-tuning`, `contrib/map-helpers`, `contrib/skate-radio`, `contrib/gentle-peds`,
+`contrib/vehicle-shapes`), each to be offered to SK8V as a pull request, plus `community/additions`
+(MaybeJason's). Branch `skatemods` is all of them on the newest SK8V: the build in the release.
 
 ## How it works and why
 
@@ -125,7 +152,9 @@ lists every branch, how it works and the reasons.
 ## Thanks
 
 To becaring for [SK8V](https://github.com/becaring/SK8V) and for releasing it under Apache-2.0, and
-to the Skate 3 rewrite it builds on.
+to the Skate 3 rewrite it builds on. To MaybeJason for the *SK8V Community Additions* (AI skaters,
+skitch assist and towing, the shoulder cat, car exit onto the board), included unchanged under
+Apache-2.0.
 
 ## Legal
 

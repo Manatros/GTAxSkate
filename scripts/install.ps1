@@ -26,7 +26,12 @@ param(
     [ValidateSet('', 'tools', 'sk8v', 'bin', 'boards', 'music', 'install')] [string] $Redo = '',
     # Stop after this step (testing, or preparing without touching GTA yet).
     [ValidateSet('', 'tools', 'sk8v', 'bin', 'boards', 'music', 'install')] [string] $Until = '',
-    [switch] $NoMusic
+    [switch] $NoMusic,
+    # Which parts to install (names as in the list below, comma separated), or
+    # 'all'; without it the installer asks once with a list of tick boxes.
+    [string] $Parts = '',
+    # Ask again which parts (else the last choice is kept).
+    [switch] $Choose
 )
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -40,7 +45,7 @@ $settings = Join-Path $receipts 'folders.json'
 New-Item -ItemType Directory -Force $receipts, $tools, $external, $bin | Out-Null
 
 # SK8V: pinned to the release our additions are built on.
-$Sk8vTag = '1.1.7'
+$Sk8vTag = '1.1.8'
 $Sk8vZip = "https://github.com/becaring/SK8V/releases/download/$Sk8vTag/SK8V-$Sk8vTag.zip"
 # GTAxSkate's builds for players without the build tools (a release asset).
 $BinZip = 'https://github.com/Manatros/GTAxSkate/releases/latest/download/GTAxSkate-bin.zip'
@@ -127,6 +132,42 @@ if (Get-Process GTA5 -ErrorAction SilentlyContinue) { Fail 'GTA V is running: cl
 Say "  GTA V:  $Gta"
 Say "  Skate 3: $Skate3"
 
+# --- Which parts: ticked in a list (remembered), or -Parts ----------------------
+# Name, what it is, on by default, its INI switches (value when on / off).
+$catalog = @(
+    @{ N = 'shop';    T = 'Skate 3 board shop and every board part (G in clothing stores)'; On = $true;  Ini = @{ BoardShop = '1', '0'; WheelsFromPaint = '1', '0' } },
+    @{ N = 'music';   T = 'Skate 3 soundtrack on Self Radio';                                On = $true;  Ini = @{} },
+    @{ N = 'keys';    T = 'Keyboard and mouse (keys shown on screen)';                       On = $true;  Ini = @{ Keyboard = '1', '0'; KeyboardHints = '1', '0' } },
+    @{ N = 'camera';  T = 'Third person camera like GTA (else Skate 3''s camera)';           On = $true;  Ini = @{ CameraView = 'Near', 'Skate'; CameraRemember = '1', '0' } },
+    @{ N = 'cars';    T = 'Ride and hippie jump cars';                                       On = $true;  Ini = @{ VehicleShapes = '1', '0'; HippieJump = '1.6', '1' } },
+    @{ N = 'map';     T = 'GPS route while skating, skate parks on the map';                 On = $true;  Ini = @{ GpsWhileSkating = '1', '0'; SkateSpots = '1', '0' } },
+    @{ N = 'stamina'; T = 'Stamina: skating trains it, it sets push and pop';                On = $true;  Ini = @{ Stamina = '1', '0' } },
+    @{ N = 'peds';    T = 'People knocked over survive';                                     On = $true;  Ini = @{ PedsSurvive = '1', '0' } },
+    @{ N = 'skitch';  T = 'Skitch assist: cars slow down to be caught (community, MaybeJason)'; On = $true;  Ini = @{ SkitchTrafficAssist = '1', '0' } },
+    @{ N = 'ai';      T = 'AI skaters: your followers skate with you (community, test version)'; On = $false; Ini = @{ AiFollowers = '1', '0' } },
+    @{ N = 'cat';     T = 'Shoulder cat for a follower cat (community)';                     On = $true;  Ini = @{ ShoulderCat = '1', '0' } }
+)
+function Choose-Parts {
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = 'GTAxSkate: what to install'; $form.Width = 620; $form.Height = 400; $form.StartPosition = 'CenterScreen'
+    $list = New-Object System.Windows.Forms.CheckedListBox
+    $list.Dock = 'Fill'; $list.CheckOnClick = $true
+    foreach ($c in $catalog) { [void]$list.Items.Add($c.T, $c.On) }
+    $ok = New-Object System.Windows.Forms.Button
+    $ok.Text = 'Install'; $ok.Dock = 'Bottom'; $ok.Height = 36; $ok.DialogResult = 'OK'
+    $form.Controls.Add($list); $form.Controls.Add($ok); $form.AcceptButton = $ok
+    if ($form.ShowDialog() -ne 'OK') { Fail 'Cancelled.' }
+    ($catalog | Where-Object { $list.CheckedItems.Contains($_.T) } | ForEach-Object { $_.N }) -join ','
+}
+if (-not $Parts) { $Parts = Known 'Parts' }
+if (-not $Parts -or $Choose) { $Parts = Choose-Parts }
+if ($Parts -eq 'all') { $Parts = ($catalog | ForEach-Object { $_.N }) -join ',' }
+$chosen = $Parts -split ',' | ForEach-Object { $_.Trim() }
+Remember 'Parts' $Parts
+$known | ConvertTo-Json | Set-Content $settings
+function Wants([string]$name) { $chosen -contains $name }
+Say "  Parts:  $(($chosen | Where-Object { $_ }) -join ', ')"
+
 function Stop-After([string]$step) { if ($Until -eq $step) { Say ''; Say "Stopped after '$step' (-Until)." 'Yellow'; exit 0 } }
 
 # --- 1 tools -----------------------------------------------------------------
@@ -199,8 +240,11 @@ Stop-After 'sk8v'
 # --- 3 bin -------------------------------------------------------------------
 Step 3 'GTAxSkate builds'
 $sk8vSrc = Join-Path $external 'sk8v'
-if (-not (Is-Done 'bin')) {
-    $package = Join-Path $sk8vSrc 'build\package'
+$package = Join-Path $sk8vSrc 'build\package'
+# A developer's newer build counts as a new 'bin' step.
+$newer = (Test-Path (Join-Path $package 'SkateVLegacy.asi')) -and (Test-Path (Join-Path $bin 'SkateVLegacy.asi')) -and
+         ((Get-Item (Join-Path $package 'SkateVLegacy.asi')).LastWriteTime -gt (Get-Item (Join-Path $bin 'SkateVLegacy.asi')).LastWriteTime)
+if (-not (Is-Done 'bin') -or $newer) {
     $ped = Join-Path $root 'gta\skate-ped\target\release\skate-ped.exe'
     $music = Join-Path $root 'gta\skate-music\target\release\skate-music.exe'
     if ((Test-Path (Join-Path $package 'SkateVLegacy.asi')) -and (Test-Path $ped)) {
@@ -227,7 +271,8 @@ Stop-After 'bin'
 $models = Join-Path $build 'board-models'
 $ped = Join-Path $bin 'skate-ped.exe'
 Step 4 'Boards: the library and every part as a GTA model (a few minutes)'
-if (-not (Is-Done 'boards')) {
+if (-not (Wants 'shop')) { Say '  skipped (board shop not chosen)' 'DarkGray' }
+elseif (-not (Is-Done 'boards')) {
     if (-not $disc) { Fail 'The extracted Skate 3 disc was not found (SK8V keeps it under GTAxSkate\disc).' }
     if (-not (Test-Path (Join-Path $assets 'private\boards\library.json'))) {
         $engine = Join-Path $release 'upstream\skate-3-rust-engine-donor'
@@ -253,7 +298,7 @@ Stop-After 'boards'
 
 # --- 5 music -----------------------------------------------------------------
 Step 5 'Skate 3 soundtrack on Self Radio'
-if ($NoMusic) { Say '  skipped (-NoMusic)' 'DarkGray' }
+if ($NoMusic -or -not (Wants 'music')) { Say '  skipped (not chosen)' 'DarkGray' }
 elseif (-not (Is-Done 'music')) {
     if ($disc) {
         try { & (Join-Path $PSScriptRoot 'get-skate-music.ps1') -Game $disc -Exe (Join-Path $bin 'skate-music.exe'); Done 'music' }
@@ -287,11 +332,23 @@ if (Test-Path $iniKeep) {
     $kept = ([IO.File]::ReadAllText($iniKeep) -replace "`r+`n", "`n") -split "`n"
     foreach ($line in $kept) { if ($line -match '^([A-Za-z0-9_]+)=(.*)$') { Add-Key $Matches[1] $Matches[2] } }
 }
-$defaults = [ordered]@{ Keyboard = '1'; KeyboardHints = '1'; BoardShop = '1'; WheelsFromPaint = '1'; DrawBoard = '1'; DrawSkater = '1';
-                        GpsWhileSkating = '1'; SkateSpots = '1'; Stamina = '1'; CameraView = 'Near'; PedsSurvive = '1'; HippieJump = '1.6'; VehicleShapes = '1' }
-# With the soundtrack on Self Radio, skating plays it.
-if (Is-Done 'music') { $defaults['SkateRadio'] = 'RADIO_19_USER' }
+function Set-Key([string]$key, [string]$value) {
+    if ($script:text -match "(?m)^$key=") { $script:text = $script:text -replace "(?m)^$key=.*$", "$key=$value" } else { Add-Key $key $value }
+}
+$defaults = [ordered]@{ DrawBoard = '1'; DrawSkater = '1' }
 foreach ($key in $defaults.Keys) { Add-Key $key $defaults[$key] }
+# The parts chosen: their switches on, the others off.
+foreach ($c in $catalog) {
+    foreach ($key in $c.Ini.Keys) {
+        $on, $off = $c.Ini[$key]
+        if (-not (Wants $c.N)) { Set-Key $key $off }
+        # Chosen: on, unless the player set a value of their own (not the off one).
+        elseif ($script:text -match "(?m)^$key=(.*)$" -and $Matches[1].Trim() -ne $off) { }
+        else { Set-Key $key $on }
+    }
+}
+# With the soundtrack on Self Radio, skating plays it.
+if ((Wants 'music') -and (Is-Done 'music')) { Add-Key 'SkateRadio' 'RADIO_19_USER' }
 foreach ($key in 'DrawBoard', 'DrawSkater') { $text = $text -replace "(?m)^$key=0", "$key=1" }
 $text = ($text -replace "`r+`n", "`n") -replace "`n", "`r`n"
 [IO.File]::WriteAllText($ini, $text, [Text.Encoding]::Unicode)

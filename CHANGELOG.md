@@ -9,7 +9,14 @@ Each version is a tag on GitHub; `main` holds the newest confirmed one, `dev` th
 GTAxSkate now builds on **SK8V** (1.1.5): SK8V does the skating, GTAxSkate adds what it does not
 have yet, each part also offered to SK8V as a pull request. Not yet confirmed in a game test.
 
-- Built on SK8V 1.1.7 (Trick Analyzer, wheel tracks in sand and snow, no snow on the board).
+- **Installer: choose the parts** (tick boxes, remembered; `-Choose`, `-Parts all`).
+- **SK8V Community Additions 1.2.5** by MaybeJason included: AI skaters (off by default), skitch assist and towing,
+  car exit onto the board, the shoulder cat.
+- Third person camera follows the skater (or the board: `CameraFocus`), first person is the skater's eyes.
+- Keyboard: Tab and the mouse buttons for guns on the board; B held behind a car skitches; F on foot leaves at once.
+- Shop: GTA's help box at the boards on show (E), boards hang level behind the till; WASD/wheel turn and zoom.
+- Dev: `ShowInputs` shows the keys and pad on screen.
+- Built on SK8V 1.1.8 (Trick Analyzer, wheel tracks in sand and snow, no snow on the board).
 - Keyboard and mouse work with a controller connected too (Steam Input, DS4Windows, a wheel):
   whichever was used last plays.
 - **Keyboard and mouse** for SK8V: GTA-like keys (WASD, Shift push, Space ollie, arrow keys for the
