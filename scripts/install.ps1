@@ -40,7 +40,7 @@ $settings = Join-Path $receipts 'folders.json'
 New-Item -ItemType Directory -Force $receipts, $tools, $external, $bin | Out-Null
 
 # SK8V: pinned to the release our additions are built on.
-$Sk8vTag = '1.1.3'
+$Sk8vTag = '1.1.4'
 $Sk8vZip = "https://github.com/becaring/SK8V/releases/download/$Sk8vTag/SK8V-$Sk8vTag.zip"
 # GTAxSkate's builds for players without the build tools (a release asset).
 $BinZip = 'https://github.com/Manatros/GTAxSkate/releases/latest/download/GTAxSkate-bin.zip'

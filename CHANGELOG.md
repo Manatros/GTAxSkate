@@ -6,9 +6,12 @@ Each version is a tag on GitHub; `main` holds the newest confirmed one, `dev` th
 
 ## Unreleased (`dev`)
 
-GTAxSkate now builds on **SK8V** (1.1.3): SK8V does the skating, GTAxSkate adds what it does not
+GTAxSkate now builds on **SK8V** (1.1.4): SK8V does the skating, GTAxSkate adds what it does not
 have yet, each part also offered to SK8V as a pull request. Not yet confirmed in a game test.
 
+- Built on SK8V 1.1.4 (Trick Analyzer, wheel tracks in sand and snow, no snow on the board).
+- Keyboard and mouse work with a controller connected too (Steam Input, DS4Windows, a wheel):
+  whichever was used last plays.
 - **Keyboard and mouse** for SK8V: GTA-like keys (WASD, Shift push, Space ollie, arrow keys for the
   trick stick, E board, Q hippie jump, F back to GTA), rebindable in `SkateVKeys.txt`, your keys on
   screen while skating.
