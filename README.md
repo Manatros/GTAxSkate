@@ -20,12 +20,15 @@ is made from your own copies of the games.
 
 ## Download
 
-**[Latest release](https://github.com/Manatros/GTAxSkate/releases/latest)**, two ways:
+1. Download **[GTAxSkate-Setup.zip](https://github.com/Manatros/GTAxSkate/releases/latest/download/GTAxSkate-Setup.zip)** and unzip it.
+2. Close GTA V.
+3. Double-click **`Install GTAxSkate.cmd`**, pick your Skate 3 disc or folder, untick what you don't want, wait.
 
-| You have | Download | Do |
-|---|---|---|
-| SK8V 1.1.8 installed and working | `GTAxSkate-dropin-for-SK8V-1.1.8.zip` | copy its `SkateVLegacy.asi` and `SkateVRuntime.dll` into the GTA V folder (back up yours first). Everything except the board shop. |
-| Nothing yet, or you want the board shop | **Source code (zip)** | unzip, close GTA V, double-click `Install GTAxSkate.cmd`, tick the parts you want (see [Install](#install)). |
+That is all: it installs SK8V, converts your Skate 3 data and adds everything below. Details: [Install](#install).
+
+Already have SK8V 1.1.8 and only want the additions without the board shop?
+[GTAxSkate-dropin-for-SK8V-1.1.8.zip](https://github.com/Manatros/GTAxSkate/releases/latest/download/GTAxSkate-dropin-for-SK8V-1.1.8.zip):
+copy its two files into the GTA V folder (back up yours first).
 
 ## Features (on top of SK8V)
 
@@ -95,9 +98,12 @@ and GTAxSkate's ready builds. No OpenIV, CodeWalker, Rust or Visual Studio neede
 
 ## Install
 
-1. Download this repository (green **Code** button > **Download ZIP**) and unzip it, or `git clone` it.
+1. Download [GTAxSkate-Setup.zip](https://github.com/Manatros/GTAxSkate/releases/latest/download/GTAxSkate-Setup.zip)
+   and unzip it anywhere (it carries the installer and every GTAxSkate program).
 2. Close GTA V.
 3. Double-click **`Install GTAxSkate.cmd`**.
+
+(From this repository's source instead: the same `Install GTAxSkate.cmd`; it downloads the programs.)
 
 It finds GTA V by itself, asks for your Skate 3 disc or folder, and shows a list of the parts with
 tick boxes: board shop, Skate 3 music, keyboard and mouse, GTA-style camera, skateable cars, GPS and
@@ -109,7 +115,7 @@ Then it:
 |---|---|
 | 1 tools | gets the SK8V release (Python, the rage tool) and vgmstream |
 | 2 sk8v | runs SK8V's own setup: Skate 3's data from your disc, installed into GTA V (10–30 minutes) |
-| 3 bin | GTAxSkate's builds (SK8V with our additions, the board tool) |
+| 3 bin | GTAxSkate's builds (SK8V with our additions, the board tool), from the package |
 | 4 boards | the board library from your Skate 3 and every part as a GTA model |
 | 5 music | Skate 3's soundtrack on Self Radio (not finding the songs yet; skipped if it fails) |
 | 6 install | our SK8V build over SK8V's, our settings on (yours are kept) |

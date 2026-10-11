@@ -241,6 +241,7 @@ Stop-After 'sk8v'
 Step 3 'GTAxSkate builds'
 $sk8vSrc = Join-Path $external 'sk8v'
 $package = Join-Path $sk8vSrc 'build\package'
+$shipped = Join-Path $root 'bin'
 # A developer's newer build counts as a new 'bin' step.
 $newer = (Test-Path (Join-Path $package 'SkateVLegacy.asi')) -and (Test-Path (Join-Path $bin 'SkateVLegacy.asi')) -and
          ((Get-Item (Join-Path $package 'SkateVLegacy.asi')).LastWriteTime -gt (Get-Item (Join-Path $bin 'SkateVLegacy.asi')).LastWriteTime)
@@ -253,6 +254,9 @@ if (-not (Is-Done 'bin') -or $newer) {
         Copy-Item (Join-Path $sk8vSrc 'tools\prepare-board-parts.py'), (Join-Path $sk8vSrc 'tools\_common.py') $bin -Force
         Copy-Item $ped $bin -Force
         if (Test-Path $music) { Copy-Item $music $bin -Force }
+    } elseif (Test-Path (Join-Path $shipped 'SkateVLegacy.asi')) {
+        # The complete package: the builds came in its bin folder.
+        Copy-Item (Join-Path $shipped '*') $bin -Recurse -Force
     } else {
         $zip = Join-Path $env:TEMP 'GTAxSkate-bin.zip'
         try { Download $BinZip $zip } catch { Download $BinZipDev $zip }
