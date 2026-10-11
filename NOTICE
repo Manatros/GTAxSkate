@@ -21,8 +21,3 @@ https://github.com/chasmlol/2010-rust-rewrite-mashup, Apache License 2.0. It is 
 in this repository's source; the release builds contain it compiled, as SK8V's own do.
 
 No Skate 3, skate., GTA V or other retail assets are included.
-
-SK8V Community Additions (Apache-2.0) by MaybeJason: AI skater followers, skitch
-traffic assist and towing, car exit onto the board, session-marker collision, the
-shoulder cat. Included unchanged from its source patch (branch community/additions
-of github.com/Manatros/SK8V).

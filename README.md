@@ -9,8 +9,8 @@ the real **Skate 3** engine in **GTA V story mode**. SK8V does the skating (Skat
 tricks, animations, audio, collision, Hall of Meat). GTAxSkate fills the gaps around it:
 **keyboard and mouse controls**, a **skateboard shop** with every Skate 3 deck, truck, wheel,
 griptape and paint, **GTA's own camera** and a **cinematic camera**, trainer tuning and stamina,
-the GPS route while skating, skateable cars, and **AI skaters** and skitch assist from the
-SK8V community (MaybeJason's *Community Additions*). All of it in one install, each part optional.
+the GPS route while skating, skateable cars, the board in hand as a melee weapon and a limp after
+hard bails. All of it in one install, each part optional.
 
 For **GTA V Legacy** (1.0.3889.0, story mode) on PC. No game files are in this repository: the mod
 is made from your own copies of the games.
@@ -46,7 +46,7 @@ copy its two files into the GTA V folder (back up yours first).
 | Cars | cars SK8V only knows as boxes are measured once, so their roof, hood and trunk can be ridden and hippie jumped (adjustable height; 1.6 clears a car) |
 | People | optionally only knocked over, not killed |
 | Injuries | after a hard bail your character limps on foot for 30 s to 2 min with GTA's injured walk |
-| Skate buddies | F10 > *Skate buddies*: call up to 3 skaters as your crew; with the AI skaters on they ride along on boards from the shop |
+| Board in hand | the board picked in the weapon wheel stays in your hand in GTA: swing it (GTA's melee; blows wear it), E or F gets on (`CarryBoard=`; F10 > *Board in hand* places it) |
 | Cameras | **V**: near, middle, far (a third person camera that follows the skater, or the board, and never swings into them; the mouse turns it), the skater's eyes (first person), Skate 3's camera. The view is kept between walking and skating; the standard view is set in the menu. **R**: a cinematic camera that cuts like GTA's in a car (wide bars, film look, shallow focus), then a skate filmer (4:3, handheld) |
 | Tuning | pop, grind pop, push, braking, steering, wobble, grip, turn power, manual drag, hold fakie in SK8V's menu |
 | Stamina | GTA's stamina skill sets push and pop; skating at speed trains it |
@@ -56,15 +56,6 @@ copy its two files into the GTA V folder (back up yours first).
 Prefer it more like GTA or more like Skate 3? `CameraView=Near` (the installer's default) is the
 third person camera, `CameraView=Skate` Skate 3's; **V** switches while skating, and F10 > *Camera*
 sets the standard view, what it follows and the cinematic camera's look.
-
-### From the SK8V Community Additions (MaybeJason)
-
-| | How |
-|---|---|
-| AI skaters | F10 > *AI skater followers* > on (off by default; a test version), then F10 > *Skate buddies* > *Call a skater friend* (GTAxSkate's; up to 3, no trainer needed). Your followers skate with you while you skate |
-| Skitch assist | hold **B** (controller: RB) behind a car: it slows down so you can grab it, then tows you; F10 > *Skating* sets the towing speed and towing to your waypoint |
-| Out of a car onto the board | controller: hold **LB** and press **Y** to leave the car |
-| Shoulder cat | optional, off: only for a cat follower made with a trainer mod (F10 > *Shoulder cat*) |
 
 ## Controls (keyboard and mouse)
 
@@ -84,7 +75,7 @@ sets the standard view, what it follows and the cinematic camera's look.
 | **R** | cinematic camera, skate filmer |
 | **,** / **.** | radio: previous / next station |
 | **N** / hold **J** | set a session marker / back to it |
-| **M** | GTA's interaction menu on foot; while skating (for now) an Interaction page: GPS to the nearest clothing store or skate spot |
+| **M** | GTA's interaction menu, also while skating (F10 > *Interaction*: GPS to the nearest clothing store or skate spot) |
 | **G**, or **E** looking at the boards on show | board shop (in a clothing store); **Tab** shows the part alone, **W A S D** or the mouse turn it, the wheel zooms |
 | **F10** (or **/** on a US keyboard) | SK8V's settings menu; page *Keyboard keys* rebinds every key or switches the layout (standard, or Skate's with I J K L as the trick stick) |
 | **Tab** / mouse buttons | gun out or away (hold Tab: GTA's weapon wheel); with a gun out, right mouse aims and left shoots |
@@ -111,7 +102,7 @@ and GTAxSkate's ready builds. No OpenIV, CodeWalker, Rust or Visual Studio neede
 
 It finds GTA V by itself, asks for your Skate 3 disc or folder, and shows a list of the parts with
 tick boxes: board shop, Skate 3 music, keyboard and mouse, GTA-style camera, skateable cars, GPS and
-skate parks, stamina, people surviving, skitch assist, AI skaters (test version) and the shoulder cat.
+skate parks, stamina, people surviving, a limp after hard bails, and the board in hand.
 Untick what you don't want (it is remembered; `-Choose` asks again, `-Parts all` skips the question).
 Then it:
 
@@ -144,8 +135,8 @@ Afterwards, in GTA V: **F10** opens the settings menu (on a controller: Back + L
 The SK8V additions themselves live in the fork [Manatros/SK8V](https://github.com/Manatros/SK8V)
 (branches `contrib/keyboard-mouse`, `contrib/board-shop`, `contrib/gta-camera`,
 `contrib/trainer-tuning`, `contrib/map-helpers`, `contrib/skate-radio`, `contrib/gentle-peds`,
-`contrib/vehicle-shapes`), each to be offered to SK8V as a pull request, plus `community/additions`
-(MaybeJason's). Branch `skatemods` is all of them on the newest SK8V: the build in the release.
+`contrib/vehicle-shapes`, `contrib/injuries`), each to be offered to SK8V as a pull request. Branch
+`skatemods` is all of them on the newest SK8V: the build in the release.
 
 ## How it works and why
 
@@ -162,9 +153,7 @@ lists every branch, how it works and the reasons.
 ## Thanks
 
 To becaring for [SK8V](https://github.com/becaring/SK8V) and for releasing it under Apache-2.0, and
-to the Skate 3 rewrite it builds on. To MaybeJason for the *SK8V Community Additions* (AI skaters,
-skitch assist and towing, the shoulder cat, car exit onto the board), included unchanged under
-Apache-2.0.
+to the Skate 3 rewrite it builds on.
 
 ## Legal
 

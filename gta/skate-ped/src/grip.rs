@@ -22,9 +22,10 @@ const BOLT: f32 = 1.7;
 /// weapon frame) are the graphic.
 const GRIP_FACING: f32 = 0.7;
 /// The grip wraps over the deck's rounded top edge, as real griptape is cut
-/// to it (about 75 degrees from flat): with the flat top alone the edge
-/// showed as a light rim round the grip, brightest at nose and tail.
-const GRIP_WRAP: f32 = 0.25;
+/// to it (about 63 degrees from flat): with the flat top alone (45) the edge
+/// showed as a light rim round the grip; at 75 it reached the side wall and
+/// showed from below.
+const GRIP_WRAP: f32 = 0.45;
 
 /// The faces of `laid` facing `side` (-1: the grip, +1: the graphic): their
 /// corners, uvs and the uvs' box.
@@ -259,9 +260,15 @@ pub fn write_grips(dir: &std::path::Path, library: &Library, defaults: &Board, f
         let mut normals = Vec::new();
         let mut mapped = Vec::new();
         for (t, uv) in tris.iter().zip(&uvs) {
-            let n = (t[1] - t[0]).cross(t[2] - t[0]).normalize_or_zero();
+            // The face's normal turned to the grip side (-X; some faces are wound
+            // the other way): lifted along it, an edge face does not stand out
+            // sideways.
+            let mut n = (t[1] - t[0]).cross(t[2] - t[0]).normalize_or_zero();
+            if n.x > 0. {
+                n = -n;
+            }
             for (p, q) in t.iter().zip(uv) {
-                positions.push(*p - Vec3::X * LIFT);
+                positions.push(*p + n * LIFT);
                 normals.push(n);
                 mapped.push((*q - region.0) / size);
             }

@@ -46,12 +46,14 @@ impl Finish {
         }
     }
 
-    /// Shine for the models' specular map (0 to 255).
+    /// Shine for the models' specular map (0 to 255): matte nearly none,
+    /// gloss a clear highlight, metallic the most (spread wider after the maintainer's
+    /// test, 10-11: "not pronounced enough").
     pub fn shine(self) -> u8 {
         match self {
-            Self::Matte => 12,
-            Self::Gloss => 110,
-            Self::Metallic => 230,
+            Self::Matte => 4,
+            Self::Gloss => 140,
+            Self::Metallic => 255,
         }
     }
 }
