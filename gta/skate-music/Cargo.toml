@@ -10,7 +10,7 @@ license = "GPL-3.0-or-later"
 [workspace]
 
 [dependencies]
-miniz_oxide = "0.8"
+mp3lame-encoder = "0.2"
 
 [profile.release]
 opt-level = 3

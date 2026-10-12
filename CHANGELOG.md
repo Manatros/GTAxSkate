@@ -9,6 +9,13 @@ Each version is a tag on GitHub; `main` holds the newest confirmed one, `dev` th
 GTAxSkate now builds on **SK8V** (1.1.5): SK8V does the skating, GTAxSkate adds what it does not
 have yet, each part also offered to SK8V as a pull request. Not yet confirmed in a game test.
 
+- v0.5.4 (fixes for sending out):
+  - **Skate 3's soundtrack works**: the in-game iPod's 46 songs (`ipod.mpf`, each song put back together from its 30 parts) as MP3s for Self Radio, in about a minute; no ffmpeg or winget any more (LAME built in). The old step put ambience recordings there; they are replaced.
+  - From a disc **ISO**, the files SK8V does not copy (the music) are read from the ISO.
+  - Installer: asks your stance (Regular/Goofy) like SK8V's setup; checks free space; starts again as administrator when the GTA folder needs it; dialogs open in front; a plain message instead of a PowerShell error page; everything shown goes to `build\install\install.log`; works on older Windows 10 (TLS 1.2).
+  - Works with SK8V instead of beside it: data in SK8V's own `SK8V` folder (an SK8V already set up is reused, nothing twice on disk); our two files are recorded in SK8V's install record, so SK8V's uninstall removes them and its updates replace them; setup leftovers are removed as SK8V's `--clean` does.
+  - Script Hook V: another ASI loader than `dinput8.dll` is accepted (a note instead of a stop), an old Script Hook V gets a note.
+  - Controller: Y with the board in hand near a vehicle stays GTA's "enter vehicle".
 - v0.5.3: the installer checks GTA's version, Script Hook V (needed, not downloaded: see What you need) and write access before SK8V's setup, and repeats SK8V's own error message when its setup fails (log in `build\install\sk8v-setup.log`).
 - v0.5.2: calmer third person camera (only walls pull it in, never under the ground, never closer than 1.6 m, slower swing); the board lit by the tunnel or room it is in while skating.
 - v0.5.1: fixed the script stopping after a long store visit (GTA's model registration is guarded); gentler cars (push and dent settings on F10 > Peds and vehicles); the deck's own grip as a griptape choice; smooth highlights on shiny paints.

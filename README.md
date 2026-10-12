@@ -50,7 +50,7 @@ copy its two files into the GTA V folder (back up yours first).
 | Tuning | pop, grind pop, push, braking, steering, wobble, grip, turn power, manual drag, hold fakie in SK8V's menu |
 | Stamina | GTA's stamina skill sets push and pop; skating at speed trains it |
 | Map | GTA's GPS route stays on while skating; GTA's skate parks are on the map |
-| Radio | skating tunes the radio to a station you choose (`SkateRadio=`); `,` / `.` change station. Skate 3's soundtrack on Self Radio: the installer's music step does not find the songs yet (it is being fixed), so it may be skipped |
+| Radio | skating tunes the radio to a station you choose (`SkateRadio=`); `,` / `.` change station. Skate 3's soundtrack (the in-game iPod's 46 songs) on Self Radio: in GTA set Settings > Audio > Self Radio Mode to Radio and run Perform Full Scan once |
 
 Prefer it more like GTA or more like Skate 3? `CameraView=Near` (the installer's default) is the
 third person camera, `CameraView=Skate` Skate 3's; **V** switches while skating, and F10 > *Camera*
@@ -114,22 +114,28 @@ and GTAxSkate's ready builds. No OpenIV, CodeWalker, Rust or Visual Studio neede
 It finds GTA V by itself, asks for your Skate 3 disc or folder, and shows a list of the parts with
 tick boxes: board shop, Skate 3 music, keyboard and mouse, GTA-style camera, skateable cars, GPS and
 skate parks, stamina, people surviving and a limp after hard bails (the board in hand as a melee weapon is optional).
-Untick what you don't want (it is remembered; `-Choose` asks again, `-Parts all` skips the question).
+Untick what you don't want and pick your stance (Regular or Goofy, as in SK8V's setup); it is remembered (`-Choose` asks again, `-Parts all` skips the question).
+Before it starts it checks GTA's version, Script Hook V, free space (about 8 GB) and write access, and starts again as administrator if the GTA folder needs it.
 Then it:
 
 | Step | |
 |---|---|
 | 1 tools | gets the SK8V release (Python, the rage tool) and vgmstream |
-| 2 sk8v | runs SK8V's own setup: Skate 3's data from your disc, installed into GTA V (10–30 minutes) |
+| 2 sk8v | runs SK8V's own setup: Skate 3's data from your disc, installed into GTA V (10–30 minutes; an SK8V already set up is reused) |
 | 3 bin | GTAxSkate's builds (SK8V with our additions, the board tool), from the package |
 | 4 boards | the board library from your Skate 3 and every part as a GTA model |
-| 5 music | Skate 3's soundtrack on Self Radio (not finding the songs yet; skipped if it fails) |
-| 6 install | our SK8V build over SK8V's, our settings on (yours are kept) |
+| 5 music | Skate 3's soundtrack as MP3s in User Music\Skate 3 for Self Radio (about a minute; skipped with a note if it fails) |
+| 6 install | our SK8V build over SK8V's (recorded in SK8V's install record, so SK8V's own uninstall and updates handle it), our settings on (yours are kept); then the setup's leftovers go |
 
-Every step is remembered: if anything stops it, run it again and it goes on where it stopped.
+Every step is remembered: if anything stops it, run it again and it goes on where it stopped. If it stops, the reason is in red at the bottom; `build\install\install.log` has everything for a bug report.
 `scripts\install.ps1 -Redo <step>` runs a step again (for example `-Redo boards` after adding your own decks).
 
 Afterwards, in GTA V: **F10** opens the settings menu (on a controller: Back + LB).
+
+**Uninstall:** as SK8V's [uninstall](https://github.com/becaring/SK8V#uninstall) (GTA V closed): remove
+`SkateVLegacy.asi`, `SkateVRuntime.dll`, `SkateVLegacy.ini`, `SkateVLegacy.installed.json`, the `SK8V\`
+folder (`GTAxSkate\` for installs before v0.5.4) and `update\x64\dlcpacks\skatev\`; the soundtrack is in
+`Documents\Rockstar Games\GTA V\User Music\Skate 3`.
 
 ## Layout
 
