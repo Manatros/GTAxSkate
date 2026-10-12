@@ -217,14 +217,44 @@ $assets = Join-Path $data 'skate-data\assets'
 Step 2 'SK8V: Skate 3 data from your disc, installed into GTA V (10-30 minutes)'
 $iniKeep = Join-Path $receipts 'SkateVLegacy.ini.kept'
 if (-not (Is-Done 'sk8v')) {
+    # SK8V's setup checks these too, but its message scrolls away above
+    # its other output: say it here, plainly, before it starts.
+    if ($version -ne $GtaBuild) {
+        Fail "SK8V needs GTA V Legacy $GtaBuild; your GTA5.exe is $(if ($version) { $version } else { 'unknown' }). GTA V Enhanced does not work."
+    }
+    if (-not (Test-Path (Join-Path $Gta 'update\update.rpf'))) { Fail 'update\update.rpf is missing: verify GTA V in its launcher first.' }
+    $hook = 'ScriptHookV.dll', 'dinput8.dll' | Where-Object { -not (Test-Path (Join-Path $Gta $_)) }
+    if ($hook) {
+        Say ''
+        Say "  Script Hook V is missing ($($hook -join ', ') not in the GTA folder)." 'Yellow'
+        Say '  Download it from http://www.dev-c.com/gtav/scripthookv/ and copy' 'Yellow'
+        Say '  ScriptHookV.dll and dinput8.dll from its bin folder into:' 'Yellow'
+        Say "  $Gta" 'Yellow'
+        Fail 'Script Hook V is not installed.'
+    }
+    try { $probe = Join-Path $Gta '.gtaxskate-write-test'; [IO.File]::WriteAllBytes($probe, @()); Remove-Item $probe }
+    catch { Fail "No write access to $Gta : run ""Install GTAxSkate.cmd"" as administrator." }
     $iniNow = Join-Path $Gta 'SkateVLegacy.ini'
     if (Test-Path $iniNow) { Copy-Item $iniNow $iniKeep -Force }
-    # SK8V's own setup does everything SK8V needs (data, Script Hook V
-    # check, its DLC pack, its ini). The disc stays extracted: the boards
-    # and the music read it.
+    # SK8V's own setup does everything SK8V needs (data, its DLC pack, its
+    # ini). The disc stays extracted: the boards and the music read it. Its
+    # output also goes to a log, and on failure its last lines are shown
+    # again (the reason is easily scrolled away).
+    $sk8vLog = Join-Path $receipts 'sk8v-setup.log'
+    $env:PYTHONUNBUFFERED = '1'
     Push-Location $release
-    try { Run 'Running SK8V''s setup' { & $python tools\prepare.py --skate $Skate3 --gta $Gta --out $data --install } }
+    try {
+        Say '  Running SK8V''s setup...' 'DarkGray'
+        cmd /s /c " ""$python"" tools\prepare.py --skate ""$Skate3"" --gta ""$Gta"" --out ""$data"" --install 2>&1 " | Tee-Object -FilePath $sk8vLog
+        $code = $LASTEXITCODE
+    }
     finally { Pop-Location }
+    if ($code) {
+        Say ''
+        Say "  SK8V's setup said (last lines, all in $sk8vLog):" 'Yellow'
+        Get-Content $sk8vLog -Tail 15 | Where-Object { $_ -notmatch '^@progress' } | ForEach-Object { Say "    $_" 'Yellow' }
+        Fail "Running SK8V's setup failed (exit code $code)."
+    }
     if (-not (Test-Path (Join-Path $assets 'private\skater.glb'))) { Fail "SK8V's setup left no private\skater.glb ($assets)." }
     if (-not (Test-Path (Join-Path $Gta 'SkateVLegacy.asi'))) { Fail 'SK8V was not installed (no SkateVLegacy.asi in the GTA folder).' }
     Done 'sk8v'

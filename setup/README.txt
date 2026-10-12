@@ -8,6 +8,9 @@ third person and cinematic cameras, skateable cars, AI skaters and more.
 You need
   - GTA V Legacy 1.0.3889.0 (story mode)
   - Your Skate 3 (Xbox 360) disc image (.iso) or its extracted folder
+  - Script Hook V (http://www.dev-c.com/gtav/scripthookv/): copy
+    ScriptHookV.dll and dinput8.dll from its bin folder into the GTA V
+    folder first
 
 Install
   1. Close GTA V.

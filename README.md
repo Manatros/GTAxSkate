@@ -96,8 +96,10 @@ Skate's own postures and riding styles are on F10 > *Skating*. Problems: open an
 
 - **GTA V Legacy** 1.0.3889.0 (story mode, BattlEye off)
 - **Skate 3** (Xbox 360): your disc image (ISO) or its extracted folder
+- **[Script Hook V](http://www.dev-c.com/gtav/scripthookv/)**: copy `ScriptHookV.dll` and `dinput8.dll`
+  from its `bin` folder into the GTA V folder before you run the installer
 
-Everything else the installer gets by itself: SK8V and its tools (Python, the rage tool, Script Hook V),
+Everything else the installer gets by itself: SK8V and its tools (Python, the rage tool),
 and GTAxSkate's ready builds. No OpenIV, CodeWalker, Rust or Visual Studio needed.
 
 ## Install
