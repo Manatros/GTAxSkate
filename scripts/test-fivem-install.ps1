@@ -81,3 +81,7 @@ Assert (@(Compare-Object $before $after).Count -eq 0) 'Rejected destination crea
 Assert ((Hash $sentinel) -eq $sentinelHash) 'Rejected destination changed existing file.'
 Write-Host 'PASS missing server.cfg: rejected without destination changes.'
 Write-Host "All FiveM installer checks passed. Fixtures/logs: $run"
+# GitHub's PowerShell wrapper propagates LASTEXITCODE from the final child.
+# That child intentionally failed in the invalid-folder test above. Success
+# here means every assertion passed; terminating failures never reach this line.
+exit 0

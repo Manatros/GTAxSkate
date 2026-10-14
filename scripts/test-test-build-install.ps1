@@ -56,7 +56,25 @@ function Fixture([string]$CaseName) {
     Put (Join-Path $gta 'SkateVLegacy.installed.json') ($installed | ConvertTo-Json -Depth 5)
     return [pscustomobject]@{gta = $gta; package = $package; manifest = $manifest}
 }
+# Process inventory is an external input: emulate it only in this fixture
+# script scope. Every target above is a generated QA directory; the production
+# installer/rollback keep their real running-game guard unchanged.
+$fixtureProcessState = @{ Running = $false }
+$fixtureProcessQuery = {
+    [CmdletBinding()]param([string[]]$Name)
+    foreach ($item in $Name) {
+        if ($item -notin @('GTA5','GTA5_Enhanced','FiveM','OpenIV','CodeWalker')) { throw 'Unexpected fixture process query.' }
+    }
+    if ($fixtureProcessState.Running) { [pscustomobject]@{ProcessName='GTA5'} }
+}.GetNewClosure()
+Set-Item Function:Get-Process -Value $fixtureProcessQuery
 $count = 0
+$f = Fixture 'running-tool'; $before = State $f.gta
+$fixtureProcessState.Running = $true
+try { Expect-Failure { & $installer -Gta $f.gta -Package $f.package } 'zuerst schliessen' }
+finally { $fixtureProcessState.Running = $false }
+Assert-State $before $f.gta
+$count++; Write-Host 'PASS Laufendes Spiel blockiert Installation vor jeder Aenderung'
 $f = Fixture 'valid'
 $before = State $f.gta
 & $installer -Gta $f.gta -Package $f.package
