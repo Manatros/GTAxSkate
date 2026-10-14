@@ -1,0 +1,54 @@
+name: Bug report
+description: A reproducible failure in GTAxSkate, its installer or an experimental adapter.
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: "Search existing issues first. Redact personal data and secrets. Do not attach Cfx keys, a full server.cfg, private game assets or memory dumps. See SUPPORT.md for log locations."
+  - type: dropdown
+    id: target
+    attributes:
+      label: Target
+      options:
+        - Story Mode - GTA V Legacy 1.0.3889.0
+        - Story installer or rollback
+        - FiveM rules only - experimental
+        - SK8M Lua friends test - experimental
+        - Other or unverified target
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Exact versions and package ID
+      description: "GTA build, GTAxSkate release/test ID, SK8V or pinned SK8M revision; FXServer artifact if applicable."
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: "Include install method and other relevant mods/resources. For reload problems, distinguish loading a save from restarting GTA."
+      placeholder: "1. ...\n2. ...\n3. ..."
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and actual behavior
+      description: "State how often it happens, and include a video timestamp if relevant."
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Redacted logs and test evidence
+      description: "Relevant timestamped host/runtime/ScriptHookV lines, or FiveM F8/server errors. Say whether one or two clients were tested. Preserve originals locally."
+      render: text
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Before posting
+      options:
+        - label: I removed credentials, license keys, personal data and private game assets from this report.
+          required: true

@@ -14,6 +14,19 @@ disabled reversibly to match the normal SK8V installer. INI files, boards,
 game saves and archives are left unchanged. Backup/rollback path is printed.
 Your current settings are kept: this test does not automatically select RP.
 
+QUICK NEXT TEST (about15 minutes; full release matrix in TEST-RUN.md):
+A. F10 > Presets > Developer. With controller: right-stick ollies/flips/grabs
+   must NOT swing the camera. Repeat Near/Middle/Far/Head/Skate views (V).
+B. Aim and weapon wheel must still work. Switch to mouse and back with the pad
+   connected; mouse-look and trick input must both remain usable.
+C. Load a save twice, once while skating. HUD returns without preset changes;
+   rolling/push/landing sounds follow this ride. No crash or frozen player.
+D. R cinematic/normal near walls/ramps/low ceilings; no clipping and HUD recovers.
+E. Board shop, get on/off, one F10 menu; restart GTA and check preset persistence.
+Say failing letter/step and timestamp aloud in the video. Keep host/runtime/
+ScriptHookV logs. Do not overwrite saves. Controller GitHubissue1 stays open
+until this actual gameplay test passes. FiveM is a separate optional test below.
+
 SAVE-RELOAD / CAMERA REGRESSION (priority):
 1. Fresh Story start: ride with normal trick HUD and rolling/push/landing sounds.
 2. Load an existing save twice, then one in a different location; include a load

@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Support and evidence guide
+    url: https://github.com/Manatros/GTAxSkate/blob/dev/SUPPORT.md
+    about: Supported targets, log locations and privacy guidance.
+  - name: Sensitive security findings
+    url: https://github.com/Manatros/GTAxSkate/blob/dev/SECURITY.md
+    about: Check reporting options before posting sensitive details publicly.

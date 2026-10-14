@@ -16,19 +16,44 @@ $shell = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
 $package = Join-Path $repo 'fivem\gtaxskate_rules'
 function Assert([bool]$condition, [string]$message) { if (-not $condition) { throw $message } }
 function Hash([string]$path) { (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash }
-function Install([string]$folder, [string]$log, [int]$expectedExit) {
+function State([string]$folder) {
+    @(Get-ChildItem -LiteralPath $folder -Force -Recurse | Sort-Object FullName | ForEach-Object {
+        $relative = $_.FullName.Substring($folder.Length)
+        if ($_.PSIsContainer) { "D|$relative" }
+        else { "F|$relative|$(Hash $_.FullName)" }
+    })
+}
+function Install([string]$folder, [string]$log, [int]$expectedExit, [bool]$runningServer = $false) {
     # PowerShell 5.1 turns a native stderr line into an ErrorRecord. Capture
     # expected installer failures as process results, not harness exceptions.
     $savedPreference = $ErrorActionPreference
     try {
         $ErrorActionPreference = 'Continue'
-        & $shell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $installer -ServerData $folder *> (Join-Path $run $log)
+        & $shell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $fixtureRunner -Installer $installer -ServerData $folder -RunningServer ([int]$runningServer) *> (Join-Path $run $log)
         $code = $LASTEXITCODE
     } finally { $ErrorActionPreference = $savedPreference }
     if ($expectedExit -eq 0) { Assert ($code -eq 0) "Install failed: $log (exit $code)" }
-    else { Assert ($code -ne 0) "Invalid destination unexpectedly accepted: $log" }
+    else { Assert ($code -ne 0) "Expected installer rejection did not occur: $log" }
 }
 New-Item -ItemType Directory -Path $run | Out-Null
+$fixtureRunner = Join-Path $run 'run-installer-fixture.ps1'
+# Inventory is an external input, isolated only in this temporary child harness.
+# The real installer's running-server guard remains unchanged. A closure keeps
+# mock state visible when the installer runs in its own script scope.
+[IO.File]::WriteAllText($fixtureRunner, @'
+param([string]$Installer, [string]$ServerData, [int]$RunningServer = 0)
+$ErrorActionPreference = 'Stop'
+$fixtureProcessState = @{ Running = ($RunningServer -ne 0) }
+$fixtureProcessQuery = {
+    [CmdletBinding()]param([string[]]$Name)
+    foreach ($item in $Name) {
+        if ($item -notin @('FXServer', 'cfx-server')) { throw 'Unexpected fixture process query.' }
+    }
+    if ($fixtureProcessState.Running) { [pscustomobject]@{ ProcessName = 'FXServer' } }
+}.GetNewClosure()
+Set-Item Function:Get-Process -Value $fixtureProcessQuery
+& $Installer -ServerData $ServerData
+'@)
 $data = Join-Path $run 'server-data'
 $resources = Join-Path $data 'resources'
 New-Item -ItemType Directory -Path $resources | Out-Null
@@ -36,6 +61,13 @@ $cfg = Join-Path $data 'server.cfg'
 # Deliberately use mixed line endings and non-ASCII UTF-8 to catch rewrites.
 [IO.File]::WriteAllBytes($cfg, [byte[]](0x23,0x20,0xC3,0xA4,0x0D,0x0A,0x65,0x6E,0x73,0x75,0x72,0x65,0x20,0x74,0x65,0x73,0x74,0x0A))
 $cfgHash = Hash $cfg
+$guardSentinel = Join-Path $data 'keep.bin'
+[IO.File]::WriteAllBytes($guardSentinel, [byte[]](13,19,42,255))
+$beforeRunning = State $data
+Install $data 'running-server.log' 1 $true
+Assert (@(Compare-Object $beforeRunning (State $data)).Count -eq 0) 'Running-server rejection changed fixture files or directories.'
+Assert ((Get-Content -LiteralPath (Join-Path $run 'running-server.log') -Raw) -match 'Stop FXServer before installing/updating') 'Running-server case did not reach the expected production guard.'
+Write-Host 'PASS running server: production guard rejected installation before any destination changes.'
 Install $data 'new-install.log' 0
 $target = Join-Path $resources 'gtaxskate_rules'
 $files = @('fxmanifest.lua', 'server.js', 'client.js', 'policy.js', 'policy.json')

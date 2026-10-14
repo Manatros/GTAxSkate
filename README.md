@@ -19,6 +19,19 @@ is made from your own copies of the games.
 > Every addition is also offered to SK8V itself (one branch per feature). `main` holds the released
 > version, `dev` the work in progress. See the [changelog](CHANGELOG.md).
 
+## Project status and repository roles
+
+| Channel / repository | Purpose and current evidence |
+|---|---|
+| [GTAxSkate](https://github.com/Manatros/GTAxSkate) | Player installer, setup scripts, downloads, issue tracking and package documentation. |
+| [SK8V development fork](https://github.com/Manatros/SK8V/tree/skatemods) | Modified SK8V source, contribution branches and independently adoptable package patches. Upstream attribution remains intact. |
+| `main` / published v0.5.4 | Historical published snapshot; the newer development fixes below are not in that download. Publication alone is not a fresh in-game acceptance result. |
+| `dev` / next test candidate | Reload runtime/HUD fixes, camera clearance, Developer diagnostics and an experimental four-setting SK8M adapter. Requires the [next test run](TEST-RUN.md) before promotion. |
+
+[Report a bug](https://github.com/Manatros/GTAxSkate/issues/new/choose) ·
+[Known issues and support](SUPPORT.md) · [Contributing](CONTRIBUTING.md) ·
+[Security reporting](SECURITY.md) · [Changelog](CHANGELOG.md)
+
 ## Download
 
 1. Download **[GTAxSkate-Setup.zip](https://github.com/Manatros/GTAxSkate/releases/latest/download/GTAxSkate-Setup.zip)** and unzip it.
@@ -38,11 +51,11 @@ That is all: it installs SK8V, converts your Skate 3 data and adds everything be
 | Customization | griptapes (colours, checkers, prints, or none: the deck's own grip), painted decks, wheels and truck parts (matte, gloss, metallic; painted wheels ride as hard as their paint), at street prices (deck 55-80 $, trucks 45-70 $, wheels 30-45 $, griptape 10-15 $) |
 | Boards on show | each store hangs four boards on a rack behind the till (or stands five along a wall), new ones every game day; look at them and press **E** |
 | Your own decks | images in `custom-assets/decks/` become decks in the shop ([how](custom-assets/README.md)) |
-| Cars | cars SK8V only knows as boxes are measured once, so their roof, hood and trunk can be ridden and hippie jumped (adjustable height; 1.6 clears a car); how hard the skater pushes cars and how big the dents get are set on F10 > *Peds and vehicles* |
+| Cars | cars SK8V only knows as boxes are measured once, so their roof, hood and trunk can be ridden and hippie jumped (adjustable height; 1.6 clears a car); how hard the skater pushes cars and how big the dents get are configurable (development menu: *World and roleplay* / *Advanced*) |
 | People | optionally only knocked over, not killed |
 | Injuries | after a hard bail your character limps on foot for 30 s to 2 min with GTA's injured walk |
 | Board in hand | optional (`CarryBoard=1`, off by default): the board picked in the weapon wheel stays in your hand in GTA, swung with GTA's melee; E or F gets on |
-| Cameras | **V**: near, middle, far (a calm third person camera that follows the skater, or the board: only walls pull it in, never closer than 1.6 m or under the ground; the mouse turns it), the skater's eyes (first person), Skate 3's camera. The view is kept between walking and skating; the standard view is set in the menu. **R**: a cinematic camera that cuts like GTA's in a car (wide bars, film look, shallow focus), then a skate filmer (4:3, handheld) |
+| Cameras | **V**: near, middle, far (a calm third person camera that follows the skater, or the board: the development camera prioritizes obstacle clearance over follow distance; the mouse turns it. Geometry clearance still needs in-game regression checks), the skater's eyes (first person), Skate 3's camera. The view is kept between walking and skating; the standard view is set in the menu. **R**: a cinematic camera that cuts like GTA's in a car (wide bars, film look, shallow focus), then a skate filmer (4:3, handheld) |
 | Tuning | pop, grind pop, push, braking, steering, wobble, grip, turn power, manual drag, hold fakie in SK8V's menu |
 | Stamina | GTA's stamina skill sets push and pop; skating at speed trains it |
 | Map | GTA's GPS route stays on while skating; GTA's skate parks are on the map |
@@ -76,7 +89,7 @@ sets the standard view, what it follows and the cinematic camera's look.
 | **Tab** / mouse buttons | gun out or away (hold Tab: GTA's weapon wheel); with a gun out, right mouse aims and left shoots |
 | **B** (hold, behind a moving car) | skitch |
 
-A controller works as in SK8V; the keyboard is used whenever none is connected.
+Controller input follows SK8V; keyboard/mouse support is provided by this fork. Controller camera/trick-stick separation is tracked in [issue #1](https://github.com/Manatros/GTAxSkate/issues/1); do not assume controller regression passed until the next test run.
 
 ## Known issues
 
@@ -104,8 +117,9 @@ and GTAxSkate's ready builds. No OpenIV, CodeWalker, Rust or Visual Studio neede
 
 | Target | Installation and status |
 |---|---|
-| **Story Mode (Legacy)** | Use `Install GTAxSkate.cmd` as described below; this is the playable released mod |
-| **FiveM (experimental)** | Separate `Install GTAxSkate FiveM.cmd` in development source; installs server rules only, skating adapter still pending |
+| **Story Mode (Legacy)** | Use `Install GTAxSkate.cmd` as described below; published Story package; see status table and known issues |
+| **FiveM rules only** | `Install GTAxSkate FiveM.cmd` installs the standalone rules resource; it does not install skating. |
+| **FiveM friends prototype** | Separate pinned SK8M Lua fallback with network boards and four server-controlled settings; [setup/test guide](FIVEM-FRIENDS-TEST.md). Real two-client acceptance is pending. |
 | **Existing co-op mod** | Separate compatibility target; no confirmed co-op release yet |
 
 For FiveM client download, txAdmin/server setup, resource installation and
@@ -211,7 +225,7 @@ Presets apply on Enter and save immediately. They replace only their listed sett
 
 ### Save-reload test fix (2026-10-14)
 
-The development host guards duplicate graphics callback registration when loading a Story save. Cinematic HUD updates run once per frame. See [independent SK8V adoption notes](SK8V-SAVE-RELOAD-INTEGRATION.md) and [test instructions](test-build/TESTPLAN.txt). Gameplay reload/audio validation is pending; FiveM remains a separate rules-only prototype.
+The development host guards duplicate graphics callback registration when loading a Story save. Cinematic HUD updates run once per frame. See [independent SK8V adoption notes](SK8V-SAVE-RELOAD-INTEGRATION.md) and [test instructions](test-build/TESTPLAN.txt). The original duplicate-registration fatal survived two recorded reloads after its fix. The subsequent runtime/audio/HUD changes still need acceptance. Standalone FiveM rules and the separate experimental friends adapter are different packages.
 
 ### Reload, camera and Developer follow-up
 

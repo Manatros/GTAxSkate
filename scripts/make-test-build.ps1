@@ -15,7 +15,7 @@ foreach ($repo in $root,$fork) {
     if (git -C $repo status --porcelain --untracked-files=no) { throw 'Commit tracked source changes before creating a source-identified test snapshot.' }
 }
 $patch = Join-Path $root 'patches\sk8v-package-menu.patch'
-foreach ($requiredPatch in 'sk8v-package-menu.patch','sk8v-save-reload.patch','sk8v-hud-tick.patch','sk8v-runtime-reload.patch','sk8v-camera-clearance.patch','sk8v-developer-versions.patch') {
+foreach ($requiredPatch in 'sk8v-package-menu.patch','sk8v-save-reload.patch','sk8v-hud-tick.patch','sk8v-runtime-reload.patch','sk8v-camera-clearance.patch','sk8v-developer-versions.patch','sk8v-controller-camera.patch') {
     $ErrorActionPreference = 'Continue'
     git -C $fork apply --reverse --check (Join-Path $root "patches\$requiredPatch") 2>$null
     $patchCode = $LASTEXITCODE
@@ -45,6 +45,7 @@ $manifest = [ordered]@{
     runtimeReloadPatchSha256=(Get-FileHash -LiteralPath (Join-Path $root 'patches\sk8v-runtime-reload.patch') -Algorithm SHA256).Hash.ToLowerInvariant()
     cameraPatchSha256=(Get-FileHash -LiteralPath (Join-Path $root 'patches\sk8v-camera-clearance.patch') -Algorithm SHA256).Hash.ToLowerInvariant()
     developerVersionsPatchSha256=(Get-FileHash -LiteralPath (Join-Path $root 'patches\sk8v-developer-versions.patch') -Algorithm SHA256).Hash.ToLowerInvariant()
+    controllerCameraPatchSha256=(Get-FileHash -LiteralPath (Join-Path $root 'patches\sk8v-controller-camera.patch') -Algorithm SHA256).Hash.ToLowerInvariant()
     builtUtc=[DateTime]::UtcNow.ToString('o'); files=$files
     provenance='Hashes identify the exact artifacts. Host build and retained runtime evidence are documented in docs/TEST-BUILD-2026-10-14.md; this manifest alone does not prove a source rebuild.'
     tests='See TESTPLAN.txt and source QA logs. Game confirmation pending.'
@@ -55,6 +56,7 @@ Copy-Item -LiteralPath (Join-Path $root 'scripts\install-test-build.ps1'),(Join-
 $launcher = "@echo off`r`npowershell -NoProfile -ExecutionPolicy Bypass -File `"%~dp0install-test-build.ps1`" -Package `"%~dp0.`" %*`r`npause`r`n"
 [IO.File]::WriteAllText((Join-Path $story 'Install Test.cmd'), $launcher)
 Copy-Item -LiteralPath (Join-Path $public 'test-build\TESTPLAN.txt') -Destination $story
+Copy-Item -LiteralPath (Join-Path $public 'TEST-RUN.md') -Destination $story
 Copy-Item -LiteralPath (Join-Path $public 'LICENSE') -Destination (Join-Path $story 'LICENSE.txt')
 Copy-Item -LiteralPath (Join-Path $public 'NOTICE') -Destination (Join-Path $story 'NOTICE.txt')
 Copy-Item -LiteralPath (Join-Path $fork 'LICENSE') -Destination (Join-Path $story 'LICENSE-SK8V.txt')

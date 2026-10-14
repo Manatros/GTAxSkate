@@ -6,13 +6,16 @@ The v0.5.4 GitHub release exists, but its asset contents and identity have not b
 verified. The build described below has not been confirmed in an in-game test; publication does
 not imply that confirmation.
 
-## Unreleased - FiveM rules groundwork, 2026-10-14
+## Unreleased - next main candidate, 2026-10-14
 
-- Source-identified Story test snapshots now include SHA256 checks, non-destructive configuration handling and a verified standalone rollback; separate rules-only FiveM test ZIP. Eight isolated Story installer/rollback cases are in CI. Game confirmation remains pending.
-- Separate experimental FiveM rules resource and installer; no skating adapter yet. Server modes: all, selected, explicit ranges, fully locked. Server validation covers individual edits and atomic preset requests.
-- FiveM client/txAdmin/server setup guide, administrator examples, existing SK8M reuse and separate co-op target. Future bases use versioned adapters; arbitrary future compatibility is not promised.
-- Rule/server integration tests and isolated installer checks, added to CI. Existing Story Mode installer and gameplay binaries unchanged.
-- F10 categories/Advanced and GTA (WIP), Skate and RP presets from the preceding local round remain awaiting an in-game test.
+- Controller trick-stick/camera conflict [#1](https://github.com/Manatros/GTAxSkate/issues/1): targeted host fix and native-stub regression prepared; controller gameplay acceptance is a release gate.
+- F10 categories/Advanced and GTA WIP, Skate, RP and Developer presets. Developer enables input/debug HUD, verbose logging, keyboard hints and trick HUD without changing riding physics. Source-tag/build/receipt information is separated from LS Skate availability.
+- Save-load callback registration guarded. Two recorded reloads avoided the original fatal; process-runtime reuse and initial viewport publication fix subsequent audio-handle/HUD lifetime gaps. These follow-up changes still require the next in-game test.
+- Scripted camera obstacle clearance takes priority over preferred follow distance; ceiling/roof hits do not masquerade as nearby floor. Live geometry/controller checks remain pending.
+- Source-identified Story test ZIPs preserve user settings, record hashes and carry rollback. Nine isolated installer/rollback scenarios run in CI.
+- Separate experimental FiveM targets: standalone rules installer, and pinned SK8M Lua fallback friends package. Only PushSpeed, PushPower, Braking and Steering connect to the fallback. Server all/selected/ranges/locked policy, mount/inventory/lifecycle gates and admin Developer policy are included; no server-authoritative Skate physics or verified two-player gameplay claimed.
+- 29 Node policy/transport/packaging checks passed locally. Optional pinned-source packaging test is explicitly skipped in CI without the external checkout. Windows host native-stub tests cover callback registration, runtime/HUD reload and camera clearance.
+- Repository roles, contribution/support/security guidance, issue forms and the [next test / main gates](TEST-RUN.md) documented. Latest published v0.5.4 is unchanged by this development section.
 
 ## Unreleased — installer QA, 2026-10-13
 
