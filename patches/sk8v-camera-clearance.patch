@@ -1,0 +1,93 @@
+diff --git a/host/src/main.cpp b/host/src/main.cpp
+index b23c67a..fcfa3a8 100644
+--- a/host/src/main.cpp
++++ b/host/src/main.cpp
+@@ -2298,6 +2298,21 @@ void BoardWeather(Session& s, const Config& cfg, const SvBoardPose* pose) {
+     }
+ }
+ 
++// Keep a script-camera eye on the skater's side of world geometry. This is
++// deliberately independent of camera aim and does not alter GTA's own camera.
++void ConstrainCameraEye(Session& s, const float (&anchor)[3], float (&eye)[3], int flags) {
++    const int test = Call<int>(gta::START_EXPENSIVE_SYNCHRONOUS_SHAPE_TEST_LOS_PROBE,
++        anchor[0], anchor[1], anchor[2], eye[0], eye[1], eye[2], flags, s.ped, 7);
++    BOOL hit = 0;
++    Vector3 end{}, normal{};
++    Entity entity = 0;
++    if (Call<int>(gta::GET_SHAPE_TEST_RESULT, test, &hit, &end, &normal, &entity) != 2 || !hit) return;
++    const float d[3] = {anchor[0] - end.x, anchor[1] - end.y, anchor[2] - end.z};
++    const float len = std::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
++    const float k = len > 0.0001f ? std::min(0.3f / len, 1.0f) : 0.0f;
++    eye[0] = end.x + d[0] * k, eye[1] = end.y + d[1] * k, eye[2] = end.z + d[2] * k;
++}
++
+ // Third person while skating (views near, middle, far), like GTA's follow
+ // camera but on the script camera: it follows the board, not the body, so
+ // flips, grabs and bails never swing it into the skater; ollies barely lift
+@@ -2356,10 +2371,13 @@ void OrbitCamera(Session& s, const SvOutput& o, const Config& cfg) {
+     Entity entity = 0;
+     if (Call<int>(gta::GET_SHAPE_TEST_RESULT, test, &hit, &end, &normal, &entity) == 2 && hit) {
+         const float d = std::sqrt((end.x - aim[0]) * (end.x - aim[0]) + (end.y - aim[1]) * (end.y - aim[1]) + (end.z - aim[2]) * (end.z - aim[2]));
+-        want = std::max(1.6f, d - 0.25f);
++        // A preferred follow distance must not put the eye behind a nearby
++        // wall. The normal 1.6 m comfort distance cannot win over collision.
++        want = std::max(0.0f, d - 0.3f);
+     }
+     // In quickly but smoothly, out slowly: no jumps into the skater and back.
+     dist += (want - dist) * ease(want < dist ? 8.0f : 1.5f);
++    dist = std::min(dist, want); // never ease through the obstruction on the way in
+     float eye[3] = {aim[0] - dir[0] * dist, aim[1] - dir[1] * dist, aim[2] - dir[2] * dist};
+     // Never under the ground (slopes, stairs, the skater below the camera):
+     // at least 0.3 m above what is under the eye.
+@@ -2369,9 +2387,13 @@ void OrbitCamera(Session& s, const SvOutput& o, const Config& cfg) {
+         BOOL under = 0;
+         Vector3 ground{}, n{};
+         Entity e = 0;
+-        if (Call<int>(gta::GET_SHAPE_TEST_RESULT, down, &under, &ground, &n, &e) == 2 && under && eye[2] < ground.z + 0.3f)
++        if (Call<int>(gta::GET_SHAPE_TEST_RESULT, down, &under, &ground, &n, &e) == 2 && under && n.z > 0.5f &&
++            ground.z <= eye[2] + 0.3f && eye[2] < ground.z + 0.3f)
+             eye[2] = ground.z + 0.3f;
+     }
++    // The smoothed target can lag below a rising ramp. A final trace from
++    // the actual chest also catches walls/ceilings after ground clearance.
++    ConstrainCameraEye(s, board, eye, 1);
+     Call<void>(gta::SET_CAM_COORD, s.cam, eye[0], eye[1], eye[2]);
+     Call<void>(gta::SET_CAM_ROT, s.cam, pitch, 0.0f, camYaw, 2);
+     Call<void>(gta::SET_CAM_FOV, s.cam, std::clamp(55.0f * cfg.fovScale, 20.0f, 120.0f));
+@@ -2469,24 +2491,25 @@ void ActionCamera(Session& s, const SvOutput& o, const Config& cfg) {
+     if (!s.cam || !g_runtime.ActionCam(s.action, at, velocity, Call<float>(gta::GET_FRAME_TIME), shot)) return;
+     float eye[3] = {shot[0], shot[1], shot[2]};
+     const float look[3] = {shot[3], shot[4], shot[5]};
+-    auto ray = [&](const float (&from)[3], const float (&to)[3], Vector3& end) {
++    auto ray = [&](const float (&from)[3], const float (&to)[3], Vector3& end, Vector3& normal) {
+         const int test = Call<int>(gta::START_EXPENSIVE_SYNCHRONOUS_SHAPE_TEST_LOS_PROBE, from[0], from[1], from[2], to[0], to[1],
+                                    to[2], 1 | 16, s.ped, 7);
+         BOOL hit = 0;
+-        Vector3 normal{};
+         Entity entity = 0;
+         return Call<int>(gta::GET_SHAPE_TEST_RESULT, test, &hit, &end, &normal, &entity) == 2 && hit;
+     };
+-    Vector3 end{};
+-    if (ray(look, eye, end)) {
+-        // In front of the wall, 0.25 m toward the skater.
+-        float d[3] = {look[0] - end.x, look[1] - end.y, look[2] - end.z};
+-        const float len = std::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+-        const float k = len > 0.3f ? 0.25f / len : 0.0f;
+-        eye[0] = end.x + d[0] * k, eye[1] = end.y + d[1] * k, eye[2] = end.z + d[2] * k;
+-    }
++    // The film shot may look at the feet. Cast from the actual skater's
++    // chest, not a ground-level look target which can begin inside a ramp.
++    const float anchor[3] = {o.skater_position.x, o.skater_position.y, o.skater_position.z + 1.25f};
++    ConstrainCameraEye(s, anchor, eye, 1 | 16);
++    Vector3 end{}, normal{};
+     const float above[3] = {eye[0], eye[1], eye[2] + 1.0f}, below[3] = {eye[0], eye[1], eye[2] - 2.0f};
+-    if (ray(above, below, end) && eye[2] < end.z + 0.25f) eye[2] = end.z + 0.25f;
++    // A downward ray can also hit a ceiling or the top of a roof above the
++    // safe eye. Do not lift the camera through it. Recheck only when lifted.
++    if (ray(above, below, end, normal) && normal.z > 0.5f && end.z <= eye[2] + 0.3f && eye[2] < end.z + 0.3f) {
++        eye[2] = end.z + 0.3f;
++        ConstrainCameraEye(s, anchor, eye, 1 | 16);
++    }
+     const float dx = look[0] - eye[0], dy = look[1] - eye[1], dz = look[2] - eye[2];
+     const float flat = std::sqrt(dx * dx + dy * dy);
+     Call<void>(gta::SET_CAM_COORD, s.cam, eye[0], eye[1], eye[2]);

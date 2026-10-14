@@ -15,7 +15,7 @@ foreach ($repo in $root,$fork) {
     if (git -C $repo status --porcelain --untracked-files=no) { throw 'Commit tracked source changes before creating a source-identified test snapshot.' }
 }
 $patch = Join-Path $root 'patches\sk8v-package-menu.patch'
-foreach ($requiredPatch in 'sk8v-package-menu.patch','sk8v-save-reload.patch','sk8v-hud-tick.patch') {
+foreach ($requiredPatch in 'sk8v-package-menu.patch','sk8v-save-reload.patch','sk8v-hud-tick.patch','sk8v-runtime-reload.patch','sk8v-camera-clearance.patch','sk8v-developer-versions.patch') {
     $ErrorActionPreference = 'Continue'
     git -C $fork apply --reverse --check (Join-Path $root "patches\$requiredPatch") 2>$null
     $patchCode = $LASTEXITCODE
@@ -42,6 +42,9 @@ $manifest = [ordered]@{
     menuPatchSha256=(Get-FileHash -LiteralPath $patch -Algorithm SHA256).Hash.ToLowerInvariant()
     saveReloadPatchSha256=(Get-FileHash -LiteralPath (Join-Path $root 'patches\sk8v-save-reload.patch') -Algorithm SHA256).Hash.ToLowerInvariant()
     hudTickPatchSha256=(Get-FileHash -LiteralPath (Join-Path $root 'patches\sk8v-hud-tick.patch') -Algorithm SHA256).Hash.ToLowerInvariant()
+    runtimeReloadPatchSha256=(Get-FileHash -LiteralPath (Join-Path $root 'patches\sk8v-runtime-reload.patch') -Algorithm SHA256).Hash.ToLowerInvariant()
+    cameraPatchSha256=(Get-FileHash -LiteralPath (Join-Path $root 'patches\sk8v-camera-clearance.patch') -Algorithm SHA256).Hash.ToLowerInvariant()
+    developerVersionsPatchSha256=(Get-FileHash -LiteralPath (Join-Path $root 'patches\sk8v-developer-versions.patch') -Algorithm SHA256).Hash.ToLowerInvariant()
     builtUtc=[DateTime]::UtcNow.ToString('o'); files=$files
     provenance='Hashes identify the exact artifacts. Host build and retained runtime evidence are documented in docs/TEST-BUILD-2026-10-14.md; this manifest alone does not prove a source rebuild.'
     tests='See TESTPLAN.txt and source QA logs. Game confirmation pending.'

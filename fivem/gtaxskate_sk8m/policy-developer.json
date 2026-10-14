@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "mode": "all",
+  "defaults": { "PushSpeed": 1, "PushPower": 1, "Braking": 1, "Steering": 1 },
+  "rules": {
+    "PushSpeed": { "adjustable": true, "min": 0.5, "max": 3 },
+    "PushPower": { "adjustable": true, "min": 0.5, "max": 3 },
+    "Braking": { "adjustable": true, "min": 0.5, "max": 3 },
+    "Steering": { "adjustable": true, "min": 0.5, "max": 3 }
+  }
+}

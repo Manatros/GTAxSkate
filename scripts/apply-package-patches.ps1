@@ -2,7 +2,7 @@
 param([string]$Fork = (Join-Path (Split-Path -Parent $PSScriptRoot) 'external\sk8v'))
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-foreach ($name in 'sk8v-package-menu.patch','sk8v-save-reload.patch','sk8v-hud-tick.patch') {
+foreach ($name in 'sk8v-package-menu.patch','sk8v-save-reload.patch','sk8v-hud-tick.patch','sk8v-runtime-reload.patch','sk8v-camera-clearance.patch','sk8v-developer-versions.patch') {
     $patch = Join-Path $root "patches\$name"
     if (-not (Test-Path -LiteralPath $patch -PathType Leaf)) { throw "Missing package patch: $name" }
     # Expected negative checks write native stderr; inspect exit codes explicitly.

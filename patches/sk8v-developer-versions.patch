@@ -1,0 +1,138 @@
+diff --git a/host/CMakeLists.txt b/host/CMakeLists.txt
+index c197ed6..4d3d7fe 100644
+--- a/host/CMakeLists.txt
++++ b/host/CMakeLists.txt
+@@ -46,7 +46,27 @@ add_library(SkateVLegacy SHARED
+   src/skate_map.cpp
+ )
+ target_compile_features(SkateVLegacy PRIVATE cxx_std_20)
+-target_compile_definitions(SkateVLegacy PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
++# Source provenance only: never carry a hard-coded release number into a future
++# upstream merge. No Git/tags in a source archive means unknown, not a guessed
++# installed version. Bound the optional local query and sanitize for a C string.
++set(SK8V_SOURCE_TAG "unknown")
++find_package(Git QUIET)
++if(GIT_FOUND)
++  execute_process(
++    COMMAND "${GIT_EXECUTABLE}" describe --tags --abbrev=0 --match "1.*"
++    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/.."
++    RESULT_VARIABLE _source_tag_result
++    OUTPUT_VARIABLE _source_tag
++    OUTPUT_STRIP_TRAILING_WHITESPACE
++    ERROR_QUIET
++    TIMEOUT 5)
++  if(_source_tag_result EQUAL 0 AND _source_tag MATCHES "^1\\.[0-9]+(\\.[0-9]+)?$")
++    set(SK8V_SOURCE_TAG "${_source_tag}")
++  endif()
++endif()
++message(STATUS "SK8V nearest source tag: ${SK8V_SOURCE_TAG}")
++target_compile_definitions(SkateVLegacy PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX
++  SK8V_SOURCE_TAG="${SK8V_SOURCE_TAG}")
+ target_include_directories(SkateVLegacy PRIVATE include "${SHVDIR}/inc")
+ target_link_libraries(SkateVLegacy PRIVATE "${SHVDIR}/lib/ScriptHookV.lib" version xinput hid setupapi shell32)
+ # Original Skate 3 HUD overlay (hud_overlay.cpp): D3D11 + runtime shader compile.
+diff --git a/host/src/main.cpp b/host/src/main.cpp
+index fcfa3a8..1451146 100644
+--- a/host/src/main.cpp
++++ b/host/src/main.cpp
+@@ -46,6 +46,10 @@
+ #include "injuries.h"
+ #include "version_guard.h"
+ 
++#ifndef SK8V_SOURCE_TAG
++#define SK8V_SOURCE_TAG "unknown"
++#endif
++
+ namespace {
+ using gta::Call;
+ 
+@@ -3213,6 +3217,78 @@ menu::Item Emote(const char* label, int direction, const Config& D) {
+     return i;
+ }
+ 
++// Display-only installer metadata, never a compatibility or binary-integrity
++// check. Read once, bounded; only the simple unescaped identifiers we write.
++const std::string& TestPackageReceipt() {
++    static const std::string id = [] {
++        FILE* file = nullptr;
++        if (_wfopen_s(&file, (g_gameDir + L"GTAxSkate-test-version.json").c_str(), L"rb") || !file)
++            return std::string{};
++        char bytes[16385]{};
++        const std::size_t size = std::fread(bytes, 1, sizeof(bytes), file);
++        const bool failed = std::ferror(file) != 0;
++        std::fclose(file);
++        if (failed || size == sizeof(bytes)) return std::string{};
++        const std::string text(bytes, size);
++        auto field = [&](const char* key) -> std::string {
++            std::size_t p = text.find(std::string("\"") + key + "\"");
++            if (p == std::string::npos) return {};
++            p += std::strlen(key) + 2;
++            auto space = [&] { while (p < text.size() && std::isspace(static_cast<unsigned char>(text[p]))) ++p; };
++            space();
++            if (p >= text.size() || text[p++] != ':') return {};
++            space();
++            if (p >= text.size() || text[p++] != '"') return {};
++            const std::size_t first = p;
++            while (p < text.size() && (std::isalnum(static_cast<unsigned char>(text[p])) || text[p] == '-' || text[p] == '_' || text[p] == '.')) ++p;
++            if (p >= text.size() || text[p] != '"' || p == first || p - first > 96) return {};
++            return text.substr(first, p - first);
++        };
++        if (field("format") != "gtaxskate-test") return std::string{};
++        const std::string value = field("id");
++        return value.rfind("test-", 0) == 0 ? value : std::string{};
++    }();
++    return id;
++}
++
++void AppendDeveloperPage(std::vector<menu::Page>& pages, Session& s) {
++    using namespace menu;
++    for (auto& page : pages) if (page.title == "Presets") {
++        page.items.push_back(Action("Developer - inputs, HUD and logs", [] {
++            ApplyPreset("Developer", {{"ShowInputs", "1"}, {"ShowDebug", "1"},
++                {"VerboseLog", "1"}, {"KeyboardHints", "1"}, {"TrickAnalyzer", "1"}, {"Hud", "1"}});
++            // Hud is normally restart-only; this diagnostic action can safely
++            // reinitialize the existing renderer through its guarded Start.
++            if (g_runtime.IsLoaded()) {
++                hudoverlay::Start(g_gameDir + L"SkateVLegacy.ini", g_runtime.Handle(), Log);
++                hudoverlay::SetTrickAnalyzer(g_config.trickAnalyzer);
++            }
++        }));
++    }
++    // Provenance stays in Developer. Source basis, compiled host and installer
++    // receipt are different facts; none detects arbitrary third-party installs.
++    pages.push_back({"Developer", {
++        Action("Disable diagnostic overlays and verbose log", [] {
++            ApplyPreset("Diagnostics off", {{"ShowInputs", "0"}, {"ShowDebug", "0"}, {"VerboseLog", "0"}});
++        }),
++        Action("SK8V source tag: " SK8V_SOURCE_TAG, [&s] {
++            Notify(s, "Nearest SK8V source tag: " SK8V_SOURCE_TAG ". Source metadata, not an installed-release detector.", 7000);
++        }),
++        Action("GTAxSkate host build", [&s] {
++            Notify(s, "GTAxSkate host compiled " __DATE__ " " __TIME__, 7000);
++        }),
++        Action("Test package receipt (metadata)", [&s] {
++            const std::string& id = TestPackageReceipt();
++            const std::string message = id.empty() ? "No readable test package receipt; package version unknown." :
++                "Test package receipt: " + id + ". Metadata only; installed binaries not verified here.";
++            Notify(s, message.c_str(), 9000);
++        }),
++        Action("LS Skate: not integrated", [&s] {
++            Notify(s, "LS Skate is not integrated in this package. Its installed version is unavailable.", 7000);
++        }),
++    }});
++}
++
+ std::vector<menu::Page> MenuPages(Session& s) {
+     using namespace menu;
+     const Config D{};
+@@ -3601,7 +3677,9 @@ void ScriptMain() {
+          cfg.life.inMissions ? "allowed" : "blocked", cfg.life.backgroundPrepare ? "on" : "off");
+     Session s;
+     g_hallOfMeatOn = cfg.hallOfMeat;
+-    menu::Start(g_gameDir + L"SkateVLegacy.ini", MenuPages(s), RawPadButtons, Log);
++    auto pages = MenuPages(s);
++    AppendDeveloperPage(pages, s);
++    menu::Start(g_gameDir + L"SkateVLegacy.ini", std::move(pages), RawPadButtons, Log);
+     FrameMonitor monitor;
+     stall::SetLog(Log);
+     // Line= may list several files separated by ';': the Dev menu replays the

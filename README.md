@@ -212,3 +212,25 @@ Presets apply on Enter and save immediately. They replace only their listed sett
 ### Save-reload test fix (2026-10-14)
 
 The development host guards duplicate graphics callback registration when loading a Story save. Cinematic HUD updates run once per frame. See [independent SK8V adoption notes](SK8V-SAVE-RELOAD-INTEGRATION.md) and [test instructions](test-build/TESTPLAN.txt). Gameplay reload/audio validation is pending; FiveM remains a separate rules-only prototype.
+
+### Reload, camera and Developer follow-up
+
+The development host reuses its process runtime after a save load and resends the
+HUD viewport. This keeps the persistent sound feeder attached to the same runtime.
+Scripted follow/cinematic cameras now respect nearby obstacle hits immediately;
+normal GTA camera behavior is unchanged. F10 > Developer shows the SK8V source
+basis, compiled host build, optional test receipt metadata and LS integration status.
+Receipt metadata does not verify installed binaries; LS Skate remains unintegrated.
+See [runtime lifecycle adoption](SK8V-RELOAD-LIFECYCLE.md) and
+[camera/version adoption](SK8V-CAMERA-VERSIONS.md). In-game validation is pending.
+
+### Experimental FiveM friends slice
+
+A separate pinned SK8M Lua-fallback package now connects four server-controlled
+multipliers (push speed/power, braking, steering). It uses base-game props and
+client-owned skating; Skate 3/WASM physics and a real two-player acceptance test
+are still pending. [Preparation, server setup and test guide](FIVEM-FRIENDS-TEST.md).
+The existing standalone rules installer remains separate. No Story ASI belongs
+in FiveM, and no account/key/firewall/server startup is automated here.
+
+Developer test settings: Story F10 > Presets > Developer enables input/debug HUD and verbose logs. Developer > Disable diagnostics turns those extras off. The separate FiveM ZIP includes an admin Developer policy and skatedev; see its test guide.

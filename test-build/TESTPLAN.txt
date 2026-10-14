@@ -14,14 +14,25 @@ disabled reversibly to match the normal SK8V installer. INI files, boards,
 game saves and archives are left unchanged. Backup/rollback path is printed.
 Your current settings are kept: this test does not automatically select RP.
 
-SAVE-RELOAD REGRESSION (priority):
-1. Start Story, ride, open/close F10, then load an existing save via Pause.
-2. Repeat loading three times, including once while skating. Do not overwrite saves.
-3. After each load: equip/ride, check rolling sounds and F10; log any missing audio.
-4. Use cinematic camera R: HUD should stay hidden without flickering.
-5. Keep the logs immediately if loading fails; note which reload and timestamp.
-This fixes the confirmed duplicate Present registration. Other reload lifecycle
-issues and long-session memory behavior still need in-game checks.
+SAVE-RELOAD / CAMERA REGRESSION (priority):
+1. Fresh Story start: ride with normal trick HUD and rolling/push/landing sounds.
+2. Load an existing save twice, then one in a different location; include a load
+   while skating. Do not overwrite saves.
+3. After EVERY load: HUD should return without changing presets; sounds should
+   follow this ride, and F10/get on/off/boards/collision should continue working.
+4. Switch R cinematic/normal and V views near walls, ramps and low ceilings.
+   HUD should hide in cinematic and return afterward. Check camera stays outside
+   geometry; collision ray tests cannot guarantee every streamed object.
+5. F10 > Presets > Developer enables input/debug overlays, verbose logs, keys
+   and trick HUD immediately. Developer > Disable diagnostics turns the extra
+   overlays/logs off. Driving physics and server rules are unchanged.
+   F10 > Developer also shows source basis, host build, test receipt and LS status.
+   Receipt is metadata only; LS Skate is not integrated, not auto-detected.
+6. Keep logs immediately if anything fails. Note build id, reload number, which
+   camera/profile, and timestamp. Logs should show one runtime preload across
+   script restarts, suspension/reactivation and a viewport after each restart.
+Data/cache paths and creation-only runtime options require a full GTA restart.
+The runtime job queue is asynchronous; gameplay recovery still needs this test.
 
 MENU REGRESSION (about 10 minutes):
 1. Start Story Mode. With board away: F10 opens exactly one menu; close F10.
