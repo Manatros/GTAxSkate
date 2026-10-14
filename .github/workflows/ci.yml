@@ -20,6 +20,9 @@ jobs:
       - name: Isolated FiveM installer regression checks
         shell: powershell
         run: ./scripts/test-fivem-install.ps1
+      - name: Story test installer and rollback regression checks
+        shell: powershell
+        run: ./scripts/test-test-build-install.ps1
   test:
     runs-on: windows-latest
     strategy:

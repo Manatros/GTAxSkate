@@ -1,0 +1,43 @@
+GTAxSkate: Story test, 2026-10-14
+
+This is a test snapshot, not a confirmed release. Requires existing working
+SK8V/GTAxSkate data and GTA V Legacy 1.0.3889.0. Does not install game assets.
+This package is not a FiveM/Coop skating port. GTA preset remains a WIP notice.
+
+INSTALL (GTA, OpenIV, CodeWalker closed):
+  Double-click Install Test.cmd and enter your GTA folder when asked.
+  Or run:
+  powershell -NoProfile -ExecutionPolicy Bypass -File install-test-build.ps1 -Package . -Gta "YOUR GTA FOLDER"
+
+Only host/runtime are updated. Existing legacy SkateGTA/SkateExtras ASIs are
+disabled reversibly to match the normal SK8V installer. INI files, boards,
+game saves and archives are left unchanged. Backup/rollback path is printed.
+Your current settings are kept: this test does not automatically select RP.
+
+TEST ORDER (about 10 minutes):
+1. Start Story Mode. With board away: F10 opens exactly one menu; close F10.
+2. Draw board, E to ride. F10 still opens exactly one menu; F10 closes it.
+3. Open each category; Enter/Back and Advanced work. Options stay reachable.
+4. Presets > GTA: WIP notice only, current settings unchanged.
+5. Presets > RP: near camera, restricted shooting, gentle world/minimal HUD.
+   Ride briefly, pass a car and a pedestrian. Note any excessive impulses.
+6. Presets > Skate: Skate view, Normal difficulty, HoM/analyzer return.
+   Existing custom board, bindings and sound settings should remain yours.
+7. Restart GTA. Last selected profile's controlled settings should persist.
+8. Quick regression: board equip/get on/off; V/R cameras; G in a board shop;
+   buy/ride your board; Self Radio. E still opens general shop, not an exact
+   displayed-board offer; that feature remains backlog work.
+
+Please report: build id (manifest.json), failing step, expected/actual behavior,
+timestamp and logs from %LOCALAPPDATA%\SkateV (SkateVLegacy.log/runtime log).
+Keep a copy of the logs immediately after a failure. A short video helps.
+
+ROLLBACK (game closed):
+  powershell -NoProfile -ExecutionPolicy Bypass -File restore-test-build.ps1 -Backup "PRINTED BACKUP FOLDER"
+
+Rollback restores prior binaries/active legacy state and install metadata;
+it does not rewind settings you deliberately changed through the test menu.
+
+Separate optional FiveM rules test:
+GTAxSkate-FiveM-Rules-Test.zip contains a server resource/installer and guide.
+Use a test FXServer only. It tests server rules and rejection/reload, not riding.

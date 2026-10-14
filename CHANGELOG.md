@@ -8,6 +8,7 @@ not imply that confirmation.
 
 ## Unreleased - FiveM rules groundwork, 2026-10-14
 
+- Source-identified Story test snapshots now include SHA256 checks, non-destructive configuration handling and a verified standalone rollback; separate rules-only FiveM test ZIP. Eight isolated Story installer/rollback cases are in CI. Game confirmation remains pending.
 - Separate experimental FiveM rules resource and installer; no skating adapter yet. Server modes: all, selected, explicit ranges, fully locked. Server validation covers individual edits and atomic preset requests.
 - FiveM client/txAdmin/server setup guide, administrator examples, existing SK8M reuse and separate co-op target. Future bases use versioned adapters; arbitrary future compatibility is not promised.
 - Rule/server integration tests and isolated installer checks, added to CI. Existing Story Mode installer and gameplay binaries unchanged.
