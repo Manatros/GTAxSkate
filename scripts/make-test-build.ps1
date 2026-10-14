@@ -15,11 +15,13 @@ foreach ($repo in $root,$fork) {
     if (git -C $repo status --porcelain --untracked-files=no) { throw 'Commit tracked source changes before creating a source-identified test snapshot.' }
 }
 $patch = Join-Path $root 'patches\sk8v-package-menu.patch'
-$ErrorActionPreference = 'Continue'
-git -C $fork apply --reverse --check $patch 2>$null
-$patchCode = $LASTEXITCODE
-$ErrorActionPreference = 'Stop'
-if ($patchCode) { throw 'The required package menu overlay is not present in this basis.' }
+foreach ($requiredPatch in 'sk8v-package-menu.patch','sk8v-save-reload.patch','sk8v-hud-tick.patch') {
+    $ErrorActionPreference = 'Continue'
+    git -C $fork apply --reverse --check (Join-Path $root "patches\$requiredPatch") 2>$null
+    $patchCode = $LASTEXITCODE
+    $ErrorActionPreference = 'Stop'
+    if ($patchCode) { throw "Required overlay is not present: $requiredPatch" }
+}
 $id = 'test-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + $forkCommit.Substring(0,7)
 if (-not $Output) { $Output = Join-Path $root "build\test-releases\$id" }
 $out = [IO.Path]::GetFullPath($Output)
@@ -38,6 +40,8 @@ $manifest = [ordered]@{
     format='gtaxskate-test'; version=1; id=$id; gta='1.0.3889.0'
     rootCommit=$rootCommit; forkCommit=$forkCommit
     menuPatchSha256=(Get-FileHash -LiteralPath $patch -Algorithm SHA256).Hash.ToLowerInvariant()
+    saveReloadPatchSha256=(Get-FileHash -LiteralPath (Join-Path $root 'patches\sk8v-save-reload.patch') -Algorithm SHA256).Hash.ToLowerInvariant()
+    hudTickPatchSha256=(Get-FileHash -LiteralPath (Join-Path $root 'patches\sk8v-hud-tick.patch') -Algorithm SHA256).Hash.ToLowerInvariant()
     builtUtc=[DateTime]::UtcNow.ToString('o'); files=$files
     provenance='Hashes identify the exact artifacts. Host build and retained runtime evidence are documented in docs/TEST-BUILD-2026-10-14.md; this manifest alone does not prove a source rebuild.'
     tests='See TESTPLAN.txt and source QA logs. Game confirmation pending.'

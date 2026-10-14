@@ -14,7 +14,16 @@ disabled reversibly to match the normal SK8V installer. INI files, boards,
 game saves and archives are left unchanged. Backup/rollback path is printed.
 Your current settings are kept: this test does not automatically select RP.
 
-TEST ORDER (about 10 minutes):
+SAVE-RELOAD REGRESSION (priority):
+1. Start Story, ride, open/close F10, then load an existing save via Pause.
+2. Repeat loading three times, including once while skating. Do not overwrite saves.
+3. After each load: equip/ride, check rolling sounds and F10; log any missing audio.
+4. Use cinematic camera R: HUD should stay hidden without flickering.
+5. Keep the logs immediately if loading fails; note which reload and timestamp.
+This fixes the confirmed duplicate Present registration. Other reload lifecycle
+issues and long-session memory behavior still need in-game checks.
+
+MENU REGRESSION (about 10 minutes):
 1. Start Story Mode. With board away: F10 opens exactly one menu; close F10.
 2. Draw board, E to ride. F10 still opens exactly one menu; F10 closes it.
 3. Open each category; Enter/Back and Advanced work. Options stay reachable.

@@ -208,3 +208,7 @@ Apache License 2.0 (see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE)).
 - **RP:** near camera, Hardcore difficulty, standard pop/push, nonlethal pedestrian collisions, no ped launch, car dents or car pushing, injuries/stamina on, shooting while riding and HUD hints/analyzer/HoM off. This is a story-mode settings profile, not FiveM support.
 
 Presets apply on Enter and save immediately. They replace only their listed settings; custom boards, key bindings, audio and other tuning remain yours. All options remain available in their categories; uncommon physics tuning, board placement and diagnostics are under **Advanced**. With SK8V loaded, the legacy SkateGTA options overlay no longer handles F10.
+
+### Save-reload test fix (2026-10-14)
+
+The development host guards duplicate graphics callback registration when loading a Story save. Cinematic HUD updates run once per frame. See [independent SK8V adoption notes](SK8V-SAVE-RELOAD-INTEGRATION.md) and [test instructions](test-build/TESTPLAN.txt). Gameplay reload/audio validation is pending; FiveM remains a separate rules-only prototype.
