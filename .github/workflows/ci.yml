@@ -8,6 +8,18 @@ on:
   pull_request:
 
 jobs:
+  fivem-rules:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Server policy and mocked FiveM integration
+        run: node --test fivem/tests/*.test.js
+      - name: Isolated FiveM installer regression checks
+        shell: powershell
+        run: ./scripts/test-fivem-install.ps1
   test:
     runs-on: windows-latest
     strategy:

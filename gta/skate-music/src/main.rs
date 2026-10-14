@@ -2,67 +2,48 @@
 //! extracted Skate 3 (Xbox 360) game folder.
 //!
 //!     skate-music --game <folder with default.xex> --out <User Music folder>
-//!                 [--vgmstream vgmstream-cli.exe] [--ffmpeg ffmpeg.exe]
-//!                 [--min-seconds 60] [--keep-temp]
+//!                 [--vgmstream vgmstream-cli.exe] [--keep-temp]
 //!
-//! It gathers the game's streamed audio (loose files and files inside its
-//! BIG archives), asks vgmstream how long each stream is, keeps the long
-//! ones (songs, not sound effects), and has vgmstream decode and ffmpeg
-//! encode each to an MP3 that Self Radio plays. Nothing from the game
-//! leaves the player's machine.
+//! The soundtrack is the in-game iPod's: `data/audio/music/ipod.mpf` (EA's
+//! interactive music header, MPF v5, big-endian) with its data in
+//! `Ipod_Stream.mus`. The MPF cuts each song into 30 equal sections; its
+//! sample table lists every section (offset, the song's length) in play
+//! order, so the sections of one song are a run of equal lengths.
+//! vgmstream decodes each song's sections in one go (a TXTP file lists
+//! them) and LAME, built in, writes the MP3 Self Radio plays. Nothing from
+//! the game leaves the player's machine.
 
-mod big;
-
-use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// The songs this tool wrote, kept in its output folder.
 const MADE_LIST: &str = "skate-music-files.txt";
 
-/// Extensions of the EA audio streams vgmstream reads.
-const AUDIO: [&str; 22] = [
-    "snr", "sns", "snu", "sps", "mus", "mpf", "asf", "str", "xma", "xwma", "xwm", "wav", "mp3", "ogg", "ast", "abk",
-    "xas", "exa", "sph", "gin", "sbr", "sbs",
-];
-
-/// Headers and the data files they play: a header (first) reads its data
-/// (second) beside it under the same name.
-const PAIRS: [(&str, &str); 3] = [("snr", "sns"), ("mpf", "mus"), ("sbr", "sbs")];
-
 struct Options {
     game: PathBuf,
     out: PathBuf,
     vgmstream: PathBuf,
-    ffmpeg: PathBuf,
-    min_seconds: f32,
     keep_temp: bool,
 }
 
 fn usage() -> String {
-    "usage: skate-music --game <Skate 3 folder> --out <folder> [--vgmstream <exe>] [--ffmpeg <exe>] [--min-seconds 60] [--keep-temp]"
-        .into()
+    "usage: skate-music --game <Skate 3 folder> --out <folder> [--vgmstream <exe>] [--keep-temp]".into()
 }
 
 fn options() -> Result<Options, String> {
     let mut args = std::env::args().skip(1);
-    let mut o = Options {
-        game: PathBuf::new(),
-        out: PathBuf::new(),
-        vgmstream: "vgmstream-cli".into(),
-        ffmpeg: "ffmpeg".into(),
-        min_seconds: 60.,
-        keep_temp: false,
-    };
+    let mut o = Options { game: PathBuf::new(), out: PathBuf::new(), vgmstream: "vgmstream-cli".into(), keep_temp: false };
     while let Some(arg) = args.next() {
         let mut value = || args.next().ok_or_else(usage);
         match arg.as_str() {
             "--game" => o.game = value()?.into(),
             "--out" => o.out = value()?.into(),
             "--vgmstream" => o.vgmstream = value()?.into(),
-            "--ffmpeg" => o.ffmpeg = value()?.into(),
-            "--min-seconds" => o.min_seconds = value()?.parse().map_err(|_| usage())?,
             "--keep-temp" => o.keep_temp = true,
+            // Older installers passed these; LAME is built in now.
+            "--ffmpeg" | "--min-seconds" => {
+                value()?;
+            }
             _ => return Err(usage()),
         }
     }
@@ -75,437 +56,302 @@ fn options() -> Result<Options, String> {
     Ok(o)
 }
 
-fn is_audio(path: &str) -> bool {
-    Path::new(path)
-        .extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(|e| AUDIO.iter().any(|a| a.eq_ignore_ascii_case(e)))
+/// `name` in `dir`, whatever its case (a disc copied by other tools may
+/// change it).
+fn find(dir: &Path, name: &str) -> Option<PathBuf> {
+    std::fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .find(|p| p.file_name().is_some_and(|n| n.to_string_lossy().eq_ignore_ascii_case(name)))
 }
 
-fn files_under(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(read) = std::fs::read_dir(dir) else { return };
-    for entry in read.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            files_under(&path, out);
-        } else {
-            out.push(path);
-        }
-    }
+fn u32_at(data: &[u8], at: usize) -> Result<u32, String> {
+    data.get(at..at + 4).map(|b| u32::from_be_bytes([b[0], b[1], b[2], b[3]])).ok_or_else(|| "ipod.mpf is cut short".into())
 }
 
-/// A safe relative path for an archive member.
-fn relative(path: &str) -> Option<PathBuf> {
-    let mut out = PathBuf::new();
-    for part in path.split('/') {
-        if part.is_empty() || part == "." || part == ".." || part.contains(':') {
-            return None;
-        }
-        out.push(part);
+/// The songs of an MPF v5 file: each a range of section numbers (0-based,
+/// as listed in its sample table) and its length in seconds.
+fn songs(mpf: &[u8]) -> Result<Vec<(std::ops::Range<usize>, f32)>, String> {
+    if mpf.get(..4) != Some(b"PFDx".as_slice()) || mpf.get(4) != Some(&5) {
+        return Err("ipod.mpf is not an EA MPF v5 file".into());
     }
-    Some(out)
-}
-
-/// Copies the game's audio streams into `work`, keeping their folders so
-/// paired files (an .snr header and its .sns data) stay side by side.
-fn gather(game: &Path, work: &Path) -> Result<Vec<PathBuf>, String> {
-    let mut files = Vec::new();
-    files_under(game, &mut files);
-    let mut gathered = Vec::new();
-    for file in files {
-        let name = file.to_string_lossy().replace('\\', "/");
-        let rel = file.strip_prefix(game).unwrap_or(&file).to_path_buf();
-        if is_audio(&name) {
-            let target = work.join("loose").join(&rel);
-            std::fs::create_dir_all(target.parent().unwrap()).map_err(|e| e.to_string())?;
-            std::fs::copy(&file, &target).map_err(|e| format!("{}: {e}", file.display()))?;
-            gathered.push(target);
-        } else if name.to_ascii_lowercase().ends_with(".big") {
-            let archive = match big::Archive::open(&file) {
-                Ok(archive) => archive,
-                Err(e) => {
-                    println!("  skipped {}: {e}", rel.display());
-                    continue;
-                }
-            };
-            let stem = rel.with_extension("");
-            for entry in archive.entries.iter().filter(|e| is_audio(&e.path)) {
-                let Some(inner) = relative(&entry.path) else { continue };
-                let target = work.join("big").join(&stem).join(inner);
-                match archive.read(entry) {
-                    Ok(data) => {
-                        std::fs::create_dir_all(target.parent().unwrap()).map_err(|e| e.to_string())?;
-                        std::fs::write(&target, data).map_err(|e| e.to_string())?;
-                        gathered.push(target);
-                    }
-                    Err(e) => println!("  skipped {}: {e}", entry.path),
-                }
-            }
-        }
+    let (start, end) = (u32_at(mpf, 0x34)? as usize, u32_at(mpf, 0x38)? as usize);
+    if end <= start || end > mpf.len() || (end - start) % 8 != 0 {
+        return Err("ipod.mpf has no sample table".into());
     }
-    Ok(gathered)
-}
-
-/// Data files whose header is in another archive or folder: each with
-/// the headers of the same name elsewhere, closest folder first. Which one
-/// belongs to it is tried with vgmstream ([`resolve_pairs`]): a header of
-/// another language or version plays the data too fast or too slow.
-fn pair_candidates(files: &[PathBuf]) -> Vec<(PathBuf, &'static str, Vec<PathBuf>)> {
-    let key = |f: &Path| -> Option<(String, String)> {
-        Some((f.file_stem()?.to_string_lossy().to_lowercase(), f.extension()?.to_string_lossy().to_lowercase()))
-    };
-    let mut by_name: BTreeMap<(String, String), Vec<PathBuf>> = BTreeMap::new();
-    for f in files {
-        if let Some(k) = key(f) {
-            by_name.entry(k).or_default().push(f.clone());
-        }
-    }
+    let lengths: Vec<u32> = (0..(end - start) / 8).map(|i| u32_at(mpf, start + i * 8 + 4)).collect::<Result<_, _>>()?;
     let mut out = Vec::new();
-    for (header, data) in PAIRS {
-        for ((stem, ext), places) in &by_name {
-            if ext != data {
-                continue;
+    let mut first = 0;
+    for i in 1..=lengths.len() {
+        if i == lengths.len() || lengths[i] != lengths[first] {
+            // The length is counted in 30 ms steps.
+            out.push((first..i, lengths[first] as f32 * 0.03));
+            first = i;
+        }
+    }
+    Ok(out)
+}
+
+/// 16-bit PCM from a WAV file: sample rate, channels, interleaved samples.
+fn read_wav(path: &Path) -> Result<(u32, u16, Vec<i16>), String> {
+    let data = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    if data.get(..4) != Some(b"RIFF".as_slice()) || data.get(8..12) != Some(b"WAVE".as_slice()) {
+        return Err("vgmstream wrote no WAV".into());
+    }
+    let le32 = |at: usize| data.get(at..at + 4).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]));
+    let le16 = |at: usize| data.get(at..at + 2).map(|b| u16::from_le_bytes([b[0], b[1]]));
+    let riff_end = 8usize.checked_add(le32(4).ok_or("WAV without RIFF size")? as usize)
+        .filter(|&end| end <= data.len() && end >= 12).ok_or("WAV RIFF bounds are invalid")?;
+    let (mut at, mut format) = (12usize, None);
+    while at < riff_end {
+        if riff_end - at < 8 { return Err("WAV has a truncated chunk header".into()); }
+        let id = &data[at..at + 4];
+        let size = le32(at + 4).ok_or("WAV has a truncated chunk header")? as usize;
+        let body = at + 8;
+        let end = body.checked_add(size).filter(|&end| end <= riff_end).ok_or("WAV chunk exceeds RIFF bounds")?;
+        match id {
+            b"fmt " => {
+                if size < 16 { return Err("WAV format chunk is too short".into()); }
+                let encoding = le16(body).ok_or("WAV format chunk is truncated")?;
+                let channels = le16(body + 2).ok_or("WAV format chunk is truncated")?;
+                let rate = le32(body + 4).ok_or("WAV format chunk is truncated")?;
+                let align = le16(body + 12).ok_or("WAV format chunk is truncated")?;
+                let bits = le16(body + 14).ok_or("WAV format chunk is truncated")?;
+                if encoding != 1 { return Err(format!("WAV format is {encoding}, expected PCM (1)")); }
+                if !(1..=2).contains(&channels) { return Err(format!("WAV has {channels} channels, expected 1 or 2")); }
+                if bits != 16 { return Err(format!("WAV is {bits}-bit, expected 16-bit PCM")); }
+                if rate == 0 || align != channels * 2 { return Err("WAV has invalid sample rate or block alignment".into()); }
+                format = Some((channels, rate, bits, align));
             }
-            let Some(headers) = by_name.get(&(stem.clone(), header.to_owned())) else { continue };
-            for place in places {
-                if place.with_extension(header).is_file() {
-                    continue;
+            b"data" => {
+                let (channels, rate, _, align) = format.ok_or("WAV without format")?;
+                if size % usize::from(align) != 0 { return Err("WAV data ends with an incomplete sample frame".into()); }
+                let samples = data[body..end].chunks_exact(2).map(|b| i16::from_le_bytes([b[0], b[1]])).collect();
+                return Ok((rate, channels, samples));
+            }
+            _ => {}
+        }
+        at = end.checked_add(size & 1).filter(|&next| next <= riff_end).ok_or("WAV chunk padding exceeds RIFF bounds")?;
+    }
+    Err("WAV without data".into())
+}
+
+fn safe_manifest_entries(text: &str) -> Result<Vec<String>, String> {
+    let mut names = Vec::new();
+    for raw in text.lines().map(str::trim).filter(|line| !line.is_empty()) {
+        let path = Path::new(raw);
+        if path.components().count() != 1 || path.file_name().is_none_or(|n| n != raw)
+            || raw == "." || raw == ".." || raw.contains('/') || raw.contains('\\')
+        {
+            return Err(format!("unsafe entry in {MADE_LIST}: {raw:?}"));
+        }
+        names.push(raw.to_owned());
+    }
+    Ok(names)
+}
+
+fn legacy_mp3_files(out: &Path) -> Result<Vec<String>, String> {
+    let entries = std::fs::read_dir(out).map_err(|e| format!("read {}: {e}", out.display()))?;
+    let mut names = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("read {}: {e}", out.display()))?;
+        let kind = entry.file_type().map_err(|e| format!("inspect {}: {e}", entry.path().display()))?;
+        // An MP3-looking directory or link belongs to the user, not this tool.
+        if !kind.is_file() { continue; }
+        if let Ok(name) = entry.file_name().into_string() {
+            if Path::new(&name).extension().is_some_and(|e| e.eq_ignore_ascii_case("mp3")) {
+                names.push(name);
+            }
+        }
+    }
+    Ok(names)
+}
+
+fn promote(out: &Path, stage: &Path, earlier: &[String], names: &[String]) -> Result<(), String> {
+    let backup = stage.join("previous");
+    std::fs::create_dir(&backup).map_err(|e| e.to_string())?;
+    let manifest = out.join(MADE_LIST);
+    let old_manifest = match std::fs::read(&manifest) {
+        Ok(contents) => Some(contents),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => return Err(format!("read {} before promotion: {error}", manifest.display())),
+    };
+    let mut moved_old: Vec<(PathBuf, PathBuf)> = Vec::new();
+    let mut moved_new: Vec<PathBuf> = Vec::new();
+    let old_paths: Vec<PathBuf> = earlier.iter().map(|n| out.join(n)).collect();
+    let operation = (|| -> Result<(), String> {
+        for (i, src) in old_paths.iter().enumerate() {
+            let kind = match std::fs::symlink_metadata(src) {
+                Ok(metadata) => metadata.file_type(),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(format!("inspect {} before backup: {error}", src.display())),
+            };
+            if !kind.is_file() {
+                return Err(format!("managed soundtrack entry is not a regular file: {}", src.display()));
+            }
+            let dst = backup.join(i.to_string());
+            std::fs::rename(src, &dst).map_err(|e| format!("backup {}: {e}", src.display()))?;
+            moved_old.push((src.clone(), dst));
+        }
+        for name in names {
+            let src = stage.join(name);
+            let dst = out.join(name);
+            std::fs::rename(&src, &dst).map_err(|e| format!("install {}: {e}", dst.display()))?;
+            moved_new.push(dst);
+        }
+        std::fs::write(&manifest, names.join("\n")).map_err(|e| format!("write {}: {e}", manifest.display()))?;
+        Ok(())
+    })();
+    if let Err(error) = operation {
+        let mut restore_errors: Vec<String> = moved_new.iter().rev().filter_map(|path|
+            std::fs::remove_file(path).err().map(|e| format!("remove {}: {e}", path.display()))
+        ).collect();
+        match old_manifest.as_deref() {
+            Some(contents) => if let Err(e) = std::fs::write(&manifest, contents) {
+                restore_errors.push(format!("restore {}: {e}", manifest.display()));
+            },
+            None => if let Err(e) = std::fs::remove_file(&manifest) {
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    restore_errors.push(format!("remove partial {}: {e}", manifest.display()));
                 }
-                let mut ranked = headers.clone();
-                ranked.sort_by_key(|h| std::cmp::Reverse(shared_folders(place, h)));
-                out.push((place.clone(), header, ranked));
-            }
+            },
         }
-    }
-    out
-}
-
-/// How many leading folders two paths share.
-fn shared_folders(a: &Path, b: &Path) -> usize {
-    let (a, b) = (a.parent().unwrap_or(a), b.parent().unwrap_or(b));
-    a.components().zip(b.components()).take_while(|(x, y)| x == y).count()
-}
-
-/// Bytes a codec takes per sample and channel, for the codecs whose size
-/// is fixed: a header that does not fit its data is the wrong one.
-fn bytes_per_sample(encoding: &str) -> Option<f32> {
-    let e = encoding.to_ascii_lowercase();
-    if e.contains("xas") {
-        Some(76. / 128.)
-    } else if e.contains("ea-xa") || e.contains("ea xa") {
-        Some(15. / 28.)
-    } else if e.contains("16-bit") || e.contains("pcm16") {
-        Some(2.)
-    } else if e.contains("8-bit") || e.contains("pcm8") {
-        Some(1.)
-    } else {
-        None
-    }
-}
-
-/// Whether `info` (read through a header) fits `data_bytes` of data.
-fn fits(info: &Info, data_bytes: u64) -> bool {
-    if info.samples <= 0. || info.channels == 0 || data_bytes == 0 {
-        return false;
-    }
-    let per = data_bytes as f32 / (info.samples * f32::from(info.channels));
-    match info.encoding.as_deref().and_then(bytes_per_sample) {
-        Some(want) => (per / want - 1.).abs() < 0.2,
-        // Codecs of varying size (XMA, MP3...): only sizes no codec has.
-        None => (0.03..4.).contains(&per),
-    }
-}
-
-/// Puts beside each data file the header of the same name that fits it
-/// (see [`pair_candidates`]); returns the headers placed.
-fn resolve_pairs(vgmstream: &Path, files: &[PathBuf]) -> Vec<PathBuf> {
-    let mut placed = Vec::new();
-    let mut unfit = 0;
-    for (data, header, candidates) in pair_candidates(files) {
-        let beside = data.with_extension(header);
-        let size = std::fs::metadata(&data).map_or(0, |m| m.len());
-        let mut found = false;
-        for candidate in candidates.iter().take(8) {
-            if std::fs::copy(candidate, &beside).is_err() {
-                continue;
-            }
-            if describe(vgmstream, &beside, 1).is_some_and(|info| fits(&info, size)) {
-                found = true;
-                break;
-            }
-            let _ = std::fs::remove_file(&beside);
-        }
-        if found {
-            placed.push(beside);
+        restore_errors.extend(moved_old.iter().rev().filter_map(|(src, saved)|
+            std::fs::rename(saved, src).err().map(|e| format!("restore {}: {e}", src.display()))
+        ));
+        return Err(if restore_errors.is_empty() {
+            format!("soundtrack promotion failed; previous files restored: {error}")
         } else {
-            unfit += 1;
-        }
+            format!("soundtrack promotion failed: {error}; restore errors: {}", restore_errors.join("; "))
+        });
     }
-    if !placed.is_empty() || unfit > 0 {
-        println!("Paired {} stream(s) with their headers from other archives ({unfit} had none that fits)", placed.len());
+    Ok(())
+}
+
+/// An MP3 of the samples (192 kbps, LAME's -q 2, ID3 tags).
+fn mp3(rate: u32, channels: u16, samples: &[i16], title: &str, track: usize) -> Result<Vec<u8>, String> {
+    use mp3lame_encoder::{Bitrate, Builder, FlushNoGap, Id3Tag, InterleavedPcm, MonoPcm, Quality};
+    let mut b = Builder::new().ok_or("LAME did not start")?;
+    b.set_num_channels(channels as u8).map_err(|e| format!("LAME channels: {e:?}"))?;
+    b.set_sample_rate(rate).map_err(|e| format!("LAME rate: {e:?}"))?;
+    b.set_brate(Bitrate::Kbps192).map_err(|e| format!("LAME bitrate: {e:?}"))?;
+    b.set_quality(Quality::NearBest).map_err(|e| format!("LAME quality: {e:?}"))?;
+    let comment = format!("Track {track}");
+    b.set_id3_tag(Id3Tag { title: title.as_bytes(), artist: b"Skate 3", album: b"Skate 3", album_art: &[], year: b"2010", comment: comment.as_bytes() })
+        .map_err(|e| format!("ID3: {e:?}"))?;
+    let mut encoder = b.build().map_err(|e| format!("LAME: {e:?}"))?;
+    let mut out = Vec::new();
+    for chunk in samples.chunks(1 << 20) {
+        let frames = chunk.len() / usize::from(channels);
+        out.reserve(mp3lame_encoder::max_required_buffer_size(frames));
+        let written = if channels == 1 {
+            encoder.encode_to_vec(MonoPcm(chunk), &mut out)
+        } else {
+            encoder.encode_to_vec(InterleavedPcm(chunk), &mut out)
+        };
+        written.map_err(|e| format!("LAME: {e:?}"))?;
     }
-    placed
-}
-
-/// A stream as vgmstream describes it (`-m`).
-#[derive(Debug, Default, PartialEq)]
-struct Info {
-    seconds: f32,
-    streams: u32,
-    name: Option<String>,
-    /// Samples per channel, channels and the codec, as the header says.
-    samples: f32,
-    channels: u16,
-    encoding: Option<String>,
-}
-
-fn parse_info(text: &str) -> Option<Info> {
-    let mut rate = None;
-    let mut samples = None;
-    let mut info = Info { streams: 1, ..Default::default() };
-    for line in text.lines() {
-        let line = line.trim();
-        let value = |prefix: &str| line.strip_prefix(prefix).map(str::trim);
-        if let Some(v) = value("sample rate:") {
-            rate = v.split_whitespace().next()?.parse::<f32>().ok();
-        } else if let Some(v) = value("stream total samples:") {
-            info.samples = v.split_whitespace().next().and_then(|n| n.parse::<f32>().ok()).unwrap_or(0.);
-            samples = samples.or(Some(info.samples));
-        } else if let Some(v) = value("play duration:") {
-            samples = v.split_whitespace().next().and_then(|n| n.parse::<f32>().ok()).or(samples);
-        } else if let Some(v) = value("channels:") {
-            info.channels = v.split_whitespace().next().and_then(|n| n.parse().ok()).unwrap_or(0);
-        } else if let Some(v) = value("encoding:") {
-            info.encoding = Some(v.to_owned()).filter(|e| !e.is_empty());
-        } else if let Some(v) = value("stream count:") {
-            info.streams = v.parse().unwrap_or(1);
-        } else if let Some(v) = value("stream name:") {
-            info.name = Some(v.to_owned()).filter(|n| !n.is_empty());
-        }
-    }
-    info.seconds = samples? / rate.filter(|r| *r > 0.)?;
-    Some(info)
-}
-
-fn describe(vgmstream: &Path, file: &Path, stream: u32) -> Option<Info> {
-    let output = Command::new(vgmstream).args(["-m", "-s", &stream.to_string()]).arg(file).output().ok()?;
-    output.status.success().then(|| parse_info(&String::from_utf8_lossy(&output.stdout)))?
-}
-
-/// "music_licensed_some_track" to "Some Track".
-fn title(name: &str) -> String {
-    let words: Vec<String> = name
-        .split(['_', '-', ' ', '.'])
-        .filter(|w| !w.is_empty())
-        .filter(|w| !["music", "mus", "licensed", "track", "stream", "snr", "sns"].contains(&w.to_ascii_lowercase().as_str()))
-        .map(|w| {
-            let mut c = w.chars();
-            c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default()
-        })
-        .collect();
-    if words.is_empty() { name.to_owned() } else { words.join(" ") }
-}
-
-/// Words of streams that are the world's sound, not music: ambience beds,
-/// machines, crowds, water, the fake TV and radio programmes.
-const NOT_MUSIC: [&str; 40] = [
-    "amb", "ambience", "ambient", "atmos", "interior", "exterior", "loop", "sfx", "fx", "program", "sermon", "fountain",
-    "fountains", "flow", "tank", "rustle", "flap", "flapping", "lawnmower", "leafblower", "weedwhacker", "trimmer",
-    "elevator", "laundry", "sports", "crowd", "party", "convention", "pub", "restaurant", "movie", "symphony",
-    "plant", "trtmnt", "waterlaps", "wind", "traffic", "tunnel", "liq", "machine",
-];
-
-/// Districts and places of San Vanelona: their ambience beds share the
-/// songs' length.
-const PLACES: [&str; 14] = [
-    "indu", "quarry", "reclaimed", "spillway", "space", "school", "factory", "res", "downtown", "uni", "harbour",
-    "park", "arena", "mall",
-];
-
-/// Whether a stream (its name and where it was found) is the world's sound
-/// rather than a song.
-fn not_music(name: &str, path: &str) -> bool {
-    let words: Vec<String> = format!("{name} {path}")
-        .split(|c: char| !c.is_ascii_alphanumeric())
-        .filter(|w| !w.is_empty())
-        .map(|w| w.to_ascii_lowercase())
-        .collect();
-    let has = |list: &[&str]| words.iter().any(|w| list.contains(&w.as_str()));
-    // Path words that mean music keep a stream, whatever its name.
-    if words.iter().any(|w| ["music", "song", "songs", "soundtrack", "licensed"].contains(&w.as_str())) {
-        return false;
-    }
-    has(&NOT_MUSIC) || has(&PLACES)
-}
-
-fn file_name(text: &str) -> String {
-    text.chars().map(|c| if r#"<>:"/\|?*"#.contains(c) || c.is_control() { '_' } else { c }).collect()
+    out.reserve(7200);
+    encoder.flush_to_vec::<FlushNoGap>(&mut out).map_err(|e| format!("LAME: {e:?}"))?;
+    Ok(out)
 }
 
 fn run() -> Result<(), String> {
     let o = options()?;
-    if !o.game.join("default.xex").is_file() && !o.game.join("data").is_dir() {
-        return Err(format!("{} is not an extracted Skate 3 folder (no default.xex)", o.game.display()));
+    let music = find(&o.game, "data").and_then(|d| find(&d, "audio")).and_then(|d| find(&d, "music"));
+    let mpf = music.as_deref().and_then(|d| find(d, "ipod.mpf"));
+    let mus = music.as_deref().and_then(|d| find(d, "Ipod_Stream.mus"));
+    let (Some(mpf), Some(_)) = (mpf, mus) else {
+        return Err(format!("{} has no data\\audio\\music\\ipod.mpf and Ipod_Stream.mus (the soundtrack)", o.game.display()));
+    };
+    if Command::new(&o.vgmstream).arg("-h").output().is_err() {
+        return Err(format!("vgmstream-cli not found ({})", o.vgmstream.display()));
     }
-    for (tool, what) in [(&o.vgmstream, "vgmstream-cli"), (&o.ffmpeg, "ffmpeg")] {
-        if Command::new(tool).arg("-h").output().is_err() && Command::new(tool).arg("-version").output().is_err() {
-            return Err(format!("{what} not found ({}); see get-skate-music.ps1", tool.display()));
-        }
+    let list = songs(&std::fs::read(&mpf).map_err(|e| format!("{}: {e}", mpf.display()))?)?;
+    if list.is_empty() {
+        return Err("ipod.mpf lists no songs".into());
     }
-    let work = std::env::temp_dir().join("skate-music-work");
-    let _ = std::fs::remove_dir_all(&work);
-    std::fs::create_dir_all(&work).map_err(|e| e.to_string())?;
-    std::fs::create_dir_all(&o.out).map_err(|e| e.to_string())?;
-    println!("Gathering Skate 3's audio streams...");
-    let files = gather(&o.game, &work)?;
-    let mut files = files;
-    let placed = resolve_pairs(&o.vgmstream, &files);
-    files.extend(placed);
-    println!("{} audio files; finding the songs (at least {:.0} seconds)...", files.len(), o.min_seconds);
-    // An .sns holds the data of the .snr beside it: vgmstream reads the pair
-    // through the .snr.
-    let headers: Vec<&PathBuf> = files
-        .iter()
-        .filter(|f| {
-            !PAIRS.iter().any(|(header, data)| {
-                f.extension().is_some_and(|e| e.eq_ignore_ascii_case(data)) && f.with_extension(header).is_file()
-            })
-        })
-        .collect();
-    let mut songs: BTreeMap<String, (PathBuf, u32, f32)> = BTreeMap::new();
-    let (mut readable, mut unreadable) = (0usize, 0usize);
-    let mut unread_kinds: BTreeMap<String, usize> = BTreeMap::new();
-    let mut longest: Vec<(f32, String)> = Vec::new();
-    // Long streams that are not songs, listed for the record.
-    let mut skipped: Vec<String> = Vec::new();
-    for file in headers {
-        let Some(first) = describe(&o.vgmstream, file, 1) else {
-            unreadable += 1;
-            let kind = file.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
-            *unread_kinds.entry(kind).or_default() += 1;
-            continue;
-        };
-        readable += 1;
-        longest.push((first.seconds, file.strip_prefix(&work).unwrap_or(file).display().to_string()));
-        for stream in 1..=first.streams.min(500) {
-            let info = if stream == 1 { Some(first_copy(&first)) } else { describe(&o.vgmstream, file, stream) };
-            let Some(info) = info else { continue };
-            if info.seconds < o.min_seconds {
-                continue;
-            }
-            let stem = file.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-            let mut name = title(info.name.as_deref().unwrap_or(&stem));
-            if first.streams > 1 && info.name.is_none() {
-                name = format!("{name} {stream}");
-            }
-            let source = file.strip_prefix(&work).unwrap_or(file).display().to_string();
-            if not_music(&name, &source) {
-                skipped.push(format!("{name}  ({source})"));
-                continue;
-            }
-            let mut unique = name.clone();
-            let mut n = 2;
-            while songs.contains_key(&unique) {
-                unique = format!("{name} ({n})");
-                n += 1;
-            }
-            songs.insert(unique, (file.clone(), stream, info.seconds));
-        }
-    }
-    // What was found, so a run that finds no songs says why.
-    longest.sort_by(|a, b| b.0.total_cmp(&a.0));
-    println!("vgmstream read {readable} of {} files ({unreadable} not readable). Longest:", readable + unreadable);
-    for (seconds, name) in longest.iter().take(8) {
-        println!("  {seconds:7.1} s  {name}");
-    }
-    if !unread_kinds.is_empty() {
-        let kinds: Vec<String> = unread_kinds.iter().map(|(k, n)| format!(".{k} {n}")).collect();
-        println!("Not readable, by kind: {}", kinds.join(", "));
-    }
-    if !skipped.is_empty() {
-        println!("{} long streams are the world's sound, not songs: left out (listed in skate-music-left-out.txt).", skipped.len());
-        let _ = std::fs::write(o.out.join("skate-music-left-out.txt"), skipped.join("\n"));
-    }
-    if songs.is_empty() {
-        return Err(if readable == 0 {
-            "no songs found: vgmstream could not read any of the files. Update vgmstream (delete the tools folder beside the script and run it again)".into()
-        } else {
-            format!("no songs found at {:.0} seconds or longer; the longest are listed above. Try --min-seconds 30", o.min_seconds)
-        });
-    }
-    println!("{} songs. Converting to MP3 for Self Radio...", songs.len());
-    // What an earlier run wrote goes first: a song once decoded wrong (too
-    // fast or slow) is not kept. Only this tool's files: those it listed,
-    // or, before it kept a list, the MP3s of its own "Skate 3" folder.
-    let list = o.out.join(MADE_LIST);
-    let earlier: Vec<PathBuf> = match std::fs::read_to_string(&list) {
-        Ok(text) => text.lines().filter(|l| !l.trim().is_empty()).map(|l| o.out.join(l.trim())).collect(),
-        Err(_) if o.out.file_name().is_some_and(|n| n.eq_ignore_ascii_case("Skate 3")) => std::fs::read_dir(&o.out)
-            .into_iter()
-            .flatten()
-            .flatten()
-            .map(|e| e.path())
-            .filter(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("mp3")))
-            .collect(),
+    std::fs::create_dir_all(&o.out).map_err(|e| format!("{}: {e}", o.out.display()))?;
+    // What an earlier run wrote goes first (older versions also wrote the
+    // world's ambience). Only this tool's files: those it listed or, before
+    // it kept a list, the MP3s of its own "Skate 3" folder.
+    let made = o.out.join(MADE_LIST);
+    let earlier: Vec<String> = match std::fs::read_to_string(&made) {
+        Ok(text) => safe_manifest_entries(&text)?,
+        Err(_) if o.out.file_name().is_some_and(|n| n.eq_ignore_ascii_case("Skate 3")) => legacy_mp3_files(&o.out)?,
         Err(_) => Vec::new(),
     };
-    for old in &earlier {
-        let _ = std::fs::remove_file(old);
-    }
-    let mut written = Vec::new();
-    let mut made = 0;
-    for (index, (name, (file, stream, seconds))) in songs.iter().enumerate() {
-        let wav = work.join(format!("song{index}.wav"));
-        let mp3 = o.out.join(format!("{}.mp3", file_name(name)));
-        let decoded = Command::new(&o.vgmstream)
-            .args(["-s", &stream.to_string(), "-o"])
-            .arg(&wav)
-            .arg(file)
-            .output()
-            .is_ok_and(|out| out.status.success());
-        if !decoded {
-            println!("  could not decode {name}");
-            continue;
-        }
-        let encoded = Command::new(&o.ffmpeg)
-            .args(["-y", "-loglevel", "error", "-i"])
-            .arg(&wav)
-            // Self Radio plays at 44.1 kHz stereo: anything else is
-            // resampled here rather than played at the wrong speed.
-            .args(["-ar", "44100", "-ac", "2", "-codec:a", "libmp3lame", "-q:a", "2", "-metadata"])
-            .arg(format!("title={name}"))
-            .args(["-metadata", "album=Skate 3", "-metadata"])
-            .arg(format!("track={}", index + 1))
-            .arg(&mp3)
-            .output()
-            .is_ok_and(|out| out.status.success());
+    // Keep staging on the output volume: Windows rename promotion cannot cross volumes.
+    let work = o.out.join(format!(".skate-music-staging-{}", std::process::id()));
+    if work.exists() { return Err(format!("staging directory already exists: {}", work.display())); }
+    std::fs::create_dir(&work).map_err(|e| format!("{}: {e}", work.display()))?;
+    println!("{} songs in Skate 3's soundtrack. Converting to MP3 for Self Radio...", list.len());
+    let mpf_text = mpf.to_string_lossy().into_owned();
+    let convert = |index: usize| -> Result<String, String> {
+        let (sections, _) = &list[index];
+        let track = index + 1;        let title = format!("Skate 3 Track {track:02}");
+        let txtp = work.join(format!("song{track}.txtp"));
+        let wav = work.join(format!("song{track}.wav"));
+        // vgmstream numbers the sections from 1.
+        let lines: Vec<String> = sections.clone().map(|s| format!("{mpf_text}#{}", s + 1)).collect();
+        let result = std::fs::write(&txtp, lines.join("\r\n"))
+            .map_err(|e| e.to_string())
+            .and_then(|()| {
+                let out = Command::new(&o.vgmstream).arg("-o").arg(&wav).arg(&txtp).output().map_err(|e| e.to_string())?;
+                if out.status.success() { Ok(()) } else { Err(String::from_utf8_lossy(&out.stderr).trim().to_owned()) }
+            })
+            .and_then(|()| read_wav(&wav))
+            .and_then(|(rate, channels, samples)| mp3(rate, channels, &samples, &title, track))
+            .and_then(|bytes| {
+                let name = format!("{title}.mp3");
+                std::fs::write(work.join(&name), bytes).map_err(|e| e.to_string())?;
+                Ok(name)
+            });
         let _ = std::fs::remove_file(&wav);
-        if encoded {
-            made += 1;
-            written.push(mp3.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default());
-            println!("  {name} ({:.0}:{:02.0})", (seconds / 60.).floor(), seconds % 60.);
-        } else {
-            println!("  could not encode {name}");
+        result
+    };
+    // Several songs at once (LAME is the slow part); about 1 GB of WAV at most.
+    let workers = std::thread::available_parallelism().map_or(2, |n| n.get()).clamp(1, 6);
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let results: Vec<std::sync::Mutex<Option<Result<String, String>>>> = list.iter().map(|_| Default::default()).collect();
+    std::thread::scope(|s| {
+        for _ in 0..workers {
+            s.spawn(|| loop {
+                let index = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                if index >= list.len() {
+                    break;
+                }
+                let result = convert(index);
+                match &result {
+                    Ok(_) => {
+                        let seconds = list[index].1;
+                        println!("  Skate 3 Track {:02} ({:.0}:{:02.0})", index + 1, (seconds / 60.).floor(), seconds % 60.);
+                    }
+                    Err(e) => println!("  Skate 3 Track {:02}: {e}", index + 1),
+                }
+                *results[index].lock().unwrap() = Some(result);
+            });
+        }
+    });
+    let mut written = Vec::new();
+    let mut failed = 0;
+    for result in &results {
+        match result.lock().unwrap().take() {
+            Some(Ok(name)) => written.push(name),
+            _ => failed += 1,
         }
     }
-    if !o.keep_temp {
+    if failed > 0 {
+        // Errors are printed as each worker finishes; return a useful summary too.
         let _ = std::fs::remove_dir_all(&work);
+        return Err(format!("{failed} of {} tracks failed; see per-track errors above. Previous soundtrack preserved.", list.len()));
     }
-    let _ = std::fs::write(&list, written.join("\n"));
-    println!("Done: {made} songs in {}", o.out.display());
-    println!("In GTA V: Settings > Audio > Self Radio, run a Full Scan once.");
+    promote(&o.out, &work, &earlier, &written)?;
+    let _ = std::fs::remove_file(o.out.join("skate-music-left-out.txt"));
+    if !o.keep_temp { let _ = std::fs::remove_dir_all(&work); }
+    println!("Done: {} songs in {}", written.len(), o.out.display());
     Ok(())
-}
-
-fn first_copy(info: &Info) -> Info {
-    Info {
-        seconds: info.seconds,
-        streams: info.streams,
-        name: info.name.clone(),
-        samples: info.samples,
-        channels: info.channels,
-        encoding: info.encoding.clone(),
-    }
 }
 
 fn main() {
@@ -519,63 +365,191 @@ fn main() {
 mod tests {
     use super::*;
 
-    #[test]
-    fn ambience_is_left_out_and_music_kept() {
-        for name in ["Interior Arena Amb", "Lawnmower 2", "TV Program 1", "13 Indu Quarry", "Liq Flow Lrg Thin", "Fountains Waterlaps Left"] {
-            assert!(not_music(name, "audio/streams/x.snr"), "{name}");
+    /// An MPF v5 with a sample table of the given song lengths (each song
+    /// `sections` long).
+    fn mpf(lengths: &[u32], sections: usize) -> Vec<u8> {
+        let mut data = vec![0u8; 0x40];
+        data[..4].copy_from_slice(b"PFDx");
+        data[4] = 5;
+        let start = data.len() as u32;
+        for (i, length) in lengths.iter().flat_map(|l| std::iter::repeat_n(*l, sections)).enumerate() {
+            data.extend_from_slice(&(i as u32 * 0x100).to_be_bytes());
+            data.extend_from_slice(&length.to_be_bytes());
         }
-        assert!(!not_music("Bad Brains Right Brigade", "audio/x.snr"));
-        assert!(!not_music("Track 7", "data/music/licensed/7.snr"), "a music folder keeps it");
+        let end = data.len() as u32;
+        data[0x34..0x38].copy_from_slice(&start.to_be_bytes());
+        data[0x38..0x3C].copy_from_slice(&end.to_be_bytes());
+        data
     }
 
     #[test]
-    fn reads_vgmstream_metadata() {
-        let text = "metadata for song.snr\nsample rate: 48000 Hz\nchannels: 2\nstream total samples: 8640000 (3:00.000 seconds)\nplay duration: 8640000 samples (3:00.000 seconds)\nencoding: EA EA-XAS v1\nstream count: 1\n";
-        let info = parse_info(text).unwrap();
-        assert_eq!(info.seconds, 180.);
-        assert_eq!(info.streams, 1);
-        let bank = "sample rate: 32000 Hz\nplay duration: 16000 samples (0:00.500 seconds)\nstream count: 40\nstream name: door_slam\n";
-        let info = parse_info(bank).unwrap();
-        assert!(info.seconds < 1.);
-        assert_eq!(info.streams, 40);
-        assert_eq!(info.name.as_deref(), Some("door_slam"));
-        assert!(parse_info("not a stream").is_none());
+    fn songs_are_runs_of_one_length() {
+        // Skate 3's first two songs: 4:45 and 1:49 (lengths in 30 ms steps).
+        let list = songs(&mpf(&[0x2520, 0x0E3C, 0x2520], 30)).unwrap();
+        assert_eq!(list.len(), 3, "the same length again is another song");
+        assert_eq!(list[0].0, 0..30);
+        assert_eq!(list[1].0, 30..60);
+        assert_eq!(list[2].0, 60..90);
+        assert!((list[0].1 - 285.1).abs() < 0.1);
+        assert!(songs(b"PFDx\x04").is_err(), "only version 5");
+        assert!(songs(&mpf(&[], 30)).is_err(), "no sample table");
     }
 
     #[test]
-    fn names_tracks_and_files() {
-        assert_eq!(title("music_licensed_ace_of_spades"), "Ace Of Spades");
-        assert_eq!(title("trk01"), "Trk01");
-        assert_eq!(file_name("AC/DC: Live?"), "AC_DC_ Live_");
-        assert!(is_audio("data/audio/music/x.SNR"));
-        assert!(!is_audio("data/content/x.big"));
-        assert_eq!(relative("a/../b"), None);
-        assert_eq!(relative("a/b.snr"), Some(PathBuf::from("a").join("b.snr")));
-    }
-
-    #[test]
-    fn headers_elsewhere_are_ranked_and_must_fit_their_data() {
-        let dir = std::env::temp_dir().join(format!("skate-music-pair-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        let data = dir.join("big").join("music").join("streams").join("Track01.sns");
-        let near = dir.join("big").join("music").join("headers").join("track01.snr");
-        let far = dir.join("big").join("fr").join("track01.snr");
-        for f in [&data, &near, &far] {
-            std::fs::create_dir_all(f.parent().unwrap()).unwrap();
-            std::fs::write(f, b"x").unwrap();
+    fn manifest_accepts_only_plain_filenames() {
+        assert_eq!(safe_manifest_entries("one.mp3\ntwo.mp3\n").unwrap(), ["one.mp3", "two.mp3"]);
+        for unsafe_entry in ["../outside.mp3", "sub/file.mp3", "sub\\file.mp3", "C:\\outside.mp3", ".", ".."] {
+            assert!(safe_manifest_entries(unsafe_entry).is_err(), "accepted {unsafe_entry:?}");
         }
-        let pairs = pair_candidates(&[data.clone(), far.clone(), near.clone()]);
-        assert_eq!(pairs.len(), 1);
-        assert_eq!(pairs[0].2, vec![near.clone(), far.clone()], "the closer folder first");
+    }
+
+    #[test]
+    fn legacy_migration_preserves_mp3_named_directories() {
+        let root = std::env::current_dir().unwrap().join(format!(".skate-music-legacy-test-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("notes.mp3")).unwrap();
+        std::fs::write(root.join("notes.mp3").join("keep.txt"), b"user notes").unwrap();
+        std::fs::write(root.join("track.MP3"), b"old track").unwrap();
+        std::fs::write(root.join("other.txt"), b"unrelated file").unwrap();
+        let stage = root.join("stage");
+        std::fs::create_dir(&stage).unwrap();
+        std::fs::write(stage.join("new.mp3"), b"new track").unwrap();
+        let earlier = legacy_mp3_files(&root).unwrap();
+        promote(&root, &stage, &earlier, &["new.mp3".into()]).unwrap();
+        assert_eq!(std::fs::read(root.join("notes.mp3").join("keep.txt")).unwrap(), b"user notes");
+        assert_eq!(std::fs::read(root.join("other.txt")).unwrap(), b"unrelated file");
+        assert!(!root.join("track.MP3").exists());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn promotion_refuses_a_manifest_entry_replaced_with_a_directory() {
+        let root = std::env::current_dir().unwrap().join(format!(".skate-music-manifest-dir-test-{}", std::process::id()));
+        let stage = root.join("stage");
+        std::fs::create_dir_all(&stage).unwrap();
+        std::fs::create_dir(root.join("old.mp3")).unwrap();
+        std::fs::write(root.join("old.mp3").join("keep.txt"), b"user notes").unwrap();
+        std::fs::write(root.join(MADE_LIST), "old.mp3").unwrap();
+        std::fs::write(stage.join("new.mp3"), b"new soundtrack").unwrap();
+        assert!(promote(&root, &stage, &["old.mp3".into()], &["new.mp3".into()]).is_err());
+        assert_eq!(std::fs::read(root.join("old.mp3").join("keep.txt")).unwrap(), b"user notes");
+        assert_eq!(std::fs::read_to_string(root.join(MADE_LIST)).unwrap(), "old.mp3");
+        assert!(!root.join("new.mp3").exists());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn failed_promotion_restores_previous_soundtrack_and_manifest() {
+        let root = std::env::current_dir().unwrap().join(format!(".skate-music-promote-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let out = root.join("out");
+        let stage = out.join("stage");
+        std::fs::create_dir_all(&stage).unwrap();
+        std::fs::write(out.join("old.mp3"), b"old soundtrack").unwrap();
+        std::fs::write(out.join(MADE_LIST), "old.mp3").unwrap();
+        std::fs::write(stage.join("new.mp3"), b"new soundtrack").unwrap();
+
+        let error = promote(&out, &stage, &["old.mp3".into()], &["new.mp3".into(), "missing.mp3".into()]).unwrap_err();
+        assert_eq!(std::fs::read(out.join("old.mp3")).unwrap(), b"old soundtrack");
+        assert_eq!(std::fs::read_to_string(out.join(MADE_LIST)).unwrap(), "old.mp3", "{error}");
+        assert!(!out.join("new.mp3").exists());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn successful_promotion_replaces_managed_files_and_manifest() {
+        let root = std::env::current_dir().unwrap().join(format!(".skate-music-promote-ok-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let out = root.join("out");
+        let stage = out.join(".skate-music-staging-test");
+        std::fs::create_dir_all(&stage).unwrap();
+        std::fs::write(out.join("old.mp3"), b"old soundtrack").unwrap();
+        std::fs::write(out.join(MADE_LIST), "old.mp3").unwrap();
+        std::fs::write(stage.join("new.mp3"), b"new soundtrack").unwrap();
+
+        promote(&out, &stage, &["old.mp3".into()], &["new.mp3".into()]).unwrap();
+        assert!(!out.join("old.mp3").exists());
+        assert_eq!(std::fs::read(out.join("new.mp3")).unwrap(), b"new soundtrack");
+        assert_eq!(std::fs::read_to_string(out.join(MADE_LIST)).unwrap(), "new.mp3");
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    fn tiny_wav(encoding: u16, channels: u16, payload: &[u8], riff_adjust: i32) -> Vec<u8> {
+        let mut data = Vec::new();
+        data.extend_from_slice(b"RIFF");
+        let size = (36usize + payload.len()) as i32 + riff_adjust;
+        data.extend_from_slice(&(size as u32).to_le_bytes());
+        data.extend_from_slice(b"WAVEfmt ");
+        data.extend_from_slice(&16u32.to_le_bytes());
+        data.extend_from_slice(&encoding.to_le_bytes());
+        data.extend_from_slice(&channels.to_le_bytes());
+        data.extend_from_slice(&44_100u32.to_le_bytes());
+        data.extend_from_slice(&(44_100u32 * u32::from(channels) * 2).to_le_bytes());
+        data.extend_from_slice(&(channels * 2).to_le_bytes());
+        data.extend_from_slice(&16u16.to_le_bytes());
+        data.extend_from_slice(b"data");
+        data.extend_from_slice(&(payload.len() as u32).to_le_bytes());
+        data.extend_from_slice(payload);
+        data
+    }
+
+    #[test]
+    fn wav_rejects_non_pcm_channels_bad_bounds_and_partial_frames() {
+        let dir = std::env::temp_dir().join(format!("skate-music-wav-check-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("check.wav");
+        for (label, bytes) in [
+            ("non-PCM", tiny_wav(3, 2, &[0; 4], 0)),
+            ("too many channels", tiny_wav(1, 3, &[0; 6], 0)),
+            ("partial frame", tiny_wav(1, 2, &[0; 2], 0)),
+            ("riff beyond file", tiny_wav(1, 2, &[0; 4], 10)),
+            ("chunk beyond RIFF", { let mut b = tiny_wav(1, 2, &[0; 4], 0); let n = b.len(); b[n - 8..n - 4].copy_from_slice(&100u32.to_le_bytes()); b }),
+        ] {
+            std::fs::write(&path, bytes).unwrap();
+            assert!(read_wav(&path).is_err(), "accepted {label}");
+        }
+        std::fs::write(&path, tiny_wav(1, 2, &[1, 0, 2, 0], 0)).unwrap();
+        let (rate, channels, samples) = read_wav(&path).unwrap();
+        assert_eq!((rate, channels, samples), (44_100, 2, vec![1, 2]));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn reads_wav_and_writes_mp3() {
+        let dir = std::env::temp_dir().join(format!("skate-music-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let wav = dir.join("a.wav");
+        let samples: Vec<i16> = (0..44_100 * 2).map(|i| ((i as f32 * 0.05).sin() * 8000.) as i16).collect();
+        let mut data = Vec::new();
+        data.extend_from_slice(b"RIFF");
+        data.extend_from_slice(&(36 + samples.len() as u32 * 2).to_le_bytes());
+        data.extend_from_slice(b"WAVEfmt ");
+        data.extend_from_slice(&16u32.to_le_bytes());
+        for v in [1u16, 2] {
+            data.extend_from_slice(&v.to_le_bytes());
+        }
+        data.extend_from_slice(&44_100u32.to_le_bytes());
+        data.extend_from_slice(&(44_100u32 * 4).to_le_bytes());
+        for v in [4u16, 16] {
+            data.extend_from_slice(&v.to_le_bytes());
+        }
+        data.extend_from_slice(b"LIST");
+        data.extend_from_slice(&3u32.to_le_bytes());
+        data.extend_from_slice(b"abc\0");
+        data.extend_from_slice(b"data");
+        data.extend_from_slice(&(samples.len() as u32 * 2).to_le_bytes());
+        for s in &samples {
+            data.extend_from_slice(&s.to_le_bytes());
+        }
+        let riff_size = (data.len() - 8) as u32;
+        data[4..8].copy_from_slice(&riff_size.to_le_bytes());
+        std::fs::write(&wav, data).unwrap();
+        let (rate, channels, read) = read_wav(&wav).unwrap();
+        assert_eq!((rate, channels), (44_100, 2));
+        assert_eq!(read, samples, "an odd-sized chunk before the data is skipped");
+        let bytes = mp3(rate, channels, &read, "Skate 3 Track 01", 1).unwrap();
+        assert_eq!(&bytes[..3], b"ID3");
+        // One second at 192 kbps is about 24 KB.
+        assert!((15_000..40_000).contains(&bytes.len()), "{} bytes", bytes.len());
         let _ = std::fs::remove_dir_all(&dir);
-        // 3 minutes of 48 kHz stereo EA-XAS is about 10 MB; read through a
-        // header of another version (half the samples) it does not fit.
-        let text = "sample rate: 48000 Hz\nchannels: 2\nstream total samples: 8640000 (3:00.000 seconds)\nencoding: EA EA-XAS v1\n";
-        let info = parse_info(text).unwrap();
-        assert_eq!((info.channels, info.samples), (2, 8_640_000.));
-        let bytes = (8_640_000. * 2. * 76. / 128.) as u64;
-        assert!(fits(&info, bytes));
-        assert!(!fits(&info, bytes / 2));
-        assert!(!fits(&info, bytes * 2));
     }
 }

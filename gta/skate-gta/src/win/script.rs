@@ -1533,13 +1533,15 @@ impl Script {
         // GPS while skating and the skate spots on the map are SK8V's now
         // (contributed: contrib/map-helpers, A33).
         let options_key = input::vk_down(self.config.options_key);
-        if options_key && !self.options_key_was_down && input::game_focused() && !self.store.open() {
+        if options_key && !self.options_key_was_down && input::game_focused() && !self.store.open() && !super::sk8v::Core::loaded() {
             self.menu = match self.menu.take() {
                 Some(_) => None,
                 None => Some(OptionsMenu { row: 0, capture: None, edges: input::Edges::default() }),
             };
         }
         self.options_key_was_down = options_key;
+        // SK8V owns settings while loaded, including during runtime startup.
+        if super::sk8v::Core::loaded() { self.menu = None; }
         let riding = self.core_frame.is_some_and(|f| f.riding);
         // Keyboard and mouse are SK8V's own now (contributed:
         // contrib/keyboard-mouse, A33): it reads SkateVKeys.txt itself.

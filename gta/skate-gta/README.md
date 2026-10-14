@@ -72,8 +72,9 @@ appears, the store's interior name differs in your game: see
 ## The Skate 3 soundtrack on the radio
 
 `get-skate-music.ps1` turns the soundtrack on your extracted Skate 3 into
-MP3s in GTA V's `User Music` folder (it needs vgmstream and ffmpeg, which it
-fetches). In GTA V, run Settings > Audio > Self Radio > Full Scan once.
+MP3s in GTA V's `User Music` folder. The converter uses built-in LAME for
+MP3 encoding and vgmstream for decoding; it does not require ffmpeg. In GTA V,
+run Settings > Audio > Self Radio > Full Scan once.
 While you skate, the radio then plays Self Radio on foot (`Radio = self`;
 any station name works, or `off`), `.` skips a song (`RadioSkipKey`), and
 the station you had comes back when you get off.
@@ -102,6 +103,11 @@ surface, the cracks in a pavement, pops, landings, truck grinds, board
 slides, powerslides and bails (`BoardSound`, 0 to 100).
 
 ## Co-op (FiveM or a LAN)
+
+**Historical prototype, not a supported installation guide.** The UDP code
+below predates the current SK8V package. It does not provide authoritative
+FiveM rules or verified compatibility. Do not enable Script Hook plugins to
+follow the old FiveM instructions. See [the current FiveM/co-op guide](../../fivem/README.md).
 
 Two copies of the plugin can see each other skate. Set `CoopPeer` to the
 other computer's address and port (`192.168.1.20:47800`) on both, and

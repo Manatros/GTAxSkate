@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/Manatros/GTAxSkate/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/Manatros/GTAxSkate/actions/workflows/ci.yml)
 
-**Download: [GTAxSkate-Setup.zip](https://github.com/Manatros/GTAxSkate/releases/latest/download/GTAxSkate-Setup.zip)**, unzip, close GTA V, double-click `Install GTAxSkate.cmd`. ([All downloads](https://github.com/Manatros/GTAxSkate/releases/latest), [how to install](#download))
+**Download: [GTAxSkate-Setup.zip](https://github.com/Manatros/GTAxSkate/releases/latest/download/GTAxSkate-Setup.zip)**, unzip, close GTA V, double-click `Install GTAxSkate.cmd`. ([All downloads](https://github.com/Manatros/GTAxSkate/releases/latest), [how to install](#install))
 
 **GTAxSkate** adds to **[SK8V](https://github.com/becaring/SK8V)** by becaring, the mod that runs
 the real **Skate 3** engine in **GTA V story mode**. SK8V does the skating (Skate's own physics,
@@ -27,10 +27,6 @@ is made from your own copies of the games.
 
 That is all: it installs SK8V, converts your Skate 3 data and adds everything below. Details: [Install](#install).
 
-Already have SK8V 1.1.8 and only want the additions without the board shop?
-[GTAxSkate-dropin-for-SK8V-1.1.8.zip](https://github.com/Manatros/GTAxSkate/releases/latest/download/GTAxSkate-dropin-for-SK8V-1.1.8.zip):
-copy its two files into the GTA V folder (back up yours first).
-
 ## Features (on top of SK8V)
 
 | | |
@@ -50,7 +46,7 @@ copy its two files into the GTA V folder (back up yours first).
 | Tuning | pop, grind pop, push, braking, steering, wobble, grip, turn power, manual drag, hold fakie in SK8V's menu |
 | Stamina | GTA's stamina skill sets push and pop; skating at speed trains it |
 | Map | GTA's GPS route stays on while skating; GTA's skate parks are on the map |
-| Radio | skating tunes the radio to a station you choose (`SkateRadio=`); `,` / `.` change station. Skate 3's soundtrack on Self Radio: the installer's music step does not find the songs yet (it is being fixed), so it may be skipped |
+| Radio | skating tunes the radio to a station you choose (`SkateRadio=`); `,` / `.` change station. Skate 3's soundtrack (the in-game iPod's 46 songs) on Self Radio: in GTA set Settings > Audio > Self Radio Mode to Radio and run Perform Full Scan once |
 
 Prefer it more like GTA or more like Skate 3? `CameraView=Near` (the installer's default) is the
 third person camera, `CameraView=Skate` Skate 3's; **V** switches while skating, and F10 > *Camera*
@@ -74,9 +70,9 @@ sets the standard view, what it follows and the cinematic camera's look.
 | **R** | cinematic camera, skate filmer |
 | **,** / **.** | radio: previous / next station |
 | **N** / hold **J** | set a session marker / back to it |
-| **M** | GTA's interaction menu, also while skating (F10 > *Interaction*: GPS to the nearest clothing store or skate spot) |
+| **M** | GTA's interaction menu on foot; opening it while skating remains unresolved (B104) |
 | **G**, or **E** looking at the boards on show | board shop (in a clothing store); **Tab** shows the part alone, **W A S D** or the mouse turn it, the wheel zooms |
-| **F10** (or **/** on a US keyboard) | SK8V's settings menu; page *Keyboard keys* rebinds every key or switches the layout (standard, or Skate's with I J K L as the trick stick) |
+| **F10** (or **/** on a US keyboard) | One GTAxSkate settings menu with categories and *Advanced* for uncommon tuning; page *Keyboard keys* rebinds every key or switches the layout (standard, or Skate's with I J K L as the trick stick) |
 | **Tab** / mouse buttons | gun out or away (hold Tab: GTA's weapon wheel); with a gun out, right mouse aims and left shoots |
 | **B** (hold, behind a moving car) | skitch |
 
@@ -84,7 +80,7 @@ A controller works as in SK8V; the keyboard is used whenever none is connected.
 
 ## Known issues
 
-- **M** while skating does not open GTA's interaction menu yet (it does on foot).
+- **M** while skating does not open GTA's interaction menu yet (B104; it works on foot).
 - Printed griptapes still show a seam at the deck's edge; a thin seam between the deck's middle and its nose and tail.
 - Riding sideways along an edge the board does not always stick to it; a board hit while bailing can drag the body.
 - The board shop registers at most 240 new part models a session (GTA's limit); restart GTA to see more.
@@ -96,11 +92,28 @@ Skate's own postures and riding styles are on F10 > *Skating*. Problems: open an
 
 - **GTA V Legacy** 1.0.3889.0 (story mode, BattlEye off)
 - **Skate 3** (Xbox 360): your disc image (ISO) or its extracted folder
+- **[Script Hook V](http://www.dev-c.com/gtav/scripthookv/)**: copy `ScriptHookV.dll` and `dinput8.dll`
+  from its `bin` folder into the GTA V folder before you run the installer
 
-Everything else the installer gets by itself: SK8V and its tools (Python, the rage tool, Script Hook V),
+Everything else the installer gets by itself: SK8V and its tools (Python, the rage tool),
 and GTAxSkate's ready builds. No OpenIV, CodeWalker, Rust or Visual Studio needed.
 
 ## Install
+
+### Choose your target
+
+| Target | Installation and status |
+|---|---|
+| **Story Mode (Legacy)** | Use `Install GTAxSkate.cmd` as described below; this is the playable released mod |
+| **FiveM (experimental)** | Separate `Install GTAxSkate FiveM.cmd` in development source; installs server rules only, skating adapter still pending |
+| **Existing co-op mod** | Separate compatibility target; no confirmed co-op release yet |
+
+For FiveM client download, txAdmin/server setup, resource installation and
+administrator settings, follow the [FiveM and co-op guide](fivem/README.md).
+It documents unrestricted, selected, bounded and fully server-locked settings.
+Do not install the Story Mode ASIs as a FiveM resource.
+
+### Story Mode installer
 
 1. Download [GTAxSkate-Setup.zip](https://github.com/Manatros/GTAxSkate/releases/latest/download/GTAxSkate-Setup.zip)
    and unzip it anywhere (it carries the installer and every GTAxSkate program).
@@ -112,22 +125,30 @@ and GTAxSkate's ready builds. No OpenIV, CodeWalker, Rust or Visual Studio neede
 It finds GTA V by itself, asks for your Skate 3 disc or folder, and shows a list of the parts with
 tick boxes: board shop, Skate 3 music, keyboard and mouse, GTA-style camera, skateable cars, GPS and
 skate parks, stamina, people surviving and a limp after hard bails (the board in hand as a melee weapon is optional).
-Untick what you don't want (it is remembered; `-Choose` asks again, `-Parts all` skips the question).
+Untick what you don't want and pick your stance (Regular or Goofy, as in SK8V's setup); it is remembered (`-Choose` asks again, `-Parts all` skips the question).
+Before it starts it checks GTA's version, Script Hook V, free space (about 8 GB) and write access, and starts again as administrator if the GTA folder needs it.
 Then it:
 
 | Step | |
 |---|---|
 | 1 tools | gets the SK8V release (Python, the rage tool) and vgmstream |
-| 2 sk8v | runs SK8V's own setup: Skate 3's data from your disc, installed into GTA V (10–30 minutes) |
+| 2 sk8v | runs SK8V's own setup: Skate 3's data from your disc, installed into GTA V (10–30 minutes; an SK8V already set up is reused) |
 | 3 bin | GTAxSkate's builds (SK8V with our additions, the board tool), from the package |
 | 4 boards | the board library from your Skate 3 and every part as a GTA model |
-| 5 music | Skate 3's soundtrack on Self Radio (not finding the songs yet; skipped if it fails) |
-| 6 install | our SK8V build over SK8V's, our settings on (yours are kept) |
+| 5 music | Skate 3's soundtrack as MP3s in User Music\Skate 3 for Self Radio (about a minute; skipped with a note if it fails) |
+| 6 install | our SK8V build over SK8V's (recorded in SK8V's install record, so SK8V's own uninstall and updates handle it), our settings on (yours are kept); then the setup's leftovers go |
 
-Every step is remembered: if anything stops it, run it again and it goes on where it stopped.
+Every step is remembered: if anything stops it, run it again and it goes on where it stopped. If it stops, the reason is in red at the bottom; `build\install\install.log` has everything for a bug report.
+Music is optional: a missing disc on a resumed install skips the soundtrack and
+finishes the mod installation. To retry the music, run again with your Skate 3 disc or folder.
 `scripts\install.ps1 -Redo <step>` runs a step again (for example `-Redo boards` after adding your own decks).
 
 Afterwards, in GTA V: **F10** opens the settings menu (on a controller: Back + LB).
+
+**Uninstall:** as SK8V's [uninstall](https://github.com/becaring/SK8V#uninstall) (GTA V closed): remove
+`SkateVLegacy.asi`, `SkateVRuntime.dll`, `SkateVLegacy.ini`, `SkateVLegacy.installed.json`, the `SK8V\`
+folder (`GTAxSkate\` for installs before v0.5.4) and `update\x64\dlcpacks\skatev\`; the soundtrack is in
+`Documents\Rockstar Games\GTA V\User Music\Skate 3`.
 
 ## Layout
 
@@ -179,3 +200,11 @@ mod does not change GTA V's own archives and works in **story mode only**: do no
 ## License
 
 Apache License 2.0 (see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE)).
+
+### Play presets (F10 > Presets)
+
+- **GTA (WIP):** placeholder for future LS Skate animation and integration. Shows an explanation and changes no settings; LS Skate is not integrated.
+- **Skate:** SK8V camera, Normal difficulty, standard pop/push, Hall of Meat and trick analyzer.
+- **RP:** near camera, Hardcore difficulty, standard pop/push, nonlethal pedestrian collisions, no ped launch, car dents or car pushing, injuries/stamina on, shooting while riding and HUD hints/analyzer/HoM off. This is a story-mode settings profile, not FiveM support.
+
+Presets apply on Enter and save immediately. They replace only their listed settings; custom boards, key bindings, audio and other tuning remain yours. All options remain available in their categories; uncommon physics tuning, board placement and diagnostics are under **Advanced**. With SK8V loaded, the legacy SkateGTA options overlay no longer handles F10.

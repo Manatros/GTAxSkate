@@ -2,24 +2,45 @@
 
 All notable changes, newest first. Versions follow [semantic versioning](https://semver.org/):
 a new minor version for each state confirmed in a game test, a patch version for fixes.
-Each version is a tag on GitHub; `main` holds the newest confirmed one, `dev` the work in progress.
+The v0.5.4 GitHub release exists, but its asset contents and identity have not been independently
+verified. The build described below has not been confirmed in an in-game test; publication does
+not imply that confirmation.
 
-## Unreleased (`dev`)
+## Unreleased - FiveM rules groundwork, 2026-10-14
 
-GTAxSkate now builds on **SK8V** (1.1.5): SK8V does the skating, GTAxSkate adds what it does not
-have yet, each part also offered to SK8V as a pull request. Not yet confirmed in a game test.
+- Separate experimental FiveM rules resource and installer; no skating adapter yet. Server modes: all, selected, explicit ranges, fully locked. Server validation covers individual edits and atomic preset requests.
+- FiveM client/txAdmin/server setup guide, administrator examples, existing SK8M reuse and separate co-op target. Future bases use versioned adapters; arbitrary future compatibility is not promised.
+- Rule/server integration tests and isolated installer checks, added to CI. Existing Story Mode installer and gameplay binaries unchanged.
+- F10 categories/Advanced and GTA (WIP), Skate and RP presets from the preceding local round remain awaiting an in-game test.
 
+## Unreleased — installer QA, 2026-10-13
+
+- Optional soundtrack setup now continues when the disc is absent on a resumed install.
+- The installer pins its bundled Python environment to avoid interference from another Python/Conda installation.
+- Soundtrack migration protects MP3-named directories and manifest entries replaced by directories or links.
+- Added a repeatable Windows PowerShell 5.1 integration harness: 9 scenarios passed. Music tests: 8 passed; actual isolated conversion: 46 tracks. A real sandbox reinstall passed. These checks do not establish in-game behavior.
+
+## v0.5.4 (published; in-game status unconfirmed)
+
+GTAxSkate builds on **SK8V 1.1.8**: SK8V does the skating, GTAxSkate adds what it does not
+have yet, each part also offered to SK8V as a pull request. This version has not been confirmed
+in an in-game test.
+
+- **Skate 3's soundtrack**: the in-game iPod's 46 songs (`ipod.mpf`, each song put back together from its 30 parts) become MP3s for Self Radio; no ffmpeg or winget required (LAME is built in, vgmstream is used). The old step put ambience recordings there; they are replaced.
+- From a disc **ISO**, the files SK8V does not copy (the music) are read from the ISO.
+- Installer: asks your stance (Regular/Goofy) like SK8V's setup; checks free space; starts again as administrator when the GTA folder needs it; dialogs open in front; a plain message instead of a PowerShell error page; everything shown goes to `build\install\install.log`; works on older Windows 10 (TLS 1.2).
+- Works with SK8V instead of beside it: data in SK8V's own `SK8V` folder (an SK8V already set up is reused, nothing twice on disk); our two files are recorded in SK8V's install record, so SK8V's uninstall removes them and its updates replace them; setup leftovers are removed as SK8V's `--clean` does.
+- Script Hook V: another ASI loader than `dinput8.dll` is accepted (a note instead of a stop), an old Script Hook V gets a note.
+- Controller: Y with the board in hand near a vehicle stays GTA's "enter vehicle".
+- v0.5.3: the installer checks GTA's version, Script Hook V (needed, not downloaded: see What you need) and write access before SK8V's setup, and repeats SK8V's own error message when its setup fails (log in `build\install\sk8v-setup.log`).
 - v0.5.2: calmer third person camera (only walls pull it in, never under the ground, never closer than 1.6 m, slower swing); the board lit by the tunnel or room it is in while skating.
 - v0.5.1: fixed the script stopping after a long store visit (GTA's model registration is guarded); gentler cars (push and dent settings on F10 > Peds and vehicles); the deck's own grip as a griptape choice; smooth highlights on shiny paints.
 - Street prices by part (deck 45-95 $ … griptape 10-20 $); worn look from half wear; blows with the board wear it.
 - The board picked in the weapon wheel stays in hand: swing it, E or F gets on (`CarryBoard`).
-- A limp after hard bails (`Injuries`). M opens GTA's interaction menu while skating too.
+- A limp after hard bails (`Injuries`). M's GTA interaction menu while skating remains unresolved (B104).
 - Keyboard layouts: standard or Skate's (I J K L trick stick). First person looks the right way; the third person camera aims at chest height.
 - Griptape over the deck's rounded edge; matte, gloss and metallic paints clearly apart; Skate 3's own spec maps on the parts.
-- The SK8V Community Additions are no longer in the build.
 - **Installer: choose the parts** (tick boxes, remembered; `-Choose`, `-Parts all`).
-- **SK8V Community Additions 1.2.5** by MaybeJason included: AI skaters (off by default), skitch assist and towing,
-  car exit onto the board, the shoulder cat.
 - Third person camera follows the skater (or the board: `CameraFocus`), first person is the skater's eyes.
 - Keyboard: Tab and the mouse buttons for guns on the board; B held behind a car skitches; F on foot leaves at once.
 - Shop: GTA's help box at the boards on show (E), boards hang level behind the till; WASD/wheel turn and zoom.
