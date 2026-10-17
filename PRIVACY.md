@@ -42,9 +42,9 @@ Source paths must be remapped during compilation. A clean scan is a technical
 check, not proof that no personal information can exist.
 
 The 16 October 2026 audit found private path strings in historical release
-assets. Those releases must not be described as privacy-cleared. Remote binary
-fallback in the updated installer is disabled until a reviewed replacement is
-available. Earlier copies can remain outside this project's control.
+assets. Those releases must not be described as privacy-cleared. The installer's remote binary
+fallback fetches only the reviewed v0.6.0 release, pinned by tag and SHA-256
+digest. Earlier copies can remain outside this project's control.
 
 Current source fixes and documentation are not automatically present in an
 older downloaded installer. Verify the exact package and its checksums.

@@ -52,5 +52,9 @@ Assert ($text -notmatch 'Unblock-File') 'Installer still unblocks arbitrary file
 Assert ($text -notmatch 'releases/(latest|download/dev-build)/download/GTAxSkate-bin.zip') 'Moving remote binary fallback remains.'
 Assert ($text.Contains('Get-VerifiedArchive $Sk8vZip $zip $Sk8vSha256')) 'SK8V extraction bypasses verification.'
 Assert ($text.Contains('Get-VerifiedArchive $VgmstreamZip $zip $VgmstreamSha256')) 'vgmstream extraction bypasses verification.'
-Assert ($text.Contains('Remote GTAxSkate binaries are temporarily disabled')) 'Remote binary fallback is not closed.'
+# The remote binary fallback may only fetch a fixed, privacy-reviewed release tag.
+Assert ($text -match '(?m)^\$GtaxSkateRelease = ''v\d+\.\d+\.\d+''\r?$') 'Remote binaries are not pinned to a release tag.'
+Assert ($text.Contains('$GtaxSkateBinZip = "https://github.com/Manatros/GTAxSkate/releases/download/$GtaxSkateRelease/GTAxSkate-bin.zip"')) 'Remote binaries do not come from the pinned release.'
+Assert ($text -match '(?m)^\$GtaxSkateBinSha256 = ''[a-f0-9]{64}''\r?$') 'Remote binaries have no pinned SHA-256.'
+Assert ($text.Contains('Get-VerifiedArchive $GtaxSkateBinZip $binZip $GtaxSkateBinSha256')) 'Remote binary extraction bypasses verification.'
 Write-Host 'PASS: fresh download, verified cache, tampered cache/download, interrupted cleanup, invalid pin and installer integration.'

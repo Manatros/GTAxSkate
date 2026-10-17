@@ -1,12 +1,12 @@
 # GTAxSkate: Skate 3 skateboarding in GTA V (Legacy), keyboard, board shop and more for SK8V
 
-[![CI](https://github.com/Manatros/GTAxSkate/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/Manatros/GTAxSkate/actions/workflows/ci.yml)
+[![CI](https://github.com/Manatros/GTAxSkate/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Manatros/GTAxSkate/actions/workflows/ci.yml)
 
 **Multiplayer prototype - currently paused (known missing-board model):** [FiveM test page and downloads](https://github.com/Manatros/GTAxSkate/releases/tag/fivem-friends-test-20261014).
 Joining players need GTA V Legacy and [FiveM](https://fivem.net/); the server sends the skate resources automatically.
 See the [short joining guide](FIVEM-JOIN.md). The ZIP is for server hosts. The current prototype fails to load its board model; full animations, shops and F10 are not included. Singleplayer validation currently takes priority.
 
-**Current release: [v0.6.0](https://github.com/Manatros/GTAxSkate/releases/tag/v0.6.0)** � accepted in a Story Mode gameplay test on 17 October 2026, using SK8V 1.1.10. Known issue: board lighting indoors and in tunnels needs further work. Historical privacy-affected downloads remain withdrawn; see [privacy guidance](PRIVACY.md).
+**Current release: [v0.6.0](https://github.com/Manatros/GTAxSkate/releases/tag/v0.6.0)** — accepted in a Story Mode gameplay test on 17 October 2026, using SK8V 1.1.10. Known issue: board lighting indoors and in tunnels needs further work. Historical privacy-affected downloads remain withdrawn; see [privacy guidance](PRIVACY.md).
 
 **GTAxSkate** adds to **[SK8V](https://github.com/becaring/SK8V)** by becaring, the mod that runs
 the real **Skate 3** engine in **GTA V story mode**. SK8V does the skating (Skate's own physics,
@@ -21,7 +21,7 @@ is made from your own copies of the games.
 > **Status:** beta. Tested by its author on one PC; please report problems as an
 > [issue](https://github.com/Manatros/GTAxSkate/issues) with minimal redacted log excerpts from `%LOCALAPPDATA%\SkateV` (see [PRIVACY.md](PRIVACY.md)).
 > Every addition is also offered to SK8V itself (one branch per feature). `main` holds the released
-> version, `dev` the work in progress. See the [changelog](CHANGELOG.md).
+> version; test builds are published separately as pre-releases. See the [changelog](CHANGELOG.md).
 
 ## Project status and repository roles
 
@@ -38,7 +38,7 @@ The optional Python/RAGE board composition helper prepares exact shop selections
 | [GTAxSkate](https://github.com/Manatros/GTAxSkate) | Player installer, setup scripts, downloads, issue tracking and package documentation. |
 | [SK8V development fork](https://github.com/Manatros/SK8V/tree/skatemods) | Modified SK8V source, contribution branches and independently adoptable package patches. Upstream attribution remains intact. |
 | `main` / v0.6.0 | Accepted Story build on SK8V 1.1.10; exact tested host/runtime, known indoor/tunnel board-lighting issue. |
-| `dev` / future work | Further changes require their own tests; experimental multiplayer support remains separate. |
+| Test builds / future work | Pre-releases with their own tests before they reach `main`; experimental multiplayer support remains separate. |
 
 [Report a bug](https://github.com/Manatros/GTAxSkate/issues/new/choose) ·
 [Known issues and support](SUPPORT.md) · [Contributing](CONTRIBUTING.md) ·
@@ -166,12 +166,12 @@ Do not install the Story Mode ASIs as a FiveM resource.
 
 ### Story Mode installer
 
-1. Download [GTAxSkate-Setup.zip](https://github.com/Manatros/GTAxSkate/releases/download/dev-build/GTAxSkate-Setup.zip)
+1. Download [GTAxSkate-Setup.zip](https://github.com/Manatros/GTAxSkate/releases/latest/download/GTAxSkate-Setup.zip) (the latest release)
    and unzip it anywhere (it carries the installer and every GTAxSkate program).
 2. Close GTA V.
 3. Double-click **`Install GTAxSkate.cmd`**.
 
-(From this repository's source instead: the same `Install GTAxSkate.cmd`; it downloads the programs.)
+(From this repository's source instead: the same `Install GTAxSkate.cmd`; it downloads the accepted release's programs and checks their SHA-256 digest.)
 
 It finds GTA V by itself, asks for your Skate 3 disc or folder, and shows a list of the parts with
 tick boxes: board shop, Skate 3 music, keyboard and mouse, GTA-style camera, skateable cars, GPS and

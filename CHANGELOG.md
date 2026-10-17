@@ -2,7 +2,13 @@
 
 All notable changes, newest first. Versions follow [semantic versioning](https://semver.org/):
 a new minor version for each state confirmed in a game test, a patch version for fixes.
-## v0.6.0 — accepted Story baseline, 17 October 2026
+
+## Unreleased (main)
+
+- Installing from a source checkout works again: step 3 downloads the v0.6.0 programs (`GTAxSkate-bin.zip`) and checks their pinned SHA-256 before use. The release binaries are unchanged.
+- README: the Setup download link points to the latest release (the old `dev-build` link was broken). Issue templates link to `main`. NOTICE and the test plan name SK8V 1.1.10.
+
+## v0.6.0 â€” accepted Story baseline, 17 October 2026
 
 - Promotes the exact host/runtime pair from the maintainer's accepted `test-presets-20261016-a17823f` gameplay session. SK8V 1.1.10 is the base; no post-test skating code changes or binary rebuilds.
 - Complete 120-setting SK8V/RP/Developer profiles, isolated User/manual settings and explicit Custom save/restore. RP suppresses audited Skate HUD elements live; personal keyboard bindings and purchased boards remain independent.

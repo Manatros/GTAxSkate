@@ -67,6 +67,11 @@ $Sk8vZip = "https://github.com/becaring/SK8V/releases/download/$Sk8vTag/SK8V-$Sk
 $Sk8vSha256 = '12020c3335d1329007c3988105c76b140bcee5c1dd03dfbed03a168ddd054d74'
 $VgmstreamZip = 'https://github.com/vgmstream/vgmstream/releases/download/r2117/vgmstream-win64.zip'
 $VgmstreamSha256 = '6c4a8a3813864fefed081bbd337dbc0ad93bf88e0b92f5db98d7ab258b22dc6c'
+# GTAxSkate's own builds for a source checkout without a bin folder: the
+# game-accepted release. Update tag and digest together with each release.
+$GtaxSkateRelease = 'v0.6.0'
+$GtaxSkateBinZip = "https://github.com/Manatros/GTAxSkate/releases/download/$GtaxSkateRelease/GTAxSkate-bin.zip"
+$GtaxSkateBinSha256 = 'ee2db3fc355eb7c8479bdaeeb486a3584eb388d498573301dfd20b5d6ac647fd'
 $GtaBuild = '1.0.3889.0'
 $Steps = 'tools', 'sk8v', 'bin', 'boards', 'music', 'install'
 
@@ -418,7 +423,10 @@ if (-not (Is-Done 'bin') -or $newer) {
         # The complete package: the builds came in its bin folder.
         Copy-Item (Join-Path $shipped '*') $bin -Recurse -Force
     } else {
-        Fail 'Remote GTAxSkate binaries are temporarily disabled pending a privacy-reviewed release. Use a reviewed complete package with its bin folder, or build the host/runtime and tools locally.'
+        # A source checkout: the accepted release's builds, checked against the pinned digest.
+        $binZip = Join-Path $build "GTAxSkate-bin-$GtaxSkateRelease.zip"
+        Get-VerifiedArchive $GtaxSkateBinZip $binZip $GtaxSkateBinSha256
+        Expand-Archive -LiteralPath $binZip -DestinationPath $bin -Force
     }
     foreach ($f in 'SkateVLegacy.asi', 'SkateVRuntime.dll', 'skate-ped.exe', 'prepare-board-parts.py', 'skate-music.exe') {
         if (-not (Test-Path -LiteralPath (Join-Path $bin $f))) { Fail "The GTAxSkate builds have no $f." }

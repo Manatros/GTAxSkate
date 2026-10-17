@@ -35,7 +35,12 @@ if (-not $vgm) {
     Write-Host '  fetching vgmstream...' -ForegroundColor DarkGray
     $zip = Join-Path $tools 'vgmstream-win64.zip'
     try {
-        Invoke-WebRequest 'https://github.com/vgmstream/vgmstream/releases/latest/download/vgmstream-win64.zip' -OutFile $zip -UseBasicParsing
+        # Pinned release and hash, the same as install.ps1's.
+        Invoke-WebRequest 'https://github.com/vgmstream/vgmstream/releases/download/r2117/vgmstream-win64.zip' -OutFile $zip -UseBasicParsing
+        if ((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash -ne '6c4a8a3813864fefed081bbd337dbc0ad93bf88e0b92f5db98d7ab258b22dc6c') {
+            Remove-Item -LiteralPath $zip
+            throw 'vgmstream-win64.zip does not match the expected SHA-256.'
+        }
         Expand-Archive $zip (Join-Path $tools 'vgmstream') -Force
         Remove-Item $zip
     } catch {
