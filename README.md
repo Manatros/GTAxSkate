@@ -46,9 +46,9 @@ The optional Python/RAGE board composition helper prepares exact shop selections
 
 ## Download
 
-Download [v0.6.0](https://github.com/Manatros/GTAxSkate/releases/tag/v0.6.0): **GTAxSkate-Setup.zip** for the full installer, or **GTAxSkate-dropin-for-SK8V-1.1.10.zip** for an existing matching SK8V installation. Always replace both host and runtime together. Release assets include notices and checksums; the full tool bundle includes corresponding source for GPL tools. The source installer accepts shipped/local binaries; use the Setup ZIP for the complete package.
+Download [v0.6.0](https://github.com/Manatros/GTAxSkate/releases/tag/v0.6.0): **GTAxSkate-Setup.zip** for the full installer, or **GTAxSkate-dropin-for-SK8V-1.1.10.zip** for an existing matching SK8V installation. Always replace both host and runtime together. Release assets include notices and checksums; the full tool bundle includes corresponding source for GPL tools. The Setup ZIP is the complete package; installing from this repository's source downloads the same accepted programs and checks their SHA-256 digest.
 
-The separate [FiveM test release](https://github.com/Manatros/GTAxSkate/releases/tag/fivem-friends-test-20261014) remains a paused historical prototype with a missing-board model. Its English documentation update changes no code or gameplay.
+The separate [FiveM test release](https://github.com/Manatros/GTAxSkate/releases/tag/fivem-friends-test-20261014) remains a paused historical prototype with a missing-board model.
 
 ## Features (on top of SK8V)
 
@@ -126,7 +126,7 @@ bindings** to return. The first preset change also keeps `SkateVKeys.before-pres
 so customized hybrids work; reserved GTA/system keys are rejected. Install the
 matching host/runtime pair; mixed versions are unsupported for these extensions.
 
-Controller input follows SK8V; keyboard/mouse support is provided by this fork. Controller camera/trick-stick separation is tracked in [issue #1](https://github.com/Manatros/GTAxSkate/issues/1); do not assume controller regression passed until the next test run.
+Controller input follows SK8V; keyboard/mouse support is provided by this fork. Controller camera/trick-stick separation is tracked in [issue #1](https://github.com/Manatros/GTAxSkate/issues/1); the v0.6.0 acceptance test did not separately cover a controller, so the issue stays open until a controller test passes.
 
 ## Known issues
 
@@ -184,7 +184,7 @@ Then it:
 |---|---|
 | 1 tools | gets the SK8V release (Python, the rage tool) and vgmstream |
 | 2 sk8v | runs SK8V's own setup: Skate 3's data from your disc, installed into GTA V (10–30 minutes; an SK8V already set up is reused) |
-| 3 bin | GTAxSkate's builds (SK8V with our additions, the board tool), from the package |
+| 3 bin | GTAxSkate's builds (SK8V with our additions, the board tool): from the Setup ZIP, or downloaded from the accepted release and checked against its pinned SHA-256 |
 | 4 boards | the board library from your Skate 3 and every part as a GTA model |
 | 5 music | Skate 3's soundtrack as MP3s in User Music\Skate 3 for Self Radio (about a minute; skipped with a note if it fails) |
 | 6 install | our SK8V build over SK8V's (recorded in SK8V's install record, so SK8V's own uninstall and updates handle it), our settings on (yours are kept); then the setup's leftovers go |
@@ -248,10 +248,6 @@ of real skate companies appear only as the names Skate 3 itself gives its parts.
 is made from your own, legally obtained copies of Skate 3 and GTA V on your PC and stays there. The
 mod does not change GTA V's own archives and works in **story mode only**: do not use it online.
 
-## License
-
-Apache License 2.0 (see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE)).
-
 ### Play presets (F10 > Presets)
 
 - **SK8V:** restores every exposed setting to the current base defaults (Easy difficulty, original High Skate camera, standard multipliers), with documented package defaults for extension features.
@@ -267,11 +263,11 @@ Personal keyboard bindings remain independent (F10 > Keyboard keys has its own s
 
 ### Save-reload test fix (2026-10-14)
 
-The development host guards duplicate graphics callback registration when loading a Story save. Cinematic HUD updates run once per frame. See [independent SK8V adoption notes](SK8V-SAVE-RELOAD-INTEGRATION.md) and [test instructions](test-build/TESTPLAN.txt). The original duplicate-registration fatal survived two recorded reloads after its fix. The cumulative Story build was accepted on 17 October 2026; the historical fix-specific notes retain their original evidence limits. Standalone FiveM rules and the separate experimental friends adapter are different packages.
+The host guards duplicate graphics callback registration when loading a Story save. Cinematic HUD updates run once per frame. See [independent SK8V adoption notes](SK8V-SAVE-RELOAD-INTEGRATION.md) and [test instructions](test-build/TESTPLAN.txt). The original duplicate-registration fatal survived two recorded reloads after its fix. The cumulative Story build was accepted on 17 October 2026; the historical fix-specific notes retain their original evidence limits. Standalone FiveM rules and the separate experimental friends adapter are different packages.
 
 ### Reload, camera and Developer follow-up
 
-The development host reuses its process runtime after a save load and resends the
+The host reuses its process runtime after a save load and resends the
 HUD viewport. This keeps the persistent sound feeder attached to the same runtime.
 Scripted follow/cinematic cameras now respect nearby obstacle hits immediately;
 normal GTA camera behavior is unchanged. F10 > Developer shows the SK8V source
@@ -291,10 +287,14 @@ in FiveM, and no account/key/firewall/server startup is automated here.
 
 Developer test settings: Story F10 > Presets > Developer enables input/debug HUD and verbose logs. Developer > Disable diagnostics turns those extras off. The separate FiveM ZIP includes an admin Developer policy and skatedev; see its test guide.
 
-Performance test candidate: verbose frame timings no longer run the expensive
-thread CPU scan automatically. The separate **Thread CPU scan** diagnostic is
-off by default and can itself cause stutter. Game confirmation is pending.
+Performance: verbose frame timings no longer run the expensive thread CPU scan
+automatically. The separate **Thread CPU scan** diagnostic is off by default and
+can itself cause stutter. Switching presets can still pause for about 2 seconds.
 
 ### Privacy and safe support
 
 Read [PRIVACY.md](PRIVACY.md) before sharing diagnostics. Post only small, redacted log excerpts: remove personal paths, names, addresses, tokens and server keys. Public GitHub issues and release downloads are public. See [SECURITY.md](SECURITY.md) for sensitive reports.
+
+## License
+
+Apache License 2.0 (see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE)).
