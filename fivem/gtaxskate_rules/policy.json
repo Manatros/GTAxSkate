@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "mode": "locked",
+  "defaults": {
+    "Difficulty": "Hardcore",
+    "CameraView": "Near",
+    "Pop": 1,
+    "PushSpeed": 1,
+    "BoardAim": false,
+    "PedsSurvive": true,
+    "PedLaunch": false,
+    "VehicleDamage": false,
+    "VehiclePush": 0
+  },
+  "rules": {
+    "CameraView": { "adjustable": true },
+    "Pop": { "adjustable": true, "min": 0.8, "max": 1.2 },
+    "PushSpeed": { "adjustable": true, "min": 0.8, "max": 1.1 },
+    "Difficulty": { "adjustable": true, "values": ["Normal", "Hardcore"] }
+  }
+}

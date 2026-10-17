@@ -1,0 +1,12 @@
+diff --git a/host/src/main.cpp b/host/src/main.cpp
+index 3bc3ac1..b23c67a 100644
+--- a/host/src/main.cpp
++++ b/host/src/main.cpp
+@@ -3654,7 +3654,6 @@ void ScriptMain() {
+         const bool filming = s.state == LifeState::Skating && s.action != 0;
+         if (filming) Call<void>(gta::HIDE_HUD_AND_RADAR_THIS_FRAME);
+         hudoverlay::Tick(s.state == LifeState::Skating && !filming);
+-        hudoverlay::Tick(s.state == LifeState::Skating);
+         injuries::Tick(Call<Ped>(gta::PLAYER_PED_ID), s.state != LifeState::Skating && Call<BOOL>(gta::IS_PED_ON_FOOT, Call<Ped>(gta::PLAYER_PED_ID)),
+                        cfg.injuries, Log);
+         Lap(kPartHud);

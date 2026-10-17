@@ -1,7 +1,7 @@
 GTAxSkate
 Copyright 2026 Manatros
 
-Licensed under the Apache License, Version 2.0 (see LICENSE).
+The GTAxSkate integration is licensed under Apache License 2.0 (see LICENSE). Component-specific terms are preserved: gta/skate-ped and gta/skate-music declare GPL-3.0-or-later. Binary distributions include their corresponding source and GPL text; see COMPONENT-LICENSES.md. Third-party terms remain applicable.
 
 This project includes code from SK8V, https://github.com/becaring/SK8V,
 Copyright 2026 becaring, Apache License 2.0:
@@ -12,7 +12,8 @@ Copyright 2026 becaring, Apache License 2.0:
   LS-Skate-LiveCollision.
 
 The GTAxSkate-bin.zip release builds (SkateVLegacy.asi, SkateVRuntime.dll,
-prepare-board-parts.py, _common.py) are SK8V, modified: SK8V 1.1.8 with GTAxSkate's additions
+prepare-board-parts.py, _common.py) are SK8V, modified: published v0.5.4 uses
+SK8V 1.1.8; the current development candidate uses SK8V 1.1.9 with GTAxSkate's additions
 (keyboard and mouse, board shop, camera views, trainer tuning and stamina, map helpers, skate radio, gentle peds, vehicle shapes), built
 from https://github.com/Manatros/SK8V (branch skatemods). The changed files say what was added.
 

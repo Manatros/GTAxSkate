@@ -1,0 +1,160 @@
+diff --git a/host/src/board_native.cpp b/host/src/board_native.cpp
+index 514aa87..f8c29bb 100644
+--- a/host/src/board_native.cpp
++++ b/host/src/board_native.cpp
+@@ -21,12 +21,26 @@ std::uint32_t g_ydrId=~0u,g_ytypId=~0u;
+ ULONGLONG g_begin=0;
+ void Log(const char* s){if(g_log)g_log(s);}
+ bool Pose(const SvBoardPose& pose) { return PoseObject(g_object,pose,g_cache,g_log); }
++// One bounded summary for the whole board renderer per five seconds. No
++// allocation or extra matrix reads while Developer verbose logging is off.
++ULONGLONG g_diagnosticLogAt=0;
++bool ReadDiagnosticRows(std::uintptr_t address,const int* indices,M (&out)[7]) {
++    __try {
++        for(int i=0;i<7;++i) {
++            out[i]=posemath::Identity();
++            const auto* source=reinterpret_cast<const float*>(address)+indices[i]*16;
++            for(int r=0;r<4;++r)for(int c=0;c<3;++c)out[i].r[r][c]=source[r*4+c];
++        }
++        return true;
++    } __except(EXCEPTION_EXECUTE_HANDLER){return false;}
++}
+ }
+ bool PoseObject(int object,const SvBoardPose& pose,PoseCache& cache,void (*log)(const char*)) {
+     probe::SkeletonInfo s; const char* why=nullptr;
+     if(!probe::ResolvePedSkeleton(object,s,why)||s.count!=7){if(!cache.reported&&log){char line[256];std::snprintf(line,sizeof(line),"native board: skeleton unavailable (%s, bones=%d); object hidden",why?why:"expected seven bones",s.count);log(line);cache.reported=true;}return false;}
+     if(s.skeleton!=cache.skeleton) {
+         cache.skeleton=0;
++        cache.diagnostic=diagnostics::State{};
+         for(int i=0;i<7;++i) { cache.indices[i]=probe::BoneIndexByTag(s,static_cast<std::uint16_t>(i)); if(cache.indices[i]<0||cache.indices[i]>=7)return false; }
+         cache.skeleton=s.skeleton;
+     }
+@@ -39,10 +53,31 @@ bool PoseObject(int object,const SvBoardPose& pose,PoseCache& cache,void (*log)(
+         M world[7],objects[7],locals[7],entity;
+         std::memcpy(world,pose.world,sizeof(world)); std::memcpy(&entity,reinterpret_cast<void*>(s.parentMtx),64);
+         if(!detail::Convert(world,entity,objects,locals))return false;
++        const bool verbose=util::g_verbose.load(std::memory_order_relaxed);
++        const auto now=verbose?GetTickCount64():0;
++        bool sample=diagnostics::ShouldSample(cache.diagnostic,verbose,pose.tick,now);
++        M before[7],after[7],objectsAfter[7];
++        if(sample)sample=ReadDiagnosticRows(s.objectMtx,indices,before);
+         for(int i=0;i<7;++i) for(int r=0;r<4;++r) for(int c=0;c<3;++c) {
+             reinterpret_cast<float*>(s.objectMtx)[indices[i]*16+r*4+c]=locals[i].r[r][c];
+             reinterpret_cast<float*>(s.globalMtx)[indices[i]*16+r*4+c]=objects[i].r[r][c];
+         }
++        if(sample&&ReadDiagnosticRows(s.objectMtx,indices,after)&&ReadDiagnosticRows(s.globalMtx,indices,objectsAfter)) {
++            auto& d=cache.diagnostic;
++            diagnostics::Sample(d,pose.tick,now,locals,before,after,objects,objectsAfter);
++            if(log&&now-g_diagnosticLogAt>=5000) {
++                g_diagnosticLogAt=now;
++                char line[768];
++                std::snprintf(line,sizeof(line),
++                    "board anim diagnostic: object %d tick %llu samples %u; parent-local motion deg TF/TB/WLF/WLB/WRF/WRB [%.3f %.3f %.3f %.3f %.3f %.3f]; before-vs-prior-written deg [%.3f %.3f %.3f %.3f %.3f %.3f]; immediate readback rotation max error local %.6g object %.6g; observations only, not render/overwrite proof",
++                    object,static_cast<unsigned long long>(pose.tick),d.samples,
++                    d.motion[0],d.motion[1],d.motion[2],d.motion[3],d.motion[4],d.motion[5],
++                    d.beforeWritten[0],d.beforeWritten[1],d.beforeWritten[2],d.beforeWritten[3],d.beforeWritten[4],d.beforeWritten[5],
++                    d.localError,d.objectError);
++                log(line);diagnostics::ClearWindow(d);
++            }
++        }
++        if(verbose)diagnostics::Written(cache.diagnostic,locals);
+         return true;
+     } __except(EXCEPTION_EXECUTE_HANDLER){return false;}
+ }
+diff --git a/host/src/board_native.h b/host/src/board_native.h
+index 2f339a6..4a42cc8 100644
+--- a/host/src/board_native.h
++++ b/host/src/board_native.h
+@@ -2,6 +2,7 @@
+ #include <cstdint>
+ #include <string>
+ #include "skatev_runtime.h"
++#include "board_pose_diagnostics.h"
+ namespace boardnative {
+ // Call on the ScriptHookV script thread, after the Legacy Story Mode guard.
+ bool Start(const std::wstring& iniPath,const std::wstring& dataRoot,void (*log)(const char*));
+@@ -13,6 +14,6 @@ void Stop();
+ int Entity(); // Exclude this presentation-only entity from ExternalQueries.
+ // Writes the seven board bones of `object` (a drawable with the native board's
+ // skeleton) from `pose`. `cache` keeps its bone indices; one per object.
+-struct PoseCache { std::uintptr_t skeleton = 0; int indices[7] = {}; bool reported = false; };
++struct PoseCache { std::uintptr_t skeleton = 0; int indices[7] = {}; bool reported = false; diagnostics::State diagnostic; };
+ bool PoseObject(int object, const SvBoardPose& pose, PoseCache& cache, void (*log)(const char*));
+ }
+diff --git a/host/src/board_pose_diagnostics.h b/host/src/board_pose_diagnostics.h
+new file mode 100644
+index 0000000..422b491
+--- /dev/null
++++ b/host/src/board_pose_diagnostics.h
+@@ -0,0 +1,71 @@
++#pragma once
++// Developer observations only: no pose correction, allocation or game access.
++#include "pose_math.h"
++#include <algorithm>
++#include <cmath>
++#include <cstdint>
++
++namespace boardnative::diagnostics {
++using posemath::M;
++struct State {
++    bool active = false, previous = false, priorWrite = false;
++    std::uint64_t lastMs = 0, lastTick = 0;
++    unsigned samples = 0;
++    M written[7]{}, sampled[7]{};
++    float motion[6]{}, beforeWritten[6]{};
++    float localError = 0, objectError = 0;
++};
++inline bool ShouldSample(State& s, bool enabled, std::uint64_t tick, std::uint64_t now) {
++    if (!enabled) { s.active = false; return false; }
++    if (!s.active) { s = State{}; s.active = true; }
++    if (s.previous && (tick == s.lastTick || now - s.lastMs < 250)) return false;
++    return true;
++}
++inline float RotationDegrees(const M& a, const M& b) {
++    float trace = 0;
++    for (int r = 0; r < 3; ++r) {
++        float aa = 0, bb = 0, ab = 0;
++        for (int c = 0; c < 3; ++c) { aa += a.r[r][c] * a.r[r][c]; bb += b.r[r][c] * b.r[r][c]; ab += a.r[r][c] * b.r[r][c]; }
++        if (!(aa > 1e-12f && bb > 1e-12f) || !std::isfinite(ab)) return 180.0f;
++        trace += ab / std::sqrt(aa * bb);
++    }
++    return std::acos(std::clamp((trace - 1) * 0.5f, -1.0f, 1.0f)) * 57.2957795f;
++}
++inline float RotationElementError(const M& a, const M& b) {
++    float error = 0;
++    for (int r = 0; r < 3; ++r) for (int c = 0; c < 3; ++c) {
++        const float delta = std::fabs(a.r[r][c] - b.r[r][c]);
++        if (!std::isfinite(delta)) return 1e9f;
++        error = std::max(error, delta);
++    }
++    return error;
++}
++// intended and observed locals are parent-relative, so board/world motion is
++// not counted as wheel or truck motion. beforeWritten is an observation, not
++// evidence identifying which game system changed the matrices between calls.
++inline void Sample(State& s, std::uint64_t tick, std::uint64_t now,
++                   const M (&intended)[7], const M (&before)[7], const M (&after)[7],
++                   const M (&objects)[7], const M (&objectsAfter)[7]) {
++    for (int i = 1; i < 7; ++i) {
++        if (s.previous) {
++            s.motion[i - 1] = std::max(s.motion[i - 1], RotationDegrees(intended[i], s.sampled[i]));
++        }
++        if (s.priorWrite) s.beforeWritten[i - 1] = std::max(s.beforeWritten[i - 1], RotationDegrees(before[i], s.written[i]));
++        s.localError = std::max(s.localError, RotationElementError(intended[i], after[i]));
++        s.objectError = std::max(s.objectError, RotationElementError(objects[i], objectsAfter[i]));
++    }
++    for (int i = 0; i < 7; ++i) s.sampled[i] = intended[i];
++    s.previous = true; s.lastTick = tick; s.lastMs = now;
++    if (s.samples != UINT32_MAX) ++s.samples;
++}
++// Keep the actual last write separate from the slower motion sampling: using
++// the last sampled pose here would mislabel ordinary animation as a change.
++inline void Written(State& s, const M (&intended)[7]) {
++    for (int i = 0; i < 7; ++i) s.written[i] = intended[i];
++    s.priorWrite = true;
++}
++inline void ClearWindow(State& s) {
++    for (int i = 0; i < 6; ++i) s.motion[i] = s.beforeWritten[i] = 0;
++    s.samples = 0; s.localError = s.objectError = 0;
++}
++} // namespace boardnative::diagnostics

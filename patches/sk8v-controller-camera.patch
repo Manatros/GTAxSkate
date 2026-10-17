@@ -1,0 +1,75 @@
+diff --git a/host/src/main.cpp b/host/src/main.cpp
+--- a/host/src/main.cpp
++++ b/host/src/main.cpp
+@@ -1665,8 +1665,32 @@
+ std::uint8_t g_controlIdle[360]{};
+ constexpr std::uint8_t kControlHoldFrames = 10;
+ 
++// ReadPad resolves the active device, including native PlayStation/XInput.
++// A disabled GTA axis still reports controller trick input; it is not a
++// mouse delta merely because a script camera wants to look around.
++bool SkateMouseLook() {
++    return !g_controller && (g_boardArmed || !g_runtime.KeyboardMouseTricks()) &&
++           Call<BOOL>(gta::IS_USING_KEYBOARD_AND_MOUSE, 0);
++}
++
++void ReadSkateCameraLook(float& x, float& y) {
++    x = y = 0.0f;
++    if (!SkateMouseLook()) return;
++    x = Call<float>(gta::GET_DISABLED_CONTROL_NORMAL, 0, 1);
++    y = Call<float>(gta::GET_DISABLED_CONTROL_NORMAL, 0, 2);
++}
++
++void DisableControllerCameraLook(bool aiming) {
++    if (!g_controller || aiming || g_weaponWheel) return;
++    // These two axes must stay suppressed even after a long idle interval.
++    // Native aiming and the weapon wheel explicitly retain the right stick.
++    Call<void>(gta::DISABLE_CONTROL_ACTION, 0, 1, 1);
++    Call<void>(gta::DISABLE_CONTROL_ACTION, 0, 2, 1);
++}
++
+ void DisableSkateControls(std::uint16_t buttons, bool aiming) {
+     if (menu::IsOpen()) return; // the open menu disables every control but pause
++    const bool mouseLook = SkateMouseLook();
+     bool skip[360]{};
+     for (int c = 0; c < 360; ++c) {
+         // INPUT_WEAPON_WHEEL_UD/LR/NEXT/PREV, SELECT_NEXT/PREV_WEAPON, SELECT_WEAPON
+@@ -1675,7 +1699,7 @@
+                   c == 199 || c == 200 || c == 170 || c == 288 || c == 289 || (c >= 296 && c <= 328) || c == 349 ||
+                   (c == 19 && !(buttons & 0x0100)) ||
+                   (c == 244 && g_keyboard && !g_controller) || // keyboard and mouse: M stays GTA's interaction menu
+-                  ((g_gtaView || g_orbitOn) && (c == 1 || c == 2) && Call<BOOL>(gta::IS_USING_KEYBOARD_AND_MOUSE, 0)) ||
++                  ((g_gtaView || g_orbitOn) && (c == 1 || c == 2) && mouseLook) ||
+                   (aiming && (c == 1 || c == 2 || c == 24 || c == 25 || c == 45 || (c >= 270 && c <= 273) || (c >= 290 && c <= 295)));
+         if (skip[c]) continue;
+         // GTA's value this frame whether or not it is disabled (scripts run after the input update).
+@@ -1685,6 +1709,7 @@
+     Lap(kPartControlsRead);
+     for (int c = 0; c < 360; ++c)
+         if (!skip[c] && g_controlIdle[c] <= kControlHoldFrames) Call<void>(gta::DISABLE_CONTROL_ACTION, 0, c, 0);
++    DisableControllerCameraLook(aiming);
+ }
+ 
+ // Radio while skating (GTA's mobile radio): +1 next station, -1 previous,
+@@ -2365,8 +2390,9 @@
+     const float travel = speed > 1.5f ? std::atan2(-o.velocity.x, o.velocity.y) * 57.29578f : yaw;
+     // Swings in behind the travel slowly: it stays where it is a while.
+     yaw += wrap(travel - yaw) * ease(speed > 1.5f ? 1.1f : 0.0f);
+-    if (Call<BOOL>(gta::IS_USING_KEYBOARD_AND_MOUSE, 0)) {
+-        const float mx = Call<float>(gta::GET_DISABLED_CONTROL_NORMAL, 0, 1), my = Call<float>(gta::GET_DISABLED_CONTROL_NORMAL, 0, 2);
++    {
++        float mx = 0.0f, my = 0.0f;
++        ReadSkateCameraLook(mx, my);
+         if (std::fabs(mx) > 0.0005f || std::fabs(my) > 0.0005f) {
+             userYaw = wrap(userYaw - mx * 9.0f);
+             userPitch = std::clamp(userPitch - my * 6.0f, -50.0f, 35.0f);
+@@ -2426,7 +2452,8 @@
+ void HeadCamera(Session& s, const SvOutput& o) {
+     static float yaw = 0.0f, pitch = 0.0f;
+     static ULONGLONG lastLook = 0;
+-    const float mx = Call<float>(gta::GET_DISABLED_CONTROL_NORMAL, 0, 1), my = Call<float>(gta::GET_DISABLED_CONTROL_NORMAL, 0, 2);
++    float mx = 0.0f, my = 0.0f;
++    ReadSkateCameraLook(mx, my);
+     const ULONGLONG now = GetTickCount64();
+     if (std::fabs(mx) > 0.001f || std::fabs(my) > 0.001f) {
+         yaw = std::clamp(yaw - mx * 8.0f, -150.0f, 150.0f);

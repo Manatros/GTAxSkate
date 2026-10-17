@@ -112,7 +112,7 @@ fn grain(stored: &Texture, region: (Vec2, Vec2)) -> Vec<f32> {
     }
     // Skate's grain is a 512 px deck texture's: blurred at this size. Real
     // grip is grit about half a millimetre across (a texel here, 2048 along
-    // 0.8 m): laid over it, the bolt heads left bare (the maintainer, video 10-10
+    // 0.8 m): laid over it, the bolt heads left bare (the tester, video 10-10
     // 09-43 07:33: "zu low resolution").
     for y in 0..h {
         for x in 0..w {
@@ -285,7 +285,7 @@ pub fn write_grips(dir: &std::path::Path, library: &Library, defaults: &Board, f
             let name = grips::grip_model(deck.as_ref(), &grip.id);
             // Compressed: 2048 px uncompressed would add ~300 MB to the pack.
             // Its grit as a normal map and a dull sheen: flat it looked
-            // painted on (the maintainer, video 10-10 10-22 07:08).
+            // painted on (the tester, video 10-10 10-22 07:08).
             let normals = [Some(bumps.clone())];
             let (lo, hi) = crate::weapon::write_model_lit(dir, &name, &surface, std::slice::from_ref(&texture), false, GRIP_SHINE, &normals)?;
             out.push((name, lo, hi));

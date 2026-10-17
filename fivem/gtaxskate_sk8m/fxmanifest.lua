@@ -1,0 +1,7 @@
+fx_version 'cerulean'
+game 'gta5'
+author 'Manatros'
+description 'Experimental pinned SK8M Lua fallback rules adapter; client-owned physics'
+version '0.1.0'
+dependency 'gtaxskate_rules'
+server_script 'server.js'

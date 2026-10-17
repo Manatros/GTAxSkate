@@ -1,0 +1,795 @@
+diff --git a/host/src/hud_overlay.cpp b/host/src/hud_overlay.cpp
+index c8aa094..5252ecb 100644
+--- a/host/src/hud_overlay.cpp
++++ b/host/src/hud_overlay.cpp
+@@ -63,6 +63,7 @@ struct Shared {
+     Published pub;
+     std::atomic<UINT> backbufferWidth{0}, backbufferHeight{0};
+     std::atomic<bool> stopping{false};
++    std::atomic<bool> visible{false};
+ } g;
+ 
+ template <class... A>
+@@ -104,7 +105,7 @@ void Present(void* swapChainPtr) {
+         Published& p = g.pub;
+         // Stale publication (script thread stalled: loading, pause): hide.
+         const bool fresh = GetTickCount64() - p.stamp < 500;
+-        frame.visible = p.frame.visible && fresh;
++        frame.visible = g.visible.load() && p.frame.visible && fresh;
+         if (frame.visible && p.frame.serial != frame.serial) {
+             frame.serial = p.frame.serial;
+             frame.width = p.frame.width;
+@@ -116,13 +117,17 @@ void Present(void* swapChainPtr) {
+             frame.textures = p.frame.textures;
+             frame.textureGeneration = p.frame.textureGeneration;
+         }
+-        xray.visible = p.xray.visible && fresh;
++        xray.visible = g.visible.load() && p.xray.visible && fresh;
+         if (xray.visible) {
+             xray.vertices = p.xray.vertices;
+             xray.camera = p.xray.camera;
+         }
+     }
++    // Recheck after copying: a live preset change may have cleared the gate
++    // while the render thread was preparing this frame.
++    xray.visible = xray.visible && g.visible.load();
+     xrayrender::Present(sc, xray); // under the HUD
++    frame.visible = frame.visible && g.visible.load();
+     hudrender::Present(sc, frame);
+ }
+ 
+@@ -170,10 +175,8 @@ PresentStats TakePresentStats() {
+ void Start(const std::wstring& iniPath, void* runtime, LogFn log) {
+     g.log = log;
+     g.enabled = false;
+-    if (IniFloat(iniPath, L"Hud", 1.0f) == 0.0f) {
+-        Logf("SkateV HUD: off (Hud=0)");
+-        return;
+-    }
++    SetVisible(false);
++    const bool visible = IniFloat(iniPath, L"Hud", 1.0f) != 0.0f;
+     const HMODULE module = GetModuleHandleW(L"SkateVRuntime.dll");
+     if (!runtime || !module) {
+         Logf("SkateV HUD: runtime not loaded; original HUD off");
+@@ -205,18 +208,32 @@ void Start(const std::wstring& iniPath, void* runtime, LogFn log) {
+         g.registered = true;
+     }
+     g.enabled = true;
+-    Logf("SkateV HUD: original trickdisplay on (HudMaxAspect %.3f, HudSafeZone %.2f), Hall of Meat x-ray %s",
+-         g.maxAspect, g.safeOverride, g.getXray ? "on" : "off");
++    SetVisible(visible);
++    Logf("SkateV HUD: original trickdisplay ready, %s (HudMaxAspect %.3f, HudSafeZone %.2f), Hall of Meat x-ray %s",
++         visible ? "shown when skating" : "hidden (Hud=0)", g.maxAspect, g.safeOverride, g.getXray ? "on" : "off");
++}
++
++void SetVisible(bool visible) {
++    if (g.visible.load() == visible) return;
++    // Gate first so the render thread cannot reuse a previously published HUD.
++    // Keep texture/serial data cached, but never re-show it before a fresh Tick.
++    g.visible.store(false);
++    std::lock_guard<std::mutex> lock(g.mutex);
++    g.pub.frame.visible = false;
++    g.pub.xray.visible = false;
++    g.pub.stamp = 0;
++    g.visible.store(visible);
+ }
+ 
+ bool ShowRadio(const char* top, const char* middle, const char* bottom, const char* station) {
+-    return g.enabled && g.runtime && g.showRadio && g.showRadio(g.runtime, top, middle, bottom, station) == 1;
++    return g.enabled && g.visible.load() && g.runtime && g.showRadio &&
++           g.showRadio(g.runtime, top, middle, bottom, station) == 1;
+ }
+ 
+ void SetTrickAnalyzer(bool on) { g.trickAnalyzer = on; }
+ 
+ void Tick(bool skating) {
+-    if (!g.enabled) return;
++    if (!g.enabled || !g.visible.load()) return;
+     const UINT w = g.backbufferWidth.load(), h = g.backbufferHeight.load();
+     float safe = g.safeOverride >= 0.5f ? std::fmin(g.safeOverride, 1.0f) : Call<float>(gta::GET_SAFE_ZONE_SIZE);
+     if (!(safe >= 0.5f && safe <= 1.0f)) safe = 1.0f;
+@@ -301,13 +318,13 @@ void Tick(bool skating) {
+     std::lock_guard<std::mutex> lock(g.mutex);
+     Published& p = g.pub;
+     p.stamp = GetTickCount64();
+-    p.xray.visible = xrayCount > 0;
++    p.xray.visible = g.visible.load() && xrayCount > 0;
+     if (xrayCount) {
+         p.xray.camera = camera;
+         p.xray.vertices.resize(xrayCount);
+         std::memcpy(p.xray.vertices.data(), g.xray.data(), xrayCount * sizeof(SvXrayVertex));
+     }
+-    p.frame.visible = show;
++    p.frame.visible = g.visible.load() && show;
+     if (!show || f.serial == p.frame.serial) return;
+     hudrender::Frame& out = p.frame;
+     out.serial = f.serial;
+@@ -329,6 +346,9 @@ void Tick(bool skating) {
+ 
+ void Shutdown(bool processExit) {
+     g.stopping.store(true);
++    // DllMain can run after other threads stopped while holding the mutex.
++    // The atomic gates suffice here; never wait for a publication on detach.
++    g.visible.store(false);
+     if (g.registered) {
+         presentCallbackUnregister(OnPresent);
+         g.registered = false;
+diff --git a/host/src/hud_overlay.h b/host/src/hud_overlay.h
+index 7e62dfd..a684152 100644
+--- a/host/src/hud_overlay.h
++++ b/host/src/hud_overlay.h
+@@ -18,6 +18,9 @@ using LogFn = void (*)(const char*);
+ // After the runtime loaded: looks up the optional HUD exports and registers
+ // the Present callback. `runtime` is the sv_create handle (nullptr: inert).
+ void Start(const std::wstring& iniPath, void* runtime, LogFn log);
++// Script thread: live master gate for the original HUD, radio and x-ray.
++// Hiding clears the publication immediately; showing waits for a fresh Tick.
++void SetVisible(bool visible);
+ // Script thread, once per frame. `skating`: Skate is active (the HUD shows,
+ // unless the pause menu or a loading screen is up).
+ void Tick(bool skating);
+diff --git a/host/src/main.cpp b/host/src/main.cpp
+index 9fe11c5..9cf1fb5 100644
+--- a/host/src/main.cpp
++++ b/host/src/main.cpp
+@@ -81,6 +81,8 @@ struct Config {
+     bool wheelsFromPaint = true; // WheelsFromPaint: painted wheels set the wheel hardness (matte soft .. metallic hard)
+     bool vehicleShapes = true; // VehicleShapes: survey vehicles without an extracted bound (a roof to ride, a gap to hippie jump)
+     bool drawBoard = true;    // DrawBoard: the native board object (and its mesh fallback)
++    bool skateHud = true;    // Master visibility for every Skate overlay; F10 remains available.
++    bool hud = true;         // Original Skate HUD within the master visibility gate.
+     bool showDebug = false;   // ShowDebug=1: old debug text HUD (the original Skate HUD is hud_overlay)
+     bool verboseLog = false;  // VerboseLog=1: periodic runtime log lines (perf, skater trace, collision streaming)
+     bool threadCensus = false; // Separate opt-in: enumerating process threads can stall the game tick.
+@@ -276,6 +278,8 @@ const Key kKeys[] = {
+     {"WheelsFromPaint", Store<&Config::wheelsFromPaint>},
+     {"VehicleShapes", Store<&Config::vehicleShapes>},
+     {"DrawBoard", Store<&Config::drawBoard>},
++    {"SkateHud", Store<&Config::skateHud>},
++    {"Hud", Store<&Config::hud>},
+     {"ShowDebug", Store<&Config::showDebug>},
+     {"VerboseLog", Store<&Config::verboseLog>},
+     {"ThreadCensus", Store<&Config::threadCensus>},
+@@ -1766,7 +1770,7 @@ void StepRadio(Session& s, int dir) {
+         Call<void>(gta::SET_MOBILE_RADIO_ENABLED_DURING_GAMEPLAY, 0);
+         Call<void>(gta::SET_AUDIO_FLAG, "MobileRadioInGame", 0);
+         s.radioDue = 0;
+-        if (!hudoverlay::ShowRadio("Radio Off", "", "", "OFF")) Notify(s, "Radio off", 1500);
++        if (g_config.skateHud && !hudoverlay::ShowRadio("Radio Off", "", "", "OFF")) Notify(s, "Radio off", 1500);
+         return;
+     }
+     Call<void>(gta::SET_AUDIO_FLAG, "MobileRadioInGame", 1);
+@@ -1832,6 +1836,7 @@ void RadioTick(Session& s) {
+     std::string station = GameText(id);
+     if (station.empty()) station = id ? id : "Radio";
+     // Station as the heading, then song, then artist.
++    if (!g_config.skateHud) return;
+     const bool shown = known ? hudoverlay::ShowRadio(station.c_str(), song.c_str(), artist.c_str(), id ? id : "")
+                              : hudoverlay::ShowRadio(station.c_str(), "", "", id ? id : "");
+     if (!shown) Notify(s, known ? song + " - " + artist : station, 2500);
+@@ -2901,7 +2906,7 @@ void UpdateActive(Session& s, const Config& cfg, const SvPad& pad) {
+     BoardWeather(s, cfg, nativeBoard ? &boardPose : nullptr);
+     if (cfg.drawSkater && !nativeBoard) DrawBoardMesh();
+     if (g_quirkRequested.exchange(false) && cfg.backwardsMan) g_runtime.TriggerQuirk(0);
+-    if (cfg.showDebug) { // dev only; the player sees hud_overlay
++    if (cfg.skateHud && cfg.showDebug) { // dev only; the player sees hud_overlay
+         SvScoreState score{};
+         g_runtime.Score(score);
+         DrawHud(o, score, true);
+@@ -3072,7 +3077,7 @@ void LifecycleFrame(Session& s, const Config& cfg, bool f6) {
+     }
+     case LifeState::Skating: {
+         SvPad pad = ReadPad(); // once per frame
+-        if (cfg.showInputs) DrawInputs(pad);
++        if (cfg.skateHud && cfg.showInputs) DrawInputs(pad);
+         // Keyboard: F puts the board away in one press, as Y held does: Skate
+         // steps off first, then the board goes away. Read from the key itself
+         // (GTA's enter/exit is the pad's Y, whose tap mounts and dismounts).
+@@ -3307,22 +3312,21 @@ const std::string& TestPackageReceipt() {
+ void AppendDeveloperPage(std::vector<menu::Page>& pages, Session& s) {
+     using namespace menu;
+     for (auto& page : pages) if (page.title == "Presets") {
+-        page.items.push_back(Action("Developer - inputs, HUD and logs", [] {
+-            ApplyPreset("Developer", {{"ShowInputs", "1"}, {"ShowDebug", "1"},
+-                {"VerboseLog", "1"}, {"KeyboardHints", "1"}, {"TrickAnalyzer", "1"}, {"Hud", "1"}});
+-            // Hud is normally restart-only; this diagnostic action can safely
+-            // reinitialize the existing renderer through its guarded Start.
+-            if (g_runtime.IsLoaded()) {
+-                hudoverlay::Start(g_gameDir + L"SkateVLegacy.ini", g_runtime.Handle(), Log);
+-                hudoverlay::SetTrickAnalyzer(g_config.trickAnalyzer);
+-            }
++        page.items.push_back(Action("Developer - complete test baseline", [] {
++            ApplyPreset("Developer", {{"SkateHud", "1"}, {"ShowInputs", "1"}, {"ShowDebug", "1"},
++                {"VerboseLog", "1"}, {"KeyboardHints", "1"}, {"TrickAnalyzer", "1"}, {"Hud", "1"},
++                {"HallOfMeatMetrics", "1"}, {"Stamina", "0"}, {"PedsSurvive", "1"}});
+         }));
+     }
+     // Provenance stays in Developer. Source basis, compiled host and installer
+     // receipt are different facts; none detects arbitrary third-party installs.
+     pages.push_back({"Developer", {
+         Action("Disable diagnostic overlays and verbose log", [] {
+-            ApplyPreset("Diagnostics off", {{"ShowInputs", "0"}, {"ShowDebug", "0"}, {"VerboseLog", "0"}});
++            ApplySettings("Diagnostics off", {{"ShowInputs", "0"}, {"ShowDebug", "0"}, {"VerboseLog", "0"}});
++        }),
++        Action("Test controls: Advanced", [] { menu::OpenPage("Advanced"); }),
++        Action("Skate cheats: Motorized / BackwardsMan / multipliers", [&s] {
++            Notify(s, "Advanced: Motorized difficulty, BackwardsMan, stamina and trainer multipliers are individually configurable. Costly probes are opt-in.", 9000);
+         }),
+         Action("SK8V source tag: " SK8V_SOURCE_TAG, [&s] {
+             Notify(s, "Nearest SK8V source tag: " SK8V_SOURCE_TAG ". Source metadata, not an installed-release detector.", 7000);
+@@ -3540,7 +3544,12 @@ std::vector<menu::Page> MenuPages(Session& s) {
+         Flag("Radio on LB + d-pad", "RadioControls", D.radioControls, Bound("RadioControls")),
+         Flag("Keyboard and mouse", "Keyboard", D.keyboard, {}, true),
+         Flag("Keyboard keys on screen", "KeyboardHints", D.keyboardHints, Bound("KeyboardHints")),
+-        Flag("Original Skate HUD", "Hud", true, {}, true),
++        Flag("All Skate overlays", "SkateHud", true, Bound("SkateHud", [] {
++            hudoverlay::SetVisible(g_config.skateHud && g_config.hud);
++        })),
++        Flag("Original Skate HUD", "Hud", true, Bound("Hud", [] {
++            hudoverlay::SetVisible(g_config.skateHud && g_config.hud);
++        })),
+         Flag("Trick Analyzer", "TrickAnalyzer", D.trickAnalyzer,
+              Bound("TrickAnalyzer", [] { hudoverlay::SetTrickAnalyzer(g_config.trickAnalyzer); })),
+     }});
+@@ -3581,28 +3590,40 @@ std::vector<menu::Page> MenuPages(Session& s) {
+         Choice("Audio placement", "AudioGtaPlacement", {"Position", "Tracker"}, {"Emitter positions", "Player ped"}, {}, true),
+         Flag("Editor audio tone", "AudioEditorTone", false, {}, true),
+         Flag("Stall sampler", "StallSampler", D.stallSampler, {}, true),
++        Flag("GPS route while skating", "GpsWhileSkating", D.gpsWhileSkating, Bound("GpsWhileSkating")),
++        Flag("Skate spot map blips", "SkateSpots", D.skateSpots, Bound("SkateSpots")),
++        Flag("Board shop", "BoardShop", D.boardShop, {}, true),
++        Flag("Wheel paint determines hardness", "WheelsFromPaint", D.wheelsFromPaint, Bound("WheelsFromPaint")),
++        Flag("Survey vehicle shapes", "VehicleShapes", D.vehicleShapes, Bound("VehicleShapes")),
++        Flag("Fallback board mesh", "DrawSkater", D.drawSkater, Bound("DrawSkater")),
++        Flag("Use GTA character", "GtaCharacter", D.gtaCharacter, {}, true),
++        Number("Skate skater triangle limit", "SkaterTriangles", D.skaterTriangles, 0, 50000, 1000, Fixed("%.0f"), {}, true),
++        Number("GTA character triangle limit", "CharacterTriangles", D.characterTriangles, 0, 50000, 1000, Fixed("%.0f"), {}, true),
+     }});
+     // Package-owned presentation: preserve every setting and its live callback.
+     // Advanced is an explicit category; uncommon tuning no longer fills the main pages.
+     std::vector<Page> sorted = {
+         {"Presets", {
+-            Action("GTA - LS Skate integration (WIP)", [&s] {
+-                Notify(s, "WIP: LS Skate animation / integration is not available yet. Settings unchanged.", 6000);
++            Action("SK8V - official default settings", [] {
++                ApplyPreset("SK8V", {});
+             }),
+-            Action("Skate - SK8V focused", [] {
+-                ApplyPreset("Skate", {{"CameraView", "Skate"}, {"Difficulty", "Normal"},
+-                    {"Pop", "1"}, {"GrindPop", "1"}, {"PushSpeed", "1"}, {"PushPower", "1"},
+-                    {"BoardAim", "1"}, {"HallOfMeat", "1"}, {"TrickAnalyzer", "1"},
+-                    {"PedsSurvive", "1"}, {"PedLaunch", "0"}, {"VehicleDamage", "1"},
+-                    {"VehiclePush", "0.2"}, {"Injuries", "1"}, {"Stamina", "1"}, {"KeyboardHints", "1"}});
++            Action("LS Skate - unavailable (requires LS adapter)", [&s] {
++                menu::Status("LS Skate implementation/animations unavailable; settings unchanged");
+             }),
+-            Action("RP - gentle world, minimal HUD", [] {
+-                ApplyPreset("RP", {{"CameraView", "Near"}, {"Difficulty", "Hardcore"},
+-                    {"Pop", "1"}, {"GrindPop", "1"}, {"PushSpeed", "1"}, {"PushPower", "1"},
+-                    {"BoardAim", "0"}, {"HallOfMeat", "0"}, {"TrickAnalyzer", "0"},
+-                    {"PedsSurvive", "1"}, {"PedLaunch", "0"}, {"VehicleDamage", "0"},
++            Action("RP - grounded values, no Skate overlays", [] {
++                ApplyPreset("RP", {{"SkateHud", "0"}, {"Hud", "0"}, {"ShowInputs", "0"},
++                    {"ShowDebug", "0"}, {"CameraView", "Near"}, {"CameraRemember", "0"},
++                    {"Difficulty", "Hardcore"}, {"Pop", "0.8"}, {"GrindPop", "0.8"},
++                    {"PushSpeed", "0.85"}, {"PushPower", "0.85"}, {"OffboardJump", "0.8"}, {"HippieJump", "0.8"},
++                    {"BoardAim", "0"}, {"HallOfMeat", "0"}, {"HallOfMeatMetrics", "0"},
++                    {"HallOfMeatXray", "0"}, {"TrickAnalyzer", "0"}, {"BackwardsMan", "0"},
++                    {"PedsSurvive", "0"}, {"PedLaunch", "0"}, {"PedLaunchScale", "0"},
++                    {"PedLaunchLift", "0"}, {"PedLaunchSpin", "0"}, {"VehicleDamage", "0"},
+                     {"VehiclePush", "0"}, {"Injuries", "1"}, {"Stamina", "1"}, {"KeyboardHints", "0"}});
+             }),
++            Action("User - restore my last manual settings", [] { RestoreUserPreset(); }),
++            Action("Custom - save current settings", [] { SaveCustomPreset(); }),
++            Action("Custom - restore saved settings", [] { RestoreCustomPreset(); }),
+         }},
+         {"Skating", {}}, {"Camera", {}}, {"Keyboard keys", {}},
+         {"Controller and HUD", {}}, {"World and roleplay", {}}, {"Audio", {}},
+@@ -3708,6 +3729,7 @@ void ScriptMain() {
+         Logf("SkateV Legacy: BackwardsMan %s chord %04x", cfg.backwardsMan ? "on" : "off", cfg.backwardsManChord);
+         hudoverlay::Start(g_gameDir + L"SkateVLegacy.ini", g_runtime.Handle(), Log);
+         hudoverlay::SetTrickAnalyzer(cfg.trickAnalyzer);
++        hudoverlay::SetVisible(cfg.skateHud && cfg.hud);
+         boardstencil::Start(Log);
+         recordsui::Start(g_runtime.Handle(), Log);
+         Logf("SkateV Legacy: Hall of Meat %s (%s)", cfg.hallOfMeat ? "on" : "off",
+@@ -3780,7 +3802,8 @@ void ScriptMain() {
+             static DWORD nextFetch = 0;
+             static std::string list;
+             if (g_soundListToggle.exchange(false)) showList = !showList;
+-            if (showList && g_runtime.IsLoaded()) {
++            if (!cfg.skateHud) showList = false;
++            if (cfg.skateHud && showList && g_runtime.IsLoaded()) {
+                 if (GetTickCount() >= nextFetch) {
+                     nextFetch = GetTickCount() + 250;
+                     list = g_runtime.AudioDebugText();
+@@ -3827,14 +3850,14 @@ void ScriptMain() {
+             Notify(s, "runtime unavailable: " + error);
+         }
+ 
+-        if (!s.message.empty() && GetTickCount() < s.messageUntil) {
++        if (cfg.skateHud && !s.message.empty() && GetTickCount() < s.messageUntil) {
+             Text(s.message.c_str(), 0.5f, 0.88f, 0.4f, 255, 255, 255, true);
+         }
+         // The cinematic camera and the filmer shoot a clean picture: no GTA HUD,
+         // radar or Skate trick display while they run.
+         const bool filming = s.state == LifeState::Skating && s.action != 0;
+         if (filming) Call<void>(gta::HIDE_HUD_AND_RADAR_THIS_FRAME);
+-        hudoverlay::Tick(s.state == LifeState::Skating && !filming);
++        hudoverlay::Tick(cfg.skateHud && s.state == LifeState::Skating && !filming);
+         injuries::Tick(Call<Ped>(gta::PLAYER_PED_ID), s.state != LifeState::Skating && Call<BOOL>(gta::IS_PED_ON_FOOT, Call<Ped>(gta::PLAYER_PED_ID)),
+                        cfg.injuries, Log);
+         Lap(kPartHud);
+@@ -3855,12 +3878,12 @@ void ScriptMain() {
+         if (g_routeNotice) Notify(s, g_routeNotice, 3000), g_routeNotice = nullptr;
+         Lap(kPartMenu);
+         recordsui::Tick(s.state == LifeState::Skating,
+-                        g_hallOfMeatOn && std::string_view(s.last.state_utf8).rfind("Wipeout", 0) == 0);
++                        g_hallOfMeatOn && std::string_view(s.last.state_utf8).rfind("Wipeout", 0) == 0, cfg.skateHud && !filming);
+         if (s.state != LifeState::Skating) boardnative::Tick(false, SvBoardPose{}), boardstencil::SetActive(false);
+         Lap(kPartRecords);
+         gtaaudio::Tick(s.state == LifeState::Skating);
+         Lap(kPartAudio);
+-        if (s.state == LifeState::Skating && g_keyboard && !g_controller && g_config.keyboardHints && !menu::IsOpen())
++        if (s.state == LifeState::Skating && g_keyboard && !g_controller && g_config.skateHud && g_config.keyboardHints && !menu::IsOpen())
+             DrawKeyboardHints(std::string_view(s.last.state_utf8).rfind("Biped", 0) == 0);
+         skatemap::Tick(SkateOwnsPlayer(s), g_config.gpsWhileSkating, g_config.skateSpots);
+         // M while skating: GTA's own interaction menu. It did not open because
+diff --git a/host/src/menu.cpp b/host/src/menu.cpp
+index 15a4abe..73ad989 100644
+--- a/host/src/menu.cpp
++++ b/host/src/menu.cpp
+@@ -1,5 +1,6 @@
+ // In-game settings menu (see menu.h).
+ #include "menu.h"
++#include "menu_presets.h"
+ #include <windows.h>
+ #include <main.h>
+ #include <map>
+@@ -29,6 +30,7 @@ int g_level = 0;                // 0 categories, 1 a page's items
+ int g_sel[2] = {0, 0};          // selection per level
+ int g_pageIndex = 0;
+ std::map<std::string, std::string> g_cache;  // INI text per key, refreshed on open
++std::vector<std::pair<std::string, std::string>> g_presetDefaults;
+ std::string g_status;
+ ULONGLONG g_statusUntil = 0;
+ 
+@@ -55,19 +57,108 @@ void Refresh() {
+ }
+ 
+ void Say(const std::string& text) {
++    // Menu actions release controls before invoking their callback. Preset/save
++    // confirmations and failures need to restore the page so the result is visible.
++    g_open = true;
+     g_status = text;
+     g_statusUntil = GetTickCount64() + 2500;
+ }
+ 
+-void Commit(Item& it, const std::string& value) {
+-    if (!WritePrivateProfileStringW(L"SkateV", Wide(it.key).c_str(), Wide(value).c_str(), g_ini.c_str())) {
+-        Say("Could not save SkateVLegacy.ini");
+-        return;
++using presets::Settings;
++Settings Current() {
++    Settings out;
++    for (const auto& page : g_pages) for (const auto& item : page.items)
++        if (!item.key.empty()) out[item.key] = ReadIni(item);
++    return out;
++}
++
++// Snapshots are complete, versioned sections; missing/old/corrupt snapshots never
++// become a partial preset. Empty choice values (e.g. SkateRadio) are legitimate.
++bool Snapshot(const wchar_t* section, Settings& out, bool& exists) {
++    wchar_t marker[32]{};
++    GetPrivateProfileStringW(section, L"__schema", L"", marker, 32, g_ini.c_str());
++    exists = *marker != 0;
++    if (!exists || std::wstring(marker) != L"1") return false;
++    for (const auto& [key, unused] : Current()) {
++        wchar_t value[1024]{};
++        GetPrivateProfileStringW(section, Wide(key).c_str(), L"\x1", value, 1024, g_ini.c_str());
++        if (value[0] == 1 && value[1] == 0) return false;
++        out[key] = util::Narrow(value);
++    }
++    const auto count = GetPrivateProfileIntW(section, L"__count", -1, g_ini.c_str());
++    std::string error;
++    return count == out.size() && presets::Validate(g_pages, out, error);
++}
++
++bool User(Settings& out) {
++    bool exists = false;
++    if (Snapshot(L"Preset.User", out, exists)) return true;
++    if (exists) { Say("User snapshot invalid; settings unchanged"); return false; }
++    out = Current();
++    std::string error;
++    if (!presets::Validate(g_pages, out, error)) { Say(error); return false; }
++    return true;
++}
++
++bool WriteSection(const std::wstring& path, const wchar_t* section, const Settings& values, bool snapshot) {
++    if (snapshot && !WritePrivateProfileStringW(section, nullptr, nullptr, path.c_str())) return false;
++    for (const auto& [key, value] : values)
++        if (!WritePrivateProfileStringW(section, Wide(key).c_str(), Wide(value).c_str(), path.c_str())) return false;
++    return !snapshot || (WritePrivateProfileStringW(section, L"__schema", L"1", path.c_str()) &&
++        WritePrivateProfileStringW(section, L"__count", std::to_wstring(values.size()).c_str(), path.c_str()));
++}
++
++// Stage all sections beside the INI, flush, then replace it once. No callbacks or
++// active values change unless every write succeeds. Unrelated INI sections survive.
++bool Save(const Settings* active, const Settings* user, const Settings* custom) {
++    const auto temp = g_ini + L".preset.tmp";
++    if (!CopyFileW(g_ini.c_str(), temp.c_str(), FALSE)) {
++        if (GetLastError() != ERROR_FILE_NOT_FOUND) { Say("Could not stage settings; unchanged"); return false; }
++        const HANDLE file = CreateFileW(temp.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
++        if (file == INVALID_HANDLE_VALUE) { Say("Could not stage settings; unchanged"); return false; }
++        CloseHandle(file);
++    }
++    const bool written = (!active || WriteSection(temp, L"SkateV", *active, false)) &&
++        (!user || WriteSection(temp, L"Preset.User", *user, true)) &&
++        (!custom || WriteSection(temp, L"Preset.Custom", *custom, true));
++    // The profile-cache flush operation has no useful success return value.
++    WritePrivateProfileStringW(nullptr, nullptr, nullptr, temp.c_str());
++    const HANDLE file = CreateFileW(temp.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
++                                   nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
++    const bool flushed = file != INVALID_HANDLE_VALUE && FlushFileBuffers(file);
++    if (file != INVALID_HANDLE_VALUE) CloseHandle(file);
++    if (!written || !flushed || !MoveFileExW(temp.c_str(), g_ini.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
++        DeleteFileW(temp.c_str()); Say("Could not save settings; unchanged"); return false;
++    }
++    WritePrivateProfileStringW(nullptr, nullptr, nullptr, g_ini.c_str());
++    return true;
++}
++
++bool Activate(const std::string& name, const Settings& next, const Settings* user, bool changedOnly = false) {
++    std::string error;
++    if (!presets::Validate(g_pages, next, error)) { Say(error); return false; }
++    const auto previous = Current();
++    if (!Save(&next, user, nullptr)) return false;
++    bool restart = false;
++    g_cache = next;
++    for (auto& page : g_pages) for (auto& item : page.items) {
++        if (item.key.empty()) continue;
++        const auto& value = next.at(item.key);
++        if (item.restart && previous.at(item.key) != value) restart = true;
++        if (item.apply && (!changedOnly || previous.at(item.key) != value)) item.apply(value);
+     }
+-    g_cache[it.key] = value;
+-    if (it.apply) it.apply(value);
+-    Say(it.restart ? "Saved - applies after restarting GTA" : "Saved");
+-    if (g_log) g_log(("SkateV menu: " + it.key + "=" + value).c_str());
++    Say(name + (restart ? " saved - restart GTA required" : " applied"));
++    if (g_log) g_log(("SkateV preset: " + name + (restart ? " (restart required)" : "")).c_str());
++    return true;
++}
++
++void Commit(Item& it, const std::string& value) {
++    Settings user;
++    if (!User(user)) return;
++    user[it.key] = value;
++    auto next = Current();
++    next[it.key] = value;
++    Activate("User change", next, &user, true);
+ }
+ 
+ void Beep(const char* name) { Call<void>(gta::PLAY_SOUND_FRONTEND, -1, name, "HUD_FRONTEND_DEFAULT_SOUNDSET", 1); }
+@@ -277,21 +368,52 @@ void Navigate() {
+ 
+ void Start(const std::wstring& ini, std::vector<Page> pages, std::function<unsigned()> padButtons, LogFn log) {
+     g_ini = ini, g_pages = std::move(pages), g_pad = std::move(padButtons), g_log = log;
++    g_cache.clear();
++    g_presetDefaults.clear();
++}
++
++void SetPresetDefaults(std::vector<std::pair<std::string, std::string>> defaults) {
++    g_presetDefaults = std::move(defaults);
++}
++
++bool ApplyPreset(const std::string& name, const std::vector<std::pair<std::string, std::string>>& settings) {
++    Settings next, user;
++    std::string error;
++    if (!presets::Build(g_pages, g_presetDefaults, settings, next, error)) { Say(error); return false; }
++    return User(user) && Activate(name, next, &user);
+ }
+ 
+-void ApplyPreset(const std::string& name, const std::vector<std::pair<std::string, std::string>>& settings) {
++bool ApplySettings(const std::string& name, const std::vector<std::pair<std::string, std::string>>& settings) {
++    auto next = Current();
+     for (const auto& [key, value] : settings) {
+-        Item* found = nullptr;
+-        for (Page& page : g_pages)
+-            for (Item& item : page.items)
+-                if (item.key == key) { found = &item; break; }
+-        if (!found) { Say("Preset setting unavailable: " + key); return; }
+-        Commit(*found, value);
+-        if (g_cache[key] != value) return;
++        if (!next.count(key)) { Say("Setting unavailable: " + key); return false; }
++        next[key] = value;
++    }
++    Settings user;
++    return User(user) && Activate(name, next, &user);
++}
++
++bool RestoreUserPreset() {
++    Settings user;
++    return User(user) && Activate("User", user, &user);
++}
++
++bool SaveCustomPreset() {
++    const auto current = Current();
++    std::string error;
++    if (!presets::Validate(g_pages, current, error)) { Say(error); return false; }
++    if (!Save(nullptr, nullptr, &current)) return false;
++    Say("Custom preset saved (keyboard bindings stay personal)");
++    return true;
++}
++
++bool RestoreCustomPreset() {
++    Settings custom, user;
++    bool exists = false;
++    if (!Snapshot(L"Preset.Custom", custom, exists)) {
++        Say(exists ? "Custom snapshot invalid; settings unchanged" : "Save a Custom preset first"); return false;
+     }
+-    Toggle(); // Keep the preset page visible, with confirmation after refreshing saved values.
+-    Say(name + " preset saved");
+-    if (g_log) g_log(("SkateV preset: " + name).c_str());
++    return User(user) && Activate("Custom", custom, &user);
+ }
+ 
+ void Toggle() {
+@@ -317,6 +439,7 @@ void OpenPage(const std::string& title) {
+ }
+ 
+ bool IsOpen() { return g_open; }
++void Status(const std::string& text) { Say(text); }
+ 
+ void DrawPanel(const std::string& banner, const std::string& title, const std::string& counter,
+                const std::vector<PanelRow>& rows, const std::string& help) {
+diff --git a/host/src/menu.h b/host/src/menu.h
+index 9d56af5..0529a18 100644
+--- a/host/src/menu.h
++++ b/host/src/menu.h
+@@ -184,7 +184,7 @@ constexpr const char* kHint = "Left/Right change   Back: categories   * restart
+ // Footer description for a category row, by page title.
+ inline std::string PageHint(const std::string& title) {
+     static const std::pair<const char*, const char*> kHints[] = {
+-        {"Presets", "Enter applies Skate or RP settings. GTA is a WIP placeholder and changes nothing."},
++        {"Presets", "Apply complete play settings; User restores manual choices; Custom is explicitly saved. Keyboard bindings stay personal."},
+         {"Advanced", "Rare tuning, board placement and diagnostics. Defaults are recommended."},
+         {"World and roleplay", "Gentle pedestrian collisions, vehicle damage, injuries and GTA integration."},
+         {"Camera", "Choose the starting view, mouse camera and cinematic look."},
+@@ -210,11 +210,19 @@ void Start(const std::wstring& ini, std::vector<Page> pages, std::function<unsig
+ // The '/' key: opens the menu, closes it when open (the closing frame still
+ // keeps the game's controls, so the key press does not reach GTA).
+ void Toggle();
+-// Applies only the listed settings through the same save/live path as editing rows.
+-void ApplyPreset(const std::string& name, const std::vector<std::pair<std::string, std::string>>& settings);
++// Complete named presets start from every keyed row's defaults. Personal key bindings
++// and action-only state are separate. Unknown/invalid keys reject the whole change.
++void SetPresetDefaults(std::vector<std::pair<std::string, std::string>> defaults);
++bool ApplyPreset(const std::string& name, const std::vector<std::pair<std::string, std::string>>& overrides);
++bool ApplySettings(const std::string& name, const std::vector<std::pair<std::string, std::string>>& overrides);
++bool RestoreUserPreset();
++bool SaveCustomPreset();
++bool RestoreCustomPreset();
+ // Opens the menu straight on the page titled `title` (closes it when open).
+ void OpenPage(const std::string& title);
+ bool IsOpen();
++// Feedback stays in the menu even when all Skate overlays are hidden.
++void Status(const std::string& text);
+ // Script thread, once per frame: draws and handles navigation while open.
+ void Tick();
+ 
+diff --git a/host/src/menu_presets.h b/host/src/menu_presets.h
+new file mode 100644
+index 0000000..da8cbe9
+--- /dev/null
++++ b/host/src/menu_presets.h
+@@ -0,0 +1,67 @@
++#pragma once
++#include "menu.h"
++#include <cerrno>
++#include <map>
++#include <set>
++
++namespace menu::presets {
++using Settings = std::map<std::string, std::string>;
++
++inline bool Valid(const Item& item, const std::string& value) {
++    if (value.find_first_of("\r\n") != std::string::npos) return false;
++    if (item.kind == Kind::Choice) return ChoiceIndex(item, value) >= 0;
++    if (item.kind == Kind::Flag) return value == "0" || value == "1";
++    if (item.kind == Kind::Number) {
++        char* end = nullptr;
++        errno = 0;
++        const double n = std::strtod(value.c_str(), &end);
++        const double tolerance = 1e-6 * std::max({1.0, std::abs(static_cast<double>(item.lo)),
++                                                 std::abs(static_cast<double>(item.hi))});
++        return !value.empty() && end == value.c_str() + value.size() && !errno &&
++               std::isfinite(n) && n >= item.lo - tolerance && n <= item.hi + tolerance;
++    }
++    if (item.kind == Kind::Chord) {
++        char* end = nullptr;
++        errno = 0;
++        const auto n = std::strtoul(value.c_str(), &end, 0);
++        return !value.empty() && end == value.c_str() + value.size() && !errno &&
++               n <= 0xFFFF && !(n & ~0xF3FFul) && (n || item.allowOff);
++    }
++    return false;
++}
++
++// Duplicate menu rows describe one setting, but each row's live callback still runs.
++inline bool Validate(const std::vector<Page>& pages, const Settings& settings, std::string& error) {
++    std::set<std::string> seen;
++    for (const auto& page : pages) for (const auto& item : page.items) {
++        if (item.key.empty()) continue;
++        seen.insert(item.key);
++        const auto found = settings.find(item.key);
++        if (found == settings.end() || !Valid(item, found->second)) {
++            error = "Missing or invalid preset setting: " + item.key;
++            return false;
++        }
++    }
++    if (seen.size() != settings.size()) {
++        error = "Preset contains unavailable settings";
++        return false;
++    }
++    return true;
++}
++
++inline bool Build(const std::vector<Page>& pages,
++                  const std::vector<std::pair<std::string, std::string>>& defaults,
++                  const std::vector<std::pair<std::string, std::string>>& overrides,
++                  Settings& out, std::string& error) {
++    Settings next;
++    for (const auto& page : pages) for (const auto& item : page.items)
++        if (!item.key.empty()) next.emplace(item.key, item.def);
++    for (const auto& group : {defaults, overrides}) for (const auto& [key, value] : group) {
++        if (!next.count(key)) { error = "Preset setting unavailable: " + key; return false; }
++        next[key] = value;
++    }
++    if (!Validate(pages, next, error)) return false;
++    out = std::move(next);
++    return true;
++}
++} // namespace menu::presets
+diff --git a/host/src/records_ui.cpp b/host/src/records_ui.cpp
+index 3db9d7a..5ca9d83 100644
+--- a/host/src/records_ui.cpp
++++ b/host/src/records_ui.cpp
+@@ -202,8 +202,17 @@ void NextPage() {
+ 
+ bool Showing() { return g.page != 0; }
+ 
+-void Tick(bool skating, bool homBail) {
++void Tick(bool skating, bool homBail, bool visible) {
+     if (!g.ready) return;
++    if (!visible) {
++        g.page = 0;
++        g.shardUntil = 0;
++        g.shardSent = false;
++        if (g.shard) {
++            Call<void>(gta::SET_SCALEFORM_MOVIE_AS_NO_LONGER_NEEDED, &g.shard);
++            g.shard = 0;
++        }
++    }
+     const bool paused = gta::FrontendActive();
+     if (skating) UpdateContext();
+     SvRecordState s{};
+@@ -214,8 +223,9 @@ void Tick(bool skating, bool homBail) {
+         g.seeded = true;
+     } else if (s.sequence != g.seen) {
+         g.seen = s.sequence;
+-        StartShard(s);
++        if (visible) StartShard(s);
+     }
++    if (!visible) return;
+     DrawShard(paused);
+     if (paused) return;
+     if (skating && homBail) DrawBailRecord(s);
+diff --git a/host/src/records_ui.h b/host/src/records_ui.h
+index b28d6b6..991729a 100644
+--- a/host/src/records_ui.h
++++ b/host/src/records_ui.h
+@@ -18,6 +18,7 @@ void Start(void* runtime, LogFn log);
+ void NextPage();
+ bool Showing();
+ // Script thread, once per frame. `skating`: Skate is active; `homBail`: a
+-// Hall of Meat bail is on screen.
+-void Tick(bool skating, bool homBail);
++// Hall of Meat bail is on screen. Hidden UI still polls record state, consumes
++// announcements and closes the board, so restoring visibility cannot replay it.
++void Tick(bool skating, bool homBail, bool visible = true);
+ }
+diff --git a/host/tests/menu_presets_tests.cpp b/host/tests/menu_presets_tests.cpp
+new file mode 100644
+index 0000000..9ab170a
+--- /dev/null
++++ b/host/tests/menu_presets_tests.cpp
+@@ -0,0 +1,88 @@
++// Compile with menu.cpp's SDK include path, /Gy, ScriptHookV.lib, user32.lib and /OPT:REF.
++// No GTA native is invoked; unused UI sections are discarded by the linker.
++#include "../src/menu.cpp"
++#include <cassert>
++#include <fstream>
++#include <iostream>
++
++int wmain(int argc, wchar_t** argv) {
++    assert(argc == 2);
++    const std::wstring ini = std::wstring(argv[1]) + L"\\presets.ini";
++    DeleteFileW(ini.c_str());
++    WritePrivateProfileStringW(L"SkateV", L"Hud", L"0", ini.c_str());
++    WritePrivateProfileStringW(L"SkateV", L"Pop", L"1.25", ini.c_str());
++    WritePrivateProfileStringW(L"Other", L"Personal", L"keep", ini.c_str());
++    int callbacks = 0, duplicateCallbacks = 0;
++    std::vector<menu::Page> pages = {{"Test", {
++        menu::Flag("Hud", "Hud", true, [&](const auto&) { ++callbacks; }),
++        menu::Number("Pop", "Pop", 1, 0.5f, 3, 0.05f, {}, {}, true),
++        menu::Choice("Radio", "Radio", {"", "Self"}, {"Keep", "Self"}),
++        menu::Choice("Camera", "Camera", {"High", "Low"}, {"High", "Low"}),
++        menu::Chord("Chord", "Chord", 0x100, false),
++        menu::Key("Personal key", [] { return "G"; }, [](int) { assert(false); })}},
++        {"Duplicate", {menu::Flag("Hud again", "Hud", true, [&](const auto&) { ++duplicateCallbacks; })}}};
++    menu::Start(ini, pages, {}, nullptr);
++    // Startup is read-only, and cannot silently convert a user's current settings.
++    wchar_t marker[32]{};
++    GetPrivateProfileStringW(L"Preset.User", L"__schema", L"missing", marker, 32, ini.c_str());
++    assert(std::wstring(marker) == L"missing");
++    const auto original = menu::Current();
++    assert(menu::presets::Valid(menu::Number("Minimum", "Minimum", 0.3f, 0.3f, 2, 0.1f, {}), "0.3"));
++    assert(!menu::ApplyPreset("Unknown", {{"Missing", "1"}}));
++    assert(menu::Current() == original && callbacks == 0);
++    assert(!menu::ApplyPreset("Invalid", {{"Pop", "nan"}}));
++    assert(!menu::ApplyPreset("Invalid", {{"Hud", "yes"}}));
++    assert(!menu::ApplyPreset("Invalid", {{"Camera", "sideways"}}));
++    assert(!menu::ApplyPreset("Invalid", {{"Chord", "0x400"}}));
++    assert(menu::Current() == original);
++    menu::SetPresetDefaults({{"Camera", "Low"}});
++    assert(menu::ApplyPreset("RP", {{"Hud", "0"}, {"Pop", "0.8"}}));
++    assert(menu::Current().at("Camera") == "Low");
++    assert(menu::Current().at("Radio").empty());
++    assert(menu::g_status.find("restart GTA") != std::string::npos);
++    assert(callbacks == duplicateCallbacks && callbacks > 0);
++    assert(menu::ApplyPreset("Developer", {{"Pop", "3"}}));
++    assert(menu::Current().at("Hud") == "1"); // Resets settings left by RP.
++    // A manual tweak updates User alone, without copying Developer's other values.
++    const int beforeManual = callbacks;
++    menu::Commit(menu::g_pages[0].items[1], "1.5");
++    assert(callbacks == beforeManual); // Unrelated live callbacks must stay untouched.
++    assert(menu::RestoreUserPreset());
++    assert(menu::Current().at("Pop") == "1.5");
++    assert(menu::Current().at("Hud") == "0");
++    assert(menu::Current().at("Camera") == "High");
++    assert(!menu::RestoreCustomPreset());
++    assert(menu::IsOpen()); // Errors remain visible after action navigation closes the page.
++    assert(menu::SaveCustomPreset());
++    assert(menu::ApplyPreset("Developer", {{"Pop", "3"}}));
++    assert(menu::RestoreCustomPreset());
++    assert(menu::Current().at("Pop") == "1.5");
++    // Snapshots survive a fresh menu instance without changing active values.
++    menu::Start(ini, pages, {}, nullptr);
++    assert(menu::RestoreUserPreset());
++    assert(menu::Current().at("Pop") == "1.5");
++    auto before = menu::Current();
++    WritePrivateProfileStringW(L"Preset.Custom", L"Pop", L"infinity", ini.c_str());
++    assert(!menu::RestoreCustomPreset());
++    assert(menu::Current() == before);
++    WritePrivateProfileStringW(L"Preset.User", L"Camera", nullptr, ini.c_str());
++    assert(!menu::RestoreUserPreset());
++    assert(menu::Current() == before);
++    wchar_t personal[32]{};
++    GetPrivateProfileStringW(L"Other", L"Personal", L"", personal, 32, ini.c_str());
++    assert(std::wstring(personal) == L"keep");
++    // A failed disk replacement never applies live callbacks or changes values.
++    WritePrivateProfileStringW(L"Preset.User", L"Camera", L"High", ini.c_str());
++    HANDLE locked = CreateFileW(ini.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
++    assert(locked != INVALID_HANDLE_VALUE);
++    const int count = callbacks;
++    assert(!menu::ApplyPreset("Locked", {{"Hud", "1"}}));
++    assert(callbacks == count && menu::Current() == before);
++    CloseHandle(locked);
++    const auto missingIni = std::wstring(argv[1]) + L"\\new-presets.ini";
++    DeleteFileW(missingIni.c_str());
++    menu::Start(missingIni, pages, {}, nullptr);
++    assert(menu::ApplyPreset("First run", {}));
++    assert(menu::Current().at("Hud") == "1");
++    std::cout << "PASS: production preset validation, complete reset, User isolation, Custom persistence, duplicate callbacks, restart reporting and transactional failure\n";
++}

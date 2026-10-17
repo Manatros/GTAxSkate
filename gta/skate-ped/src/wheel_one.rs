@@ -1,4 +1,4 @@
-//! One wheel on its own for the store's part view (the maintainer, video 10-10 09-43
+//! One wheel on its own for the store's part view (the tester, video 10-10 09-43
 //! 08:44: the wheels alone, as Skate shows them, should be one wheel, not
 //! the four floating where the board would be). `sk3_w1_<finish>`, every
 //! library wheel and every painted one, a set of its own (`skate3wheel`):

@@ -1,0 +1,42 @@
+name: Installation or configuration help
+description: Help with the installer, server setup or supported settings.
+title: "[Setup] "
+body:
+  - type: markdown
+    attributes:
+      value: "Read SUPPORT.md and the package guide first. Never paste credentials, Cfx license keys or a complete server.cfg. Experimental FiveM resources do not replace manual txAdmin/account setup."
+  - type: dropdown
+    id: target
+    attributes:
+      label: Setup target
+      options:
+        - Story installer / update / rollback
+        - Story settings / controls
+        - FiveM rules only
+        - SK8M Lua friends test
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Package ID and game/server versions
+    validations:
+      required: true
+  - type: textarea
+    id: step
+    attributes:
+      label: Which guide and step fails?
+      description: "Link the guide and describe the exact step, expected result and error text."
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Relevant configuration and checks
+      description: "Only redacted relevant settings. For FiveM, state local or remote hosting, resources/framework, rule mode and whether the unmodified server and one/two clients work. For Story, list other ASIs and install method."
+  - type: textarea
+    id: logs
+    attributes:
+      label: Redacted log excerpt
+      description: "Attach only the relevant timestamped errors. Do not include keys, tokens, passwords or private asset files."
+      render: text

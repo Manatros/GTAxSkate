@@ -1,0 +1,94 @@
+--- a/host/src/main.cpp
++++ b/host/src/main.cpp
+@@ -83,6 +83,7 @@
+     bool drawBoard = true;    // DrawBoard: the native board object (and its mesh fallback)
+     bool showDebug = false;   // ShowDebug=1: old debug text HUD (the original Skate HUD is hud_overlay)
+     bool verboseLog = false;  // VerboseLog=1: periodic runtime log lines (perf, skater trace, collision streaming)
++    bool threadCensus = false; // Separate opt-in: enumerating process threads can stall the game tick.
+     bool loadRuntime = true;  // Runtime=0: ASI + frame-timing log only (A/B testing)
+     bool posePed = true;      // PosePed: Skate's pose on the real ped (ped vtable slot 65 wrapper)
+     bool carryBoard = false;  // CarryBoard (SkateMods): the board picked in the wheel stays in hand; E/F get on (off: SK8V's way)
+@@ -277,6 +278,7 @@
+     {"DrawBoard", Store<&Config::drawBoard>},
+     {"ShowDebug", Store<&Config::showDebug>},
+     {"VerboseLog", Store<&Config::verboseLog>},
++    {"ThreadCensus", Store<&Config::threadCensus>},
+     {"Runtime", Store<&Config::loadRuntime>},
+     {"PosePed", Store<&Config::posePed>},
+     {"CarryBoard", Store<&Config::carryBoard>},
+@@ -777,8 +779,9 @@
+         if (ms > maxFrame_) maxFrame_ = ms;
+         if (ms > 50.0) {
+             ++hitches_;
+-            if (util::g_verbose) Logf("hitch %.1f ms (skating %d): SkateV script work %.2f ms", ms, active ? 1 : 0, lastWork_);
+-        }
++            if (util::g_verbose) Logf("hitch %.1f ms (skating %d): SkateV script work %.2f ms; prior diagnostic report %.2f ms", ms, active ? 1 : 0, lastWork_, lastReport_);
++        }
++        lastReport_ = 0.0;
+         activeFrames_ += active ? 1 : 0;
+         for (int i = 0; i < kPartCount; ++i) {
+             if (active) g_partMs[i] += g_frameMs[i];
+@@ -786,6 +789,7 @@
+         }
+         const double windowMs = static_cast<double>(now.QuadPart - window_.QuadPart) * 1000.0 / static_cast<double>(freq_.QuadPart);
+         if (windowMs >= 10000.0) {
++            const double reportStart = Now();
+             const unsigned draws = boardstencil::TakeAllDraws();
+             if (util::g_verbose) Logf("frames %.1fs: %u frames (%.1f fps), worst %.1f ms, %u over 50 ms, SkateV work avg %.3f ms max %.3f ms, skating %u/%u (GTA's camera %u), GTA indexed draws %.0f/frame",
+                  windowMs / 1000.0, frames_, frames_ * 1000.0 / windowMs, maxFrame_, hitches_,
+@@ -807,11 +811,16 @@
+                      pose.mainMs / activeFrames_, pose.workerMs / activeFrames_, pose.calls);
+             }
+             // Every thread's CPU in or out of skate mode: what skating makes busier, GTA's threads included.
+-            if (util::g_verbose) Logf("threads ms/s: %s", threadcensus::Report(windowMs / 1000.0, 12).c_str());
++            if (util::g_verbose && g_config.threadCensus)
++                Logf("threads ms/s: %s", threadcensus::Report(windowMs / 1000.0, 12).c_str());
++            else threadcensus::Reset(); // A later opt-in starts with a fresh CPU baseline.
+             for (double& v : g_partMs) v = 0.0;
+             frames_ = hitches_ = activeFrames_ = 0;
+             maxFrame_ = workTotal_ = workMax_ = 0.0;
+             window_ = now;
++            lastReport_ = Now() - reportStart;
++            if (util::g_verbose) Logf("frames: diagnostic report %.3f ms (thread census %s)", lastReport_,
++                                      g_config.threadCensus ? "on; may cause hitches" : "off");
+         }
+     }
+     void Work(double ms) {
+@@ -824,6 +833,7 @@
+     LARGE_INTEGER freq_{}, last_{}, window_{};
+     unsigned frames_ = 0, hitches_ = 0, activeFrames_ = 0;
+     double maxFrame_ = 0.0, workTotal_ = 0.0, workMax_ = 0.0, lastWork_ = 0.0;
++    double lastReport_ = 0.0;
+ };
+ 
+ // ---- session ---------------------------------------------------------------
+@@ -3553,6 +3563,7 @@
+         Flag("Skate with GTA's camera (frame cost A/B)", "GtaCamera", D.gtaCamera, Bound("GtaCamera")),
+         Flag("Debug text HUD", "ShowDebug", D.showDebug, Bound("ShowDebug")),
+         Flag("Verbose log", "VerboseLog", D.verboseLog, Bound("VerboseLog", [] { util::g_verbose = g_config.verboseLog; g_runtime.SetVerboseLog(g_config.verboseLog); })),
++        Flag("Thread CPU scan (may cause stutter; verbose log)", "ThreadCensus", D.threadCensus, Bound("ThreadCensus", [] { threadcensus::Reset(); })),
+         Number("Ped Z offset", "PedZOffset", D.pedZOffset, 0, 2, 0.05f, Fixed("%.2f m"), Bound("PedZOffset")),
+         Number("Track width", "TrackWidth", D.trackWidth, 0.02f, 0.5f, 0.02f, Fixed("%.2f m"), Bound("TrackWidth")),
+         Number("Bail hit speed", "BailHitSpeed", D.bailHitSpeed, 0, 20, 0.5f, Fixed("%.1f m/s"), Bound("BailHitSpeed")),
+--- a/host/src/thread_census.h
++++ b/host/src/thread_census.h
+@@ -7,6 +7,8 @@
+ // "<total> ms/s over <n> threads; <label> <ms/s>, ..." for the `top` busiest;
+ // a label is the thread's description, else its start module+offset.
+ std::string Report(double seconds, int top);
++// Drop an old baseline when diagnostics are disabled or toggled.
++void Reset();
+ // Names the calling thread for the report (no-op before Windows 10 1607).
+ void Name(const wchar_t* name);
+ } // namespace threadcensus
+--- a/host/src/thread_census.cpp
++++ b/host/src/thread_census.cpp
+@@ -52,6 +52,8 @@
+     if (set) set(GetCurrentThread(), name);
+ }
+ 
++void Reset() { g_last.clear(); }
++
+ std::string Report(double seconds, int top) {
+     struct Row {
+         double ms;

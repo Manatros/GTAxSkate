@@ -164,7 +164,7 @@ pub fn edge_columns(laid: &Laid) -> Option<(f32, f32)> {
 
 /// The plies' strip in the grip half takes the wood of the same strip in
 /// the graphic half: darkened as grip, the deck's edge was half dark, half
-/// wood (the maintainer, video 10-10 10-22 07:16: "Two-Tone am Rand", "Holz falsch").
+/// wood (the tester, video 10-10 10-22 07:16: "two-tone edge", "incorrect wood").
 pub fn keep_wood(texture: &mut skate_boards::Texture, edges: Option<(f32, f32)>) {
     let Some((from, to)) = edges else { return };
     let (w, h) = (texture.width as usize, texture.height as usize);
@@ -466,7 +466,7 @@ fn write_model_full(dir: &std::path::Path, name: &str, surfaces: &Laid, textures
                 // blocks broke their curves up.
                 let mut small = image.width * image.height <= 128 * 128;
                 // A shiny paint's tight highlight showed every texel of the
-                // normal map (pixelated metallic, the maintainer 10-11): smoothly
+                // normal map (pixelated metallic, the tester 10-11): smoothly
                 // enlarged to 256 px and uncompressed.
                 if shine >= 100 {
                     while image.width < 256 || image.height < 256 {
@@ -512,7 +512,7 @@ fn write_model_full(dir: &std::path::Path, name: &str, surfaces: &Laid, textures
 /// level: Matte 12, Gloss 110, Metallic 230, wood about 23): how strong the
 /// highlight is, how tight (falloff) and how much more at grazing angles
 /// (fresnel). All parts once had 0.3 / 20 / 0.5, and Matte, Gloss and
-/// Metallic looked alike (the maintainer, 10-10).
+/// Metallic looked alike (the tester, 10-10).
 pub fn spec_params(shine: u8) -> [f32; 3] {
     let s = f32::from(shine) / 255.;
     [0.05 + 1.45 * s, 3. + 300. * s * s, 0.2 + 0.7 * s]

@@ -37,7 +37,9 @@ param(
     # 'all'; without it the installer asks once with a list of tick boxes.
     [string] $Parts = '',
     # Ask again which parts (else the last choice is kept).
-    [switch] $Choose
+    [switch] $Choose,
+    # Internal: the elevated continuation appends to the first window's log.
+    [switch] $ResumeTranscript
 )
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -53,18 +55,18 @@ $settings = Join-Path $receipts 'folders.json'
 New-Item -ItemType Directory -Force $receipts, $tools, $external, $bin | Out-Null
 # Everything this window shows, for a bug report (SK8V's own output also
 # goes to sk8v-setup.log).
-try { Start-Transcript -LiteralPath (Join-Path $receipts 'install.log') -Force | Out-Null } catch { }
-# Files from a downloaded zip carry the internet mark; ours are known.
-Get-ChildItem $root -Recurse -File -Include *.ps1, *.cmd, *.exe, *.asi, *.dll, *.py -ErrorAction SilentlyContinue |
-    Where-Object { $_.FullName -notmatch '\\(external|target|_publish|\.git)\\' } | Unblock-File -ErrorAction SilentlyContinue
-
+try {
+    if ($ResumeTranscript) { Start-Transcript -LiteralPath (Join-Path $receipts 'install.log') -Append | Out-Null }
+    else { Start-Transcript -LiteralPath (Join-Path $receipts 'install.log') -Force | Out-Null }
+} catch { }
 # SK8V: pinned to the release our additions are built on.
-$Sk8vTag = '1.1.8'
+$Sk8vTag = '1.1.10'
 $Sk8vZip = "https://github.com/becaring/SK8V/releases/download/$Sk8vTag/SK8V-$Sk8vTag.zip"
-# GTAxSkate's builds for players without the build tools (a release asset).
-$BinZip = 'https://github.com/Manatros/GTAxSkate/releases/latest/download/GTAxSkate-bin.zip'
-# Before the first tested release: the newest development build.
-$BinZipDev = 'https://github.com/Manatros/GTAxSkate/releases/download/dev-build/GTAxSkate-bin.zip'
+# SHA-256 digests verified against the official GitHub release asset metadata.
+# These detect unexpected/corrupted downloads; they are not code signatures.
+$Sk8vSha256 = '12020c3335d1329007c3988105c76b140bcee5c1dd03dfbed03a168ddd054d74'
+$VgmstreamZip = 'https://github.com/vgmstream/vgmstream/releases/download/r2117/vgmstream-win64.zip'
+$VgmstreamSha256 = '6c4a8a3813864fefed081bbd337dbc0ad93bf88e0b92f5db98d7ab258b22dc6c'
 $GtaBuild = '1.0.3889.0'
 $Steps = 'tools', 'sk8v', 'bin', 'boards', 'music', 'install'
 
@@ -75,7 +77,8 @@ function Fail([string]$text) {
     Say ''
     Say "Stopped: $text" 'Red'
     Say 'Run "Install GTAxSkate.cmd" again once it is fixed; it goes on where it stopped.' 'Yellow'
-    Say "For help, send build\install\install.log (and sk8v-setup.log beside it, if there)." 'Yellow'
+    Say 'For help, copy only the relevant error lines from build\install\install.log or sk8v-setup.log.' 'Yellow'
+    Say 'Review them first: remove your user name, personal folder paths, server addresses and any credentials before sharing.' 'Yellow'
     try { Stop-Transcript | Out-Null } catch { }
     exit 1
 }
@@ -84,7 +87,7 @@ trap { Fail "$($_.Exception.Message) (line $($_.InvocationInfo.ScriptLineNumber)
 function Done([string]$step) { Set-Content -LiteralPath (Join-Path $receipts "$step.done") (Get-Date -Format s) }
 function Is-Done([string]$step) {
     if ($Redo -and [array]::IndexOf($Steps, $step) -ge [array]::IndexOf($Steps, $Redo)) { return $false }
-    Test-Path (Join-Path $receipts "$step.done")
+    Test-Path -LiteralPath (Join-Path $receipts "$step.done")
 }
 function Step([int]$n, [string]$text) {
     Say ''
@@ -99,9 +102,25 @@ function Download([string]$url, [string]$to) {
     Say "  downloading $(Split-Path -Leaf $url)..." 'DarkGray'
     Invoke-WebRequest -UseBasicParsing $url -OutFile $to
 }
-function Download-Or-Fail([string]$url, [string]$to) {
-    try { Download $url $to }
-    catch { Fail "Could not download $url ($($_.Exception.Message)). Check the internet connection (or a firewall/antivirus blocking PowerShell)." }
+function Get-VerifiedArchive([string]$url, [string]$to, [string]$sha256) {
+    if ($sha256 -notmatch '^[a-fA-F0-9]{64}$') { throw 'Invalid pinned download checksum.' }
+    if (Test-Path -LiteralPath $to) {
+        if ((Get-FileHash -LiteralPath $to -Algorithm SHA256).Hash -ne $sha256) {
+            Remove-Item -LiteralPath $to -Force
+            throw 'Cached download checksum mismatch; cache removed. Run the installer again to download a fresh copy.'
+        }
+        return
+    }
+    $partial = "$to.download-$([guid]::NewGuid().ToString('N'))"
+    try {
+        Download $url $partial
+        if ((Get-FileHash -LiteralPath $partial -Algorithm SHA256).Hash -ne $sha256) {
+            throw 'Download checksum mismatch; installation stopped before extraction or execution.'
+        }
+        Move-Item -LiteralPath $partial -Destination $to -Force
+    } finally {
+        if (Test-Path -LiteralPath $partial) { Remove-Item -LiteralPath $partial -Force }
+    }
 }
 # Dialogs open in front: without an owner they can hide behind this window.
 function Owner {
@@ -141,6 +160,7 @@ function Restart-Elevated {
     if ($Redo) { $argsList += " -Redo $Redo" }
     if ($Until) { $argsList += " -Until $Until" }
     if ($NoMusic) { $argsList += ' -NoMusic' }
+    $argsList += ' -ResumeTranscript'
     try { Start-Process (Join-Path $root 'Install GTAxSkate.cmd') -Verb RunAs -ArgumentList $argsList | Out-Null }
     catch { Fail "No write access to $Gta and administrator rights were declined." }
     Say '  Continued in the administrator window.' 'Yellow'
@@ -149,32 +169,34 @@ function Restart-Elevated {
 }
 
 # --- The folders: given, remembered from the last run, found, or asked ------
-$known = if (Test-Path $settings) { Get-Content $settings -Raw | ConvertFrom-Json } else { [pscustomobject]@{} }
+$known = if (Test-Path -LiteralPath $settings) { Get-Content $settings -Raw | ConvertFrom-Json } else { [pscustomobject]@{} }
 function Remember([string]$name, [string]$value) { $known | Add-Member -NotePropertyName $name -NotePropertyValue $value -Force }
 function Known([string]$name) { $p = $known.PSObject.Properties[$name]; if ($p) { [string]$p.Value } else { '' } }
 
 function Find-Gta {
     foreach ($key in 'HKLM:\SOFTWARE\WOW6432Node\Rockstar Games\Grand Theft Auto V', 'HKLM:\SOFTWARE\WOW6432Node\Rockstar Games\GTAV') {
         $p = (Get-ItemProperty $key -ErrorAction SilentlyContinue).InstallFolder
-        if ($p -and (Test-Path (Join-Path $p 'GTA5.exe'))) { return $p }
+        if ($p -and (Test-Path -LiteralPath (Join-Path $p 'GTA5.exe'))) { return $p }
     }
     foreach ($drive in Get-PSDrive -PSProvider FileSystem) {
         foreach ($rel in 'Games\Grand Theft Auto V Legacy', 'Program Files\Rockstar Games\Grand Theft Auto V',
                          'Program Files (x86)\Steam\steamapps\common\Grand Theft Auto V', 'SteamLibrary\steamapps\common\Grand Theft Auto V',
                          'Program Files\Epic Games\GTAV') {
             $p = Join-Path $drive.Root $rel
-            if (Test-Path (Join-Path $p 'GTA5.exe')) { return $p }
+            if (Test-Path -LiteralPath (Join-Path $p 'GTA5.exe')) { return $p }
         }
     }
     ''
 }
 
 Say 'GTAxSkate installer' 'White'
+Say 'Install logs and remembered folder choices stay locally in build\install; this installer does not upload them.' 'DarkGray'
+Say 'Logs can contain personal folder paths. Review and redact excerpts before sharing them publicly.' 'DarkGray'
 if (-not $Gta) { $Gta = Known 'Gta' }
 if (-not $Gta) { $Gta = Find-Gta }
-if (-not $Gta -or -not (Test-Path (Join-Path $Gta 'GTA5.exe'))) { $Gta = Pick-Folder 'Your GTA V Legacy folder (it holds GTA5.exe)' }
-if (-not $Gta -or -not (Test-Path (Join-Path $Gta 'GTA5.exe'))) { Fail 'GTA V Legacy (GTA5.exe) was not found.' }
-$version = (Get-Item (Join-Path $Gta 'GTA5.exe')).VersionInfo.FileVersion
+if (-not $Gta -or -not (Test-Path -LiteralPath (Join-Path $Gta 'GTA5.exe'))) { $Gta = Pick-Folder 'Your GTA V Legacy folder (it holds GTA5.exe)' }
+if (-not $Gta -or -not (Test-Path -LiteralPath (Join-Path $Gta 'GTA5.exe'))) { Fail 'GTA V Legacy (GTA5.exe) was not found.' }
+$version = (Get-Item -LiteralPath (Join-Path $Gta 'GTA5.exe')).VersionInfo.FileVersion
 if ($version -and $version -ne $GtaBuild) { Say "  Note: SK8V is made for GTA V $GtaBuild; yours is $version." 'Yellow' }
 if (-not $Skate3) { $Skate3 = Known 'Skate3' }
 if (-not (Is-Done 'boards') -and (-not $Skate3 -or -not (Test-Path -LiteralPath $Skate3))) { $Skate3 = Pick-Skate3 }
@@ -204,7 +226,7 @@ $catalog = @(
 $Stance = Known 'Stance'
 if (-not $Stance) {
     $iniNow = Join-Path $Gta 'SkateVLegacy.ini'
-    $Stance = if ((Test-Path $iniNow) -and ([IO.File]::ReadAllText($iniNow) -match '(?m)^Stance=Goofy')) { 'Goofy' } else { 'Regular' }
+    $Stance = if ((Test-Path -LiteralPath $iniNow) -and ([IO.File]::ReadAllText($iniNow) -match '(?m)^Stance=Goofy')) { 'Goofy' } else { 'Regular' }
 }
 function Choose-Parts {
     $form = New-Object System.Windows.Forms.Form
@@ -248,10 +270,10 @@ $release = Join-Path $external "sk8v-release\SK8V-$Sk8vTag"
 $python = Join-Path $release 'python\python.exe'
 $rage = Join-Path $release 'build\tools\rage.exe'
 Step 1 'Tools'
-if (-not (Is-Done 'tools') -or -not (Test-Path $python) -or -not (Test-Path $rage)) {
-    if (-not (Test-Path (Join-Path $release 'tools\prepare.py'))) {
+if (-not (Is-Done 'tools') -or -not (Test-Path -LiteralPath $python) -or -not (Test-Path -LiteralPath $rage)) {
+    if (-not (Test-Path -LiteralPath (Join-Path $release 'tools\prepare.py'))) {
         $zip = Join-Path $env:TEMP "SK8V-$Sk8vTag.zip"
-        Download-Or-Fail $Sk8vZip $zip
+        Get-VerifiedArchive $Sk8vZip $zip $Sk8vSha256
         Say '  unpacking SK8V...' 'DarkGray'
         $unpacked = Join-Path $env:TEMP "SK8V-$Sk8vTag-unpacked"
         Remove-Item -LiteralPath $unpacked -Recurse -Force -ErrorAction SilentlyContinue
@@ -265,23 +287,29 @@ if (-not (Is-Done 'tools') -or -not (Test-Path $python) -or -not (Test-Path $rag
         Move-Item $top.Directory.Parent.FullName $release
         Remove-Item -LiteralPath $unpacked -Recurse -Force -ErrorAction SilentlyContinue
     }
-    if (-not (Test-Path $python)) {
+    if (-not (Test-Path -LiteralPath $python)) {
         # SK8V's own Python fetcher: python.org's embeddable Python and the
         # numpy/Pillow wheels, each checked against its SHA-256 (about 31 MB).
         Push-Location $release
         try { Run 'Getting Python' { powershell -NoProfile -ExecutionPolicy Bypass -File tools\get-python.ps1 } }
         finally { Pop-Location }
     }
-    if (-not (Test-Path $python)) { Fail "SK8V's Python is missing ($python)." }
-    if (-not (Test-Path $rage)) { Fail "SK8V's rage tool is missing ($rage)." }
+    if (-not (Test-Path -LiteralPath $python)) { Fail "SK8V's Python is missing ($python)." }
+    if (-not (Test-Path -LiteralPath $rage)) { Fail "SK8V's rage tool is missing ($rage)." }
     if (-not (Get-ChildItem $tools -Recurse -Filter vgmstream-cli.exe -ErrorAction SilentlyContinue | Select-Object -First 1)) {
         $zip = Join-Path $tools 'vgmstream-win64.zip'
-        Download-Or-Fail 'https://github.com/vgmstream/vgmstream/releases/latest/download/vgmstream-win64.zip' $zip
+        Get-VerifiedArchive $VgmstreamZip $zip $VgmstreamSha256
         Expand-Archive $zip (Join-Path $tools 'vgmstream') -Force
         Remove-Item $zip
     }
     Done 'tools'
 }
+# Pin the bundled Python even on resumed installs. A registered Python or
+# Conda PYTHONHOME/PYTHONPATH must not replace SK8V's standard library/packages.
+# These variables belong only to this installer process and its children.
+$env:PYTHONHOME = Split-Path -Parent $python
+$env:PYTHONPATH = $null
+$env:PYTHONNOUSERSITE = '1'
 Say '  ready' 'Green'
 Stop-After 'tools'
 
@@ -300,8 +328,8 @@ if (-not (Is-Done 'sk8v')) {
     if ($version -ne $GtaBuild) {
         Fail "SK8V needs GTA V Legacy $GtaBuild; your GTA5.exe is $(if ($version) { $version } else { 'unknown' }). GTA V Enhanced does not work."
     }
-    if (-not (Test-Path (Join-Path $Gta 'update\update.rpf'))) { Fail 'update\update.rpf is missing: verify GTA V in its launcher first.' }
-    if (-not (Test-Path (Join-Path $Gta 'ScriptHookV.dll'))) {
+    if (-not (Test-Path -LiteralPath (Join-Path $Gta 'update\update.rpf'))) { Fail 'update\update.rpf is missing: verify GTA V in its launcher first.' }
+    if (-not (Test-Path -LiteralPath (Join-Path $Gta 'ScriptHookV.dll'))) {
         Say ''
         Say '  Script Hook V is missing (no ScriptHookV.dll in the GTA folder).' 'Yellow'
         Say '  Download it from http://www.dev-c.com/gtav/scripthookv/ and copy' 'Yellow'
@@ -310,7 +338,7 @@ if (-not (Is-Done 'sk8v')) {
         Fail 'Script Hook V is not installed.'
     }
     # An ASI loader: Script Hook V's dinput8.dll, or another (Ultimate ASI Loader names).
-    if (-not ('dinput8.dll', 'version.dll', 'winmm.dll', 'dsound.dll', 'xinput1_3.dll' | Where-Object { Test-Path (Join-Path $Gta $_) })) {
+    if (-not ('dinput8.dll', 'version.dll', 'winmm.dll', 'dsound.dll', 'xinput1_3.dll' | Where-Object { Test-Path -LiteralPath (Join-Path $Gta $_) })) {
         Say '  Note: no ASI loader found (dinput8.dll from Script Hook V''s bin folder): without one GTA loads no mods.' 'Yellow'
     }
     $hookVersion = (Get-Item (Join-Path $Gta 'ScriptHookV.dll')).VersionInfo.FileVersion
@@ -322,7 +350,7 @@ if (-not (Is-Done 'sk8v')) {
     $need = if (Test-Path -LiteralPath (Join-Path $data '.stages')) { 3 } else { 8 }
     if ($free -lt $need) { Fail "Only $free GB free on the GTA V drive; the setup needs about $need GB. Free some space and run it again." }
     $iniNow = Join-Path $Gta 'SkateVLegacy.ini'
-    if (Test-Path $iniNow) { Copy-Item $iniNow $iniKeep -Force }
+    if (Test-Path -LiteralPath $iniNow) { Copy-Item $iniNow $iniKeep -Force }
     # SK8V's own setup does everything SK8V needs (data, its DLC pack, its
     # ini). The disc stays extracted: the boards and the music read it. Its
     # output also goes to a log, and on failure its last lines are shown
@@ -345,8 +373,8 @@ if (-not (Is-Done 'sk8v')) {
         Get-Content $sk8vLog -Tail 15 | Where-Object { $_ -notmatch '^@progress' } | ForEach-Object { Say "    $_" 'Yellow' }
         Fail "Running SK8V's setup failed (exit code $code)."
     }
-    if (-not (Test-Path (Join-Path $assets 'private\skater.glb'))) { Fail "SK8V's setup left no private\skater.glb ($assets)." }
-    if (-not (Test-Path (Join-Path $Gta 'SkateVLegacy.asi'))) { Fail 'SK8V was not installed (no SkateVLegacy.asi in the GTA folder).' }
+    if (-not (Test-Path -LiteralPath (Join-Path $assets 'private\skater.glb'))) { Fail "SK8V's setup left no private\skater.glb ($assets)." }
+    if (-not (Test-Path -LiteralPath (Join-Path $Gta 'SkateVLegacy.asi'))) { Fail 'SK8V was not installed (no SkateVLegacy.asi in the GTA folder).' }
     Done 'sk8v'
 }
 # The extracted disc for the boards and the music: the folder given, or SK8V's
@@ -354,7 +382,7 @@ if (-not (Is-Done 'sk8v')) {
 # what we read beyond them comes from the ISO here (SK8V's own reader).
 function Disc-With([string[]]$files) {
     if (Test-Path -LiteralPath $Skate3 -PathType Container) { return $Skate3 }
-    if (-not (Test-Path -LiteralPath $Skate3)) { Fail "Your Skate 3 disc image ($Skate3) is gone: run again and pick it (-Choose is not needed)." }
+    if (-not (Test-Path -LiteralPath $Skate3)) { throw "Your Skate 3 disc image ($Skate3) is gone: run again and pick it (-Choose is not needed)." }
     $copy = Join-Path $data 'disc'
     $missing = @('default.xex') + $files | Where-Object { -not (Test-Path -LiteralPath (Join-Path $copy $_)) }
     if ($missing) {
@@ -362,7 +390,7 @@ function Disc-With([string[]]$files) {
         $code = "import sys; sys.path.insert(0, sys.argv[1]); import xiso; from pathlib import Path; d = xiso.Disc(sys.argv[2])`n" +
                 "for p in sys.argv[4:]: d.extract(p, Path(sys.argv[3]) / p)"
         & $python -c $code (Join-Path $release 'tools') $Skate3 $copy @($missing)
-        if ($LASTEXITCODE) { Fail "Could not copy $($missing -join ', ') from $Skate3." }
+        if ($LASTEXITCODE) { throw "Could not copy $($missing -join ', ') from $Skate3." }
     }
     $copy
 }
@@ -375,28 +403,25 @@ $sk8vSrc = Join-Path $external 'sk8v'
 $package = Join-Path $sk8vSrc 'build\package'
 $shipped = Join-Path $root 'bin'
 # A developer's newer build counts as a new 'bin' step.
-$newer = (Test-Path (Join-Path $package 'SkateVLegacy.asi')) -and (Test-Path (Join-Path $bin 'SkateVLegacy.asi')) -and
+$newer = (Test-Path -LiteralPath (Join-Path $package 'SkateVLegacy.asi')) -and (Test-Path -LiteralPath (Join-Path $bin 'SkateVLegacy.asi')) -and
          ((Get-Item (Join-Path $package 'SkateVLegacy.asi')).LastWriteTime -gt (Get-Item (Join-Path $bin 'SkateVLegacy.asi')).LastWriteTime)
 if (-not (Is-Done 'bin') -or $newer) {
     $ped = Join-Path $root 'gta\skate-ped\target\release\skate-ped.exe'
     $music = Join-Path $root 'gta\skate-music\target\release\skate-music.exe'
-    if ((Test-Path (Join-Path $package 'SkateVLegacy.asi')) -and (Test-Path $ped)) {
+    if ((Test-Path -LiteralPath (Join-Path $package 'SkateVLegacy.asi')) -and (Test-Path -LiteralPath $ped)) {
         # A developer's checkout: the builds made here.
         Copy-Item (Join-Path $package 'SkateVLegacy.asi'), (Join-Path $package 'SkateVRuntime.dll') $bin -Force
         Copy-Item (Join-Path $sk8vSrc 'tools\prepare-board-parts.py'), (Join-Path $sk8vSrc 'tools\_common.py') $bin -Force
         Copy-Item $ped $bin -Force
-        if (Test-Path $music) { Copy-Item $music $bin -Force }
-    } elseif (Test-Path (Join-Path $shipped 'SkateVLegacy.asi')) {
+        if (Test-Path -LiteralPath $music) { Copy-Item $music $bin -Force }
+    } elseif (Test-Path -LiteralPath (Join-Path $shipped 'SkateVLegacy.asi')) {
         # The complete package: the builds came in its bin folder.
         Copy-Item (Join-Path $shipped '*') $bin -Recurse -Force
     } else {
-        $zip = Join-Path $env:TEMP 'GTAxSkate-bin.zip'
-        try { Download $BinZip $zip } catch { Download-Or-Fail $BinZipDev $zip }
-        Expand-Archive $zip $bin -Force
-        Remove-Item $zip
+        Fail 'Remote GTAxSkate binaries are temporarily disabled pending a privacy-reviewed release. Use a reviewed complete package with its bin folder, or build the host/runtime and tools locally.'
     }
-    foreach ($f in 'SkateVLegacy.asi', 'SkateVRuntime.dll', 'skate-ped.exe', 'prepare-board-parts.py') {
-        if (-not (Test-Path (Join-Path $bin $f))) { Fail "The GTAxSkate builds have no $f." }
+    foreach ($f in 'SkateVLegacy.asi', 'SkateVRuntime.dll', 'skate-ped.exe', 'prepare-board-parts.py', 'skate-music.exe') {
+        if (-not (Test-Path -LiteralPath (Join-Path $bin $f))) { Fail "The GTAxSkate builds have no $f." }
     }
     Done 'bin'
 }
@@ -412,7 +437,7 @@ Step 4 'Boards: the library and every part as a GTA model (a few minutes)'
 if (-not (Wants 'shop')) { Say '  skipped (board shop not chosen)' 'DarkGray' }
 elseif (-not (Is-Done 'boards')) {
     $disc = Disc-With @('data/content/createacharacter.big')
-    if (-not (Test-Path (Join-Path $assets 'private\boards\library.json'))) {
+    if (-not (Test-Path -LiteralPath (Join-Path $assets 'private\boards\library.json'))) {
         $engine = Join-Path $release 'upstream\skate-3-rust-engine-donor'
         Run 'Preparing the board library' { & $ped --assets $assets --prepare-boards --game $disc --engine $engine --python $python }
     }
@@ -422,13 +447,13 @@ elseif (-not (Is-Done 'boards')) {
     }
     Run 'Exporting the board parts' { & $ped --assets $assets --out $models --weapon --game $disc }
     $native = Join-Path $assets 'private\board-native\skatev_board.ydr.xml'
-    if (-not (Test-Path $native)) { Fail "SK8V's native board ($native) is missing: run with -Redo sk8v." }
+    if (-not (Test-Path -LiteralPath $native)) { Fail "SK8V's native board ($native) is missing: run with -Redo sk8v." }
     $parts = Join-Path $assets 'private\board-parts'
     Run 'Building the part models' {
         & $python (Join-Path $bin 'prepare-board-parts.py') --parts (Join-Path $models 'parts') --board $native `
             --board-json (Join-Path $assets 'private\board\board-materials.json') --rage $rage --out $parts
     }
-    if (-not (Test-Path (Join-Path $parts 'parts.json'))) { Fail 'The part models were not built.' }
+    if (-not (Test-Path -LiteralPath (Join-Path $parts 'parts.json'))) { Fail 'The part models were not built.' }
     Remove-Item -LiteralPath $models -Recurse -Force -ErrorAction SilentlyContinue
     Done 'boards'
 }
@@ -441,10 +466,15 @@ Stop-After 'boards'
 Step 5 'Skate 3 soundtrack on Self Radio (about a minute)'
 if ($NoMusic -or -not (Wants 'music')) { Say '  skipped (not chosen)' 'DarkGray' }
 elseif (-not (Is-Done 'music')) {
-    $disc = Disc-With @('data/audio/music/ipod.mpf', 'data/audio/music/Ipod_Stream.mus')
     # Optional: a failure is reported and left for the next run, the rest goes on.
-    try { & (Join-Path $PSScriptRoot 'get-skate-music.ps1') -Game $disc -Exe (Join-Path $bin 'skate-music.exe'); Done 'music' }
-    catch { Say "  the soundtrack was skipped: $($_.Exception.Message)" 'Yellow'; Say '  (run the installer again to retry it)' 'Yellow' }
+    try {
+        $disc = Disc-With @('data/audio/music/ipod.mpf', 'data/audio/music/Ipod_Stream.mus')
+        & (Join-Path $PSScriptRoot 'get-skate-music.ps1') -Game $disc -Exe (Join-Path $bin 'skate-music.exe')
+        Done 'music'
+    } catch {
+        Say "  the soundtrack was skipped: $($_.Exception.Message)" 'Yellow'
+        Say '  To retry it, run the installer again with -Skate3 <disc image or folder>.' 'Yellow'
+    }
 }
 Say '  ready' 'Green'
 Stop-After 'music'
@@ -452,37 +482,102 @@ Stop-After 'music'
 # --- 6 install ---------------------------------------------------------------
 Step 6 'Installing into GTA V'
 if (Get-Process GTA5 -ErrorAction SilentlyContinue) { Fail 'GTA V is running: close it first.' }
-Copy-Item (Join-Path $bin 'SkateVLegacy.asi'), (Join-Path $bin 'SkateVRuntime.dll') $Gta -Force
 # SK8V's install record gets our two files' hashes: its uninstall then
 # removes them and its next setup replaces them, as with its own (it keeps
 # files that changed since it installed them).
 $manifest = Join-Path $Gta 'SkateVLegacy.installed.json'
-if (Test-Path $manifest) {
-    $record = Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
+if (Test-Path -LiteralPath $manifest) {
+    try { $record = Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json -ErrorAction Stop }
+    catch { Fail "SK8V's install manifest is invalid ($manifest): $($_.Exception.Message). No files were copied." }
+    if ($record -isnot [pscustomobject] -or $record.format -ne 'sk8v-install' -or $record.version -ne 1 -or
+        $record.gta -ne $GtaBuild -or $record.files -isnot [pscustomobject]) {
+        Fail "SK8V's install manifest has an unsupported or invalid structure ($manifest). No files were copied."
+    }
+    foreach ($entry in $record.files.PSObject.Properties) {
+        $segments = $entry.Name -split '[/\\]'
+        if ([string]::IsNullOrWhiteSpace($entry.Name) -or [IO.Path]::IsPathRooted($entry.Name) -or
+            $entry.Name -match '^[A-Za-z]:' -or @($segments | Where-Object { $_ -eq '.' -or $_ -eq '..' }).Count -gt 0 -or
+            ($null -ne $entry.Value -and $entry.Value -isnot [string])) {
+            Fail "SK8V's install manifest contains an invalid file entry ('$($entry.Name)'). No files were copied."
+        }
+    }
+} else {
+    # Match SK8V's setup_engine.write_manifest schema so its next setup/uninstall
+    # can manage these files even when no SK8V setup manifest existed yet.
+    $record = [pscustomobject]@{ format = 'sk8v-install'; version = 1; gta = $GtaBuild; files = [pscustomobject]@{} }
+}
+$transactionId = [guid]::NewGuid().ToString('N')
+$manifestBackup = "$manifest.rollback-$transactionId"
+$manifestTemp = "$manifest.new-$transactionId"
+$copyBackups = @{}
+$rollbackFailed = $false
+try {
     foreach ($f in 'SkateVLegacy.asi', 'SkateVRuntime.dll') {
-        $hash = (Get-FileHash -LiteralPath (Join-Path $Gta $f) -Algorithm SHA256).Hash.ToLowerInvariant()
+        $destination = Join-Path $Gta $f
+        if (Test-Path -LiteralPath $destination) {
+            $backup = Join-Path $Gta (".$f.install-backup-$transactionId")
+            Copy-Item -LiteralPath $destination -Destination $backup -Force
+            $copyBackups[$destination] = $backup
+        } else { $copyBackups[$destination] = $null }
+        Copy-Item -LiteralPath (Join-Path $bin $f) -Destination $destination -Force
+        $hash = (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash.ToLowerInvariant()
         $record.files | Add-Member -NotePropertyName $f -NotePropertyValue $hash -Force
     }
-    [IO.File]::WriteAllText($manifest, ($record | ConvertTo-Json -Depth 5), (New-Object Text.UTF8Encoding $false))
+    [IO.File]::WriteAllText($manifestTemp, ($record | ConvertTo-Json -Depth 5), (New-Object Text.UTF8Encoding $false))
+    if (Test-Path -LiteralPath $manifest) {
+        Copy-Item -LiteralPath $manifest -Destination $manifestBackup -Force
+        [IO.File]::Replace($manifestTemp, $manifest, $manifestBackup, $true)
+    } else {
+        [IO.File]::Move($manifestTemp, $manifest)
+    }
+} catch {
+    foreach ($destination in $copyBackups.Keys) {
+        $backup = $copyBackups[$destination]
+        try {
+            if ($backup -and (Test-Path -LiteralPath $backup)) { Copy-Item -LiteralPath $backup -Destination $destination -Force }
+            elseif (Test-Path -LiteralPath $destination) { Remove-Item -LiteralPath $destination -Force }
+        } catch {
+            $rollbackFailed = $true
+            Say "  rollback failed for $(Split-Path -Leaf $destination); backup retained at $backup" 'Red'
+        }
+    }
+    if (Test-Path -LiteralPath $manifestBackup) {
+        try { Copy-Item -LiteralPath $manifestBackup -Destination $manifest -Force }
+        catch {
+            $rollbackFailed = $true
+            Say "  manifest rollback failed; backup retained at $manifestBackup" 'Red'
+        }
+    }
+    if ($rollbackFailed) {
+        Fail "Could not record the SK8V-owned install, and rollback was incomplete. Recovery backups were retained; original error: $($_.Exception.Message)."
+    } else {
+        Fail "Could not record the SK8V-owned install; copied files were rolled back ($($_.Exception.Message))."
+    }
+} finally {
+    Remove-Item -LiteralPath $manifestTemp -Force -ErrorAction SilentlyContinue
+    if (-not $rollbackFailed) {
+        Remove-Item -LiteralPath $manifestBackup -Force -ErrorAction SilentlyContinue
+        foreach ($backup in $copyBackups.Values) { if ($backup) { Remove-Item -LiteralPath $backup -Force -ErrorAction SilentlyContinue } }
+    }
 }
 # An older GTAxSkate (its own plugin and packs) goes out of the way, kept as *.off.
 foreach ($old in (Join-Path $Gta 'SkateGTA.asi'), (Join-Path $Gta 'SkateExtras.asi')) {
-    if (Test-Path $old) { Move-Item $old "$old.off" -Force; Say "  set aside $(Split-Path -Leaf $old) (now .off)" 'DarkGray' }
+    if (Test-Path -LiteralPath $old) { Move-Item $old "$old.off" -Force; Say "  set aside $(Split-Path -Leaf $old) (now .off)" 'DarkGray' }
 }
 foreach ($pack in 'skate3weapon', 'skate3props') {
     $rpf = Join-Path $Gta "mods\update\x64\dlcpacks\$pack\dlc.rpf"
-    if (Test-Path $rpf) { Move-Item $rpf "$rpf.off" -Force; Say "  set aside the $pack pack (now .off)" 'DarkGray' }
+    if (Test-Path -LiteralPath $rpf) { Move-Item $rpf "$rpf.off" -Force; Say "  set aside the $pack pack (now .off)" 'DarkGray' }
 }
 # SK8V's ini (UTF-16, as SK8V writes it): our additions on; the player's own values kept.
 $ini = Join-Path $Gta 'SkateVLegacy.ini'
-$text = if (Test-Path $ini) { [IO.File]::ReadAllText($ini) } else { "[SkateV]`r`n" }
+$text = if (Test-Path -LiteralPath $ini) { [IO.File]::ReadAllText($ini) } else { "[SkateV]`r`n" }
 $text = ($text -replace "`r+`n", "`n") -replace "`n", "`r`n"
 if ($text -notmatch '(?m)^\[SkateV\]\r?$') { $text = "[SkateV]`r`n$text" }
 function Add-Key([string]$key, [string]$value) {
     if ($script:text -notmatch "(?m)^$key=") { $script:text = $script:text -replace '(?m)^\[SkateV\]\r?$', "[SkateV]`r`n$key=$value" }
 }
 # The player's own values from before SK8V's setup that its template dropped.
-if (Test-Path $iniKeep) {
+if (Test-Path -LiteralPath $iniKeep) {
     $kept = ([IO.File]::ReadAllText($iniKeep) -replace "`r+`n", "`n") -split "`n"
     foreach ($line in $kept) { if ($line -match '^([A-Za-z0-9_]+)=(.*)$') { Add-Key $Matches[1] $Matches[2] } }
 }
@@ -502,7 +597,7 @@ foreach ($c in $catalog) {
     }
 }
 # With the soundtrack on Self Radio, skating plays it.
-if ((Wants 'music') -and (Is-Done 'music')) { Add-Key 'SkateRadio' 'RADIO_19_USER' }
+if (-not $NoMusic -and (Wants 'music') -and (Is-Done 'music')) { Add-Key 'SkateRadio' 'RADIO_19_USER' }
 foreach ($key in 'DrawBoard', 'DrawSkater') { $text = $text -replace "(?m)^$key=0", "$key=1" }
 $text = ($text -replace "`r+`n", "`n") -replace "`n", "`r`n"
 [IO.File]::WriteAllText($ini, $text, [Text.Encoding]::Unicode)
@@ -519,7 +614,7 @@ Say 'GTAxSkate is installed.' 'Green'
 Say 'In GTA V (story mode): pick the skateboard in the weapon wheel or press F to skate. WASD, Shift push, Space ollie, arrows tricks,' 'White'
 Say 'E on/off the board, F back to GTA, V camera, R cinematic camera. G in Binco, the Discount Store or Suburban opens the board shop.' 'White'
 Say 'Settings: the SK8V menu (F10; keys and camera on its pages), or SkateVLegacy.ini; keys: SkateVKeys.txt.' 'White'
-if ((Wants 'music') -and (Is-Done 'music')) {
+if (-not $NoMusic -and (Wants 'music') -and (Is-Done 'music')) {
     Say 'Skate 3 soundtrack: in GTA V once Settings > Audio > Self Radio Mode: Radio, then Perform Full Scan.' 'White'
 }
 try { Stop-Transcript | Out-Null } catch { }

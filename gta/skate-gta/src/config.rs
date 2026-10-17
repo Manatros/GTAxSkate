@@ -642,11 +642,11 @@ mod tests {
 
     #[test]
     fn settings_parse_and_bad_lines_are_reported() {
-        let text = "SkateAssets = C:\\Games\\skate-data\\assets ; mine\nToggleKey = F5\nCamera = skate\n\
+        let text = "SkateAssets = C:\\Example\\skate-data\\assets ; mine\nToggleKey = F5\nCamera = skate\n\
                     PoseMode = both\nDifficulty = Hardcore\npop = 1.5\nBoardRotation = 90 0 0\n\
                     Trucks = 3\nnonsense\nJetpack = on\n";
         let (config, problems) = Config::parse(text);
-        assert_eq!(config.skate_assets, Some(PathBuf::from("C:\\Games\\skate-data\\assets")));
+        assert_eq!(config.skate_assets, Some(PathBuf::from("C:\\Example\\skate-data\\assets")));
         let (marked, _) = Config::parse("\u{feff}SkateAssets = C:\\x\n");
         assert_eq!(marked.skate_assets, Some(PathBuf::from("C:\\x")), "a byte-order mark is skipped");
         assert_eq!(config.toggle_key, 0x74);

@@ -1,0 +1,20 @@
+﻿[
+    {
+        "File":  "gtaxskate_test_board.ydr",
+        "Bytes":  8199,
+        "Sha256":  "9480891512073fce3463ec86da1930997d59ddc683218d6da290945b73d25082",
+        "BinaryReadback":  true
+    },
+    {
+        "File":  "gtaxskate_test_board.ytd",
+        "Bytes":  299,
+        "Sha256":  "84dfdc22c8ea0c2d294b7eebe1ad4d626746cb86ffc762ec224cc68a7b345ed0",
+        "BinaryReadback":  true
+    },
+    {
+        "File":  "gtaxskate_board.ytyp",
+        "Bytes":  490,
+        "Sha256":  "f7c831790c1dd6220a3eccb2e5e356cd0ef18cca92425013935912b55e1f66e1",
+        "BinaryReadback":  true
+    }
+]

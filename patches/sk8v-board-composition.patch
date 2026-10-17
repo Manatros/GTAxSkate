@@ -1,0 +1,264 @@
+diff --git a/host/src/board_composition_key.h b/host/src/board_composition_key.h
+new file mode 100644
+index 0000000..35f9e77
+--- /dev/null
++++ b/host/src/board_composition_key.h
+@@ -0,0 +1,31 @@
++#pragma once
++#include <cstdint>
++#include <cstdio>
++#include <string>
++#include <vector>
++
++namespace boardcomposition {
++inline std::string Payload(const std::vector<std::string>& models) {
++    if (models.empty() || models.size() > 8) return {};
++    std::string out;
++    for (const auto& model : models) {
++        if (model.size() > 140 || model.rfind("skatev_", 0) != 0) return {};
++        const auto end = model.find('_', 7);
++        if (end == std::string::npos) return {};
++        const auto kind = model.substr(7, end - 7);
++        if (kind != "d" && kind != "t" && kind != "tb" && kind != "th" && kind != "w" && kind != "g") return {};
++        if (end + 1 == model.size() || model.size() - end - 1 > 128) return {};
++        for (const auto& prior : models) { if (&prior == &model) break; if (prior == model) return {}; }
++        for (char c : model) if (!(c >= 'a' && c <= 'z') && !(c >= '0' && c <= '9') && c != '_') return {};
++        out += model + '\n';
++    }
++    return out;
++}
++inline std::string Key(const std::string& payload) {
++    std::uint64_t hash = 14695981039346656037ull;
++    for (unsigned char c : payload) hash = (hash ^ c) * 1099511628211ull;
++    char out[17];
++    std::snprintf(out, sizeof(out), "%016llx", static_cast<unsigned long long>(hash));
++    return out;
++}
++}
+diff --git a/host/src/board_parts.cpp b/host/src/board_parts.cpp
+index 098fcc8..95a2bcd 100644
+--- a/host/src/board_parts.cpp
++++ b/host/src/board_parts.cpp
+@@ -1,5 +1,6 @@
+ #include "board_parts.h"
+ #include "board_native.h"
++#include "board_composition_key.h"
+ #include "host_util.h"
+ #include "natives.h"
+ #include "pose_math.h"
+@@ -8,6 +9,8 @@
+ #include <cstdio>
+ #include <filesystem>
+ #include <map>
++#include <fstream>
++#include <iterator>
+ 
+ namespace boardparts {
+ namespace {
+@@ -27,6 +30,12 @@ struct Shown {
+ 
+ void (*g_log)(const char*) = nullptr;
+ std::filesystem::path g_root;
++std::filesystem::path g_compositionRoot;
++std::string g_compositionSession;
++bool g_compose = false;
++std::map<std::filesystem::path, std::pair<std::uintmax_t, std::filesystem::file_time_type>> g_compositionInputs;
++HANDLE g_compositionWorker = nullptr;
++ULONGLONG g_compositionWorkerAttempt = 0;
+ bool g_started = false;
+ std::map<std::string, Model> g_models;  // registrations persist for the process
+ // A set of part objects making one board: the ridden one and the store's preview.
+@@ -38,6 +47,10 @@ struct Set {
+     std::uint32_t room = 0;
+     ULONGLONG waitingSince = 0;  // not all parts loaded yet (for the log)
+     bool notRigidLogged = false;
++    std::string composition;
++    ULONGLONG compositionChecked = 0;
++    bool compositionPublished = false;
++    bool compositionErrorLogged = false;
+ };
+ Set g_ride, g_preview;
+ Set g_display[8];
+@@ -108,9 +121,10 @@ bool Ready(const std::string& name) {
+             m.failed = true;
+             return false;
+         }
+-        m.ydrPath = streaming::NarrowAnsi(g_root / (name + ".ydr"));
+-        m.ytypPath = streaming::NarrowAnsi(g_root / (name + ".ytyp"));
+-        if (m.ydrPath.empty() || m.ytypPath.empty() || !std::filesystem::is_regular_file(g_root / (name + ".ydr"))) {
++        const auto& root = name.rfind("skatev_c_", 0) == 0 ? g_compositionRoot : g_root;
++        m.ydrPath = streaming::NarrowAnsi(root / (name + ".ydr"));
++        m.ytypPath = streaming::NarrowAnsi(root / (name + ".ytyp"));
++        if (m.ydrPath.empty() || m.ytypPath.empty() || !std::filesystem::is_regular_file(root / (name + ".ydr"))) {
+             Logf("board parts: %s: no model file", name.c_str());
+             m.failed = true;
+             return false;
+@@ -195,6 +209,22 @@ int Create(const std::string& name, const SvBoardPose& pose) {
+ bool Start(const std::wstring& dataRoot, void (*log)(const char*)) {
+     g_log = log;
+     g_root = std::filesystem::path(dataRoot) / L"private" / L"board-parts";
++    g_compositionRoot = std::filesystem::path(dataRoot) / L"private" / L"board-composed";
++    std::error_code ec;
++    g_compose = std::filesystem::is_regular_file(g_compositionRoot / "enabled", ec);
++    // Unique per process/start: no already registered drawable is replaced and
++    // stale output from previous inputs/sessions can never be selected.
++    char session[17];
++    std::snprintf(session, sizeof(session), "%llx", static_cast<unsigned long long>(GetTickCount64() ^ (static_cast<ULONGLONG>(GetCurrentProcessId()) << 32)));
++    g_compositionSession = session;
++    g_compositionInputs.clear();
++    if (g_compose) {
++        std::ofstream active(g_compositionRoot / "active-session", std::ios::binary | std::ios::trunc);
++        active << g_compositionSession;
++        active.close();
++        if (!active) g_compose = false;
++    }
++    if (g_compose) Log("board composition: enabled; exact shop selections queued for external preparation, animation writer unchanged");
+     g_started = std::filesystem::is_directory(g_root);
+     if (!g_started) Log("board parts: none built (private\\board-parts missing); the native board shows");
+     // The raw registration is checked against 3889's code, as the native board's.
+@@ -221,6 +251,107 @@ bool Available(const std::string& model) {
+ }
+ 
+ namespace {
++void EnsureCompositionWorker() {
++    if (g_compositionWorker) {
++        DWORD code = 0;
++        if (GetExitCodeProcess(g_compositionWorker, &code) && code == STILL_ACTIVE) return;
++        CloseHandle(g_compositionWorker);
++        g_compositionWorker = nullptr;
++    }
++    const auto now = GetTickCount64();
++    if (g_compositionWorkerAttempt && now - g_compositionWorkerAttempt < 10000) return;
++    g_compositionWorkerAttempt = now;
++    const auto ini = g_compositionRoot / "worker.ini";
++    wchar_t pythonPath[32768]{}, ragePath[32768]{};
++    GetPrivateProfileStringW(L"Worker", L"Python", L"", pythonPath, 32768, ini.c_str());
++    GetPrivateProfileStringW(L"Worker", L"Rage", L"", ragePath, 32768, ini.c_str());
++    const std::filesystem::path python(pythonPath), rage(ragePath);
++    const auto script = g_compositionRoot / "board-composition-worker.py";
++    const auto composer = g_compositionRoot / "prepare-native-custom-board.py";
++    std::error_code ec;
++    if (!std::filesystem::is_regular_file(python, ec) || !std::filesystem::is_regular_file(rage, ec) ||
++        !std::filesystem::is_regular_file(script, ec) || !std::filesystem::is_regular_file(composer, ec)) {
++        Log("board composition: worker setup missing; selected parts retained");
++        return;
++    }
++    auto quote = [](const std::filesystem::path& path) { return L"\"" + path.wstring() + L"\""; };
++    std::wstring command = quote(python) + L" " + quote(script) + L" --watch --root " + quote(g_compositionRoot) +
++        L" --native " + quote(g_root.parent_path() / "board-native" / "skatev_board.ydr") +
++        L" --parts " + quote(g_root) + L" --rage " + quote(rage);
++    STARTUPINFOW startup{};
++    startup.cb = sizeof(startup);
++    PROCESS_INFORMATION process{};
++    if (!CreateProcessW(python.c_str(), command.data(), nullptr, nullptr, false, CREATE_NO_WINDOW, nullptr, nullptr, &startup, &process)) {
++        Log("board composition: worker launch failed; selected parts retained");
++        return;
++    }
++    CloseHandle(process.hThread);
++    g_compositionWorker = process.hProcess;
++    Log("board composition: preparation worker started without a window");
++}
++
++// Nonblocking cache lookup only. The separate worker owns all exporting and
++// validation. A readiness marker is published last, for the exact vector.
++std::string Composed(Set& set) {
++    if (!g_compose) return {};
++    const auto payload = boardcomposition::Payload(set.models);
++    if (payload.empty()) return {};
++    const auto name = "skatev_c_" + g_compositionSession + "_" + boardcomposition::Key(payload);
++    if (set.composition != name) {
++        set.composition = name;
++        set.compositionChecked = 0;
++        set.compositionPublished = false;
++        set.compositionErrorLogged = false;
++    }
++    const auto now = GetTickCount64();
++    if (set.compositionChecked && now - set.compositionChecked < 500) return set.compositionPublished ? name : std::string{};
++    set.compositionChecked = now;
++    std::error_code ec;
++    std::vector<std::filesystem::path> inputs{g_root.parent_path() / "board-native" / "skatev_board.ydr"};
++    for (const auto& model : set.models) inputs.push_back(g_root / (model + ".ydr"));
++    for (const auto& path : inputs) {
++        const auto size = std::filesystem::file_size(path, ec);
++        if (ec) return {};
++        const auto modified = std::filesystem::last_write_time(path, ec);
++        if (ec) return {};
++        const auto stamp = std::make_pair(size, modified);
++        const auto prior = g_compositionInputs.emplace(path, stamp);
++        if (!prior.second && prior.first->second != stamp) {
++            g_compose = false;
++            Log("board composition: source assets changed during this host session; preparation disabled, restart GTA after asset changes");
++            return {};
++        }
++    }
++    if (set.compositionPublished) return name;
++    const auto ready = g_compositionRoot / (name + ".ready");
++    if (std::filesystem::is_regular_file(ready, ec) && std::filesystem::file_size(ready, ec) <= 2048 && !ec) {
++        std::ifstream input(ready, std::ios::binary);
++        const std::string contents((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
++        if (contents == payload && std::filesystem::is_regular_file(g_compositionRoot / (name + ".ydr"), ec) &&
++            std::filesystem::is_regular_file(g_compositionRoot / (name + ".ytyp"), ec)) {
++            set.compositionPublished = true;
++            return name;
++        }
++    }
++    if (!set.compositionErrorLogged && std::filesystem::is_regular_file(g_compositionRoot / (name + ".error"), ec)) {
++        set.compositionErrorLogged = true;
++        Logf("board composition: preparation failed for %s; details in matching .error file; selected parts retained%s", name.c_str());
++    }
++    const auto request = g_compositionRoot / (name + ".request");
++    if (!std::filesystem::exists(request, ec)) {
++        const auto temporary = g_compositionRoot / (name + ".tmp");
++        std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
++        output << payload;
++        output.close();
++        if (output) {
++            std::filesystem::rename(temporary, request, ec);
++            if (!ec) Logf("board composition: queued %s; showing existing parts until prepared%s", name.c_str());
++        }
++    }
++    if (!set.compositionErrorLogged) EnsureCompositionWorker();
++    return {};
++}
++
+ // Shows `set` posed by `pose`; true when every part is out and posed.
+ bool Show(Set& set, const SvBoardPose& pose) {
+     if (pose.size != sizeof(SvBoardPose) || pose.bone_count != 7) return false;
+@@ -236,7 +367,11 @@ bool Show(Set& set, const SvBoardPose& pose) {
+     }
+     bool all = true;
+     std::string missing;
+-    for (const std::string& name : set.models)
++    const auto combined = Composed(set);
++    // Only switch when the verified composed model is loaded. Pending/failed
++    // preparation keeps the selected parts, including paint and griptape.
++    const auto models = !combined.empty() && Ready(combined) ? std::vector<std::string>{combined} : set.models;
++    for (const std::string& name : models)
+         if (!Ready(name)) all = false, missing = name;
+     if (!all) {  // the native board shows until every part is in
+         const ULONGLONG now = GetTickCount64();
+@@ -248,8 +383,12 @@ bool Show(Set& set, const SvBoardPose& pose) {
+         return false;
+     }
+     set.waitingSince = 0;
++    if (!set.shown.empty() && (set.shown.size() != models.size() || set.shown.front().name != models.front())) {
++        RemoveAll(set);
++        set.announced = false;
++    }
+     if (set.shown.empty()) {
+-        for (const std::string& name : set.models) {
++        for (const std::string& name : models) {
+             Shown s;
+             s.name = name;
+             s.object = Create(name, pose);
+@@ -262,8 +401,8 @@ bool Show(Set& set, const SvBoardPose& pose) {
+             set.shown.push_back(s);
+         }
+         if (!set.announced)
+-            Logf(&set == &g_ride ? "board parts: riding %s%s" : "board parts: store preview of %s%s", set.models.front().c_str(),
+-                 set.models.size() > 1 ? " and the rest of the setup" : "");
++            Logf(&set == &g_ride ? "board parts: riding %s%s" : "board parts: store preview of %s%s", models.front().c_str(),
++                 models.size() > 1 ? " and the rest of the setup" : " (single drawable)");
+         set.interior = -1;
+         set.announced = true;
+     }

@@ -1,0 +1,226 @@
+diff --git a/tools/prepare-board-native.py b/tools/prepare-board-native.py
+index 8705e06..ea2ab5c 100644
+--- a/tools/prepare-board-native.py
++++ b/tools/prepare-board-native.py
+@@ -191,7 +191,9 @@ def export(board_path, lighting_path, reference, rage, out):
+         vec(b, 'Translation', local[:3, 3]); vec(b, 'Rotation', quaternion(local[:3, :3] / scale))
+         vec(b, 'Scale', scale); vec(b, 'TransformUnk', [0, 0, 0, 0])
+     model = node(node(root, 'DrawableModelsHigh'), 'Item')
+-    for key, value in [('RenderMask', 255), ('Flags', 0), ('HasSkin', 1), ('BoneIndex', 0), ('Unknown1', 0)]: node(model, key, value=value)
++    # Both fields declare skinning: HasSkin is the binding, Flags bit 0 is
++    # the model's skin render flag (also set by Sollumz and owned references).
++    for key, value in [('RenderMask', 255), ('Flags', 1), ('HasSkin', 1), ('BoneIndex', 0), ('Unknown1', 0)]: node(model, key, value=value)
+     geometries = node(model, 'Geometries')
+     for si, (s, p) in enumerate(zip(data['surfaces'], positions)):
+         normals = np.array([v['normal'] for v in s['vertices']]) @ C[:3, :3].T
+@@ -216,6 +218,9 @@ def export(board_path, lighting_path, reference, rage, out):
+     archetype_flags = export_archetype(rage, ydr, out)
+     dumped = out / 'skatev_board.roundtrip.xml'; run_rage(rage, 'resource', 'dump', ydr, '-o', dumped)
+     back = ET.parse(dumped)
++    for model in back.findall('./DrawableModelsHigh/Item'):
++        if int(model.find('HasSkin').get('value')) != 1 or not int(model.find('Flags').get('value')) & 1:
++            raise ValueError('native model lost its skin render flag or binding')
+     checks = []
+     converted_geometries = back.findall('./DrawableModelsHigh/Item/Geometries/Item')
+     converted_bones = back.findall('./Skeleton/Bones/Item')
+diff --git a/tools/prepare-board-parts.py b/tools/prepare-board-parts.py
+index d631e17..c4fdb2d 100644
+--- a/tools/prepare-board-parts.py
++++ b/tools/prepare-board-parts.py
+@@ -170,6 +170,9 @@ def convert(source_dir, name, out_name, offset, template, work):
+     for model in drawable.iter('DrawableModelsHigh'):
+         for item in model.findall('Item'):
+             item.find('HasSkin').set('value', '1')
++            # Input props are rigid (Flags=0). Turning them into skinned
++            # parts requires the matching render flag as well as the binding.
++            item.find('Flags').set('value', str(int(item.find('Flags').get('value')) | 1))
+             for geometry in item.find('Geometries').findall('Item'):
+                 buffer = geometry.find('VertexBuffer')
+                 layout = buffer.find('Layout')
+diff --git a/tools/repair-board-skin-flags.py b/tools/repair-board-skin-flags.py
+new file mode 100644
+index 0000000..c9dea6b
+--- /dev/null
++++ b/tools/repair-board-skin-flags.py
+@@ -0,0 +1,137 @@
++"""Stage the missing model skin render bit in existing owned board YDRs.
++
++Never writes source assets or installs anything. Existing geometry, skeleton,
++materials, other flags and embedded DDS data are verified after rebuilding.
++"""
++import argparse
++import concurrent.futures
++import hashlib
++import json
++import math
++from pathlib import Path
++import subprocess
++import tempfile
++import xml.etree.ElementTree as ET
++
++
++def sha(path):
++    return hashlib.sha256(path.read_bytes()).hexdigest()
++
++
++def same_text(a, b):
++    a, b = (a or '').split(), (b or '').split()
++    if len(a) != len(b):
++        return False
++    for x, y in zip(a, b):
++        if x == y:
++            continue
++        try:
++            xf, yf = float(x), float(y)
++            if not math.isfinite(xf) or not math.isfinite(yf) or not math.isclose(xf, yf, rel_tol=1e-6, abs_tol=1e-7):
++                return False
++        except ValueError:
++            return False
++    return True
++
++
++def same_tree(a, b):
++    return (a.tag == b.tag and a.attrib.keys() == b.attrib.keys()
++            and all(same_text(a.attrib[k], b.attrib[k]) for k in a.attrib)
++            and same_text(a.text, b.text) and len(a) == len(b)
++            and all(same_tree(x, y) for x, y in zip(a, b)))
++
++
++def repair_flags(root):
++    count = 0
++    for level in ('High', 'Med', 'Low', 'Vlow'):
++        for model in root.findall('./DrawableModels' + level + '/Item'):
++            skin = model.find('HasSkin')
++            if skin is not None and int(skin.get('value')) != 0:
++                flags = model.find('Flags')
++                if flags is None:
++                    raise ValueError('Skinned model without Flags')
++                value = int(flags.get('value'))
++                if not value & 1:
++                    flags.set('value', str(value | 1))
++                    count += 1
++    return count
++
++
++def run(rage, *args):
++    result = subprocess.run([str(rage), '--no-update-check', 'resource', *map(str, args)],
++                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
++    if result.returncode:
++        raise RuntimeError(result.stderr[-2000:] or result.stdout[-2000:])
++
++
++def stage_one(source, assets, out, rage):
++    relative = source.relative_to(assets)
++    before = sha(source)
++    with tempfile.TemporaryDirectory(prefix='skin-', dir=out / 'work') as temp:
++        temp = Path(temp)
++        original, check = temp / 'original', temp / 'check'
++        original.mkdir()
++        check.mkdir()
++        xml = original / 'model.ydr.xml'
++        run(rage, 'dump', source, '-o', xml)
++        tree = ET.parse(xml)
++        count = repair_flags(tree.getroot())
++        if not count:
++            return {'name': relative.as_posix(), 'changedModels': 0, 'originalSha256': before, 'sha256': before}
++        tree.write(xml, encoding='utf-8', xml_declaration=True)
++        target = out / 'payload' / relative
++        target.parent.mkdir(parents=True, exist_ok=True)
++        run(rage, 'build', xml, '-o', target, '--strict')
++        checked_xml = check / 'model.ydr.xml'
++        run(rage, 'dump', target, '-o', checked_xml)
++        if not same_tree(tree.getroot(), ET.parse(checked_xml).getroot()):
++            raise ValueError(f'{relative}: non-flag XML change after rebuild')
++        textures = lambda folder: {p.relative_to(folder).as_posix(): sha(p) for p in folder.rglob('*.dds')}
++        if textures(original) != textures(check):
++            raise ValueError(f'{relative}: embedded texture data changed')
++        if sha(source) != before:
++            raise ValueError(f'{relative}: source changed during staging')
++        return {'name': relative.as_posix(), 'changedModels': count, 'originalSha256': before, 'sha256': sha(target)}
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument('--assets', required=True, type=Path)
++    parser.add_argument('--out', required=True, type=Path)
++    parser.add_argument('--rage', required=True, type=Path)
++    parser.add_argument('--only', nargs='*', help='Specific asset-relative YDR paths for isolated verification')
++    parser.add_argument('--workers', type=int, default=4)
++    args = parser.parse_args()
++    assets, out, rage = args.assets.resolve(), args.out.resolve(), args.rage.resolve()
++    if out.exists() or out == assets or assets in out.parents:
++        raise ValueError('Use a new output folder outside source assets')
++    sources = ([assets / name for name in args.only] if args.only else
++               sorted((assets / 'private' / 'board-native').glob('skatev_board.ydr')) +
++               sorted((assets / 'private' / 'board-parts').rglob('skatev_*.ydr')))
++    if not sources:
++        raise ValueError('No existing board assets found')
++    for path in sources:
++        resolved = path.resolve()
++        relative = resolved.relative_to(assets)
++        if (not path.is_file() or path.is_symlink() or relative.parts[:2] not in
++                (('private', 'board-native'), ('private', 'board-parts')) or path.suffix != '.ydr'):
++            raise ValueError('Unexpected source asset path')
++    (out / 'work').mkdir(parents=True)
++    # Create shared ancestors once on the main thread. Concurrent recursive
++    # mkdir on Windows can fail transiently while siblings create the parent.
++    for directory in sorted({(out / 'payload' / p.relative_to(assets)).parent for p in sources}):
++        directory.mkdir(parents=True, exist_ok=True)
++    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, min(args.workers, 8))) as pool:
++        jobs = [pool.submit(stage_one, p, assets, out, rage) for p in sources]
++        files = [job.result() for job in jobs]
++    manifest = {'format': 'gtaxskate-board-skin-fix', 'version': 1, 'assets': str(assets),
++                'rageSha256': sha(rage), 'files': files,
++                'checked': len(files), 'changed': sum(bool(e['changedModels']) for e in files),
++                'verification': 'All XML fields semantically equal except requested skin bit; embedded DDS hashes exact; source unchanged',
++                'gameplay': 'Not tested; corrects contradictory Flags=0 / HasSkin=1 metadata'}
++    (out / 'manifest.json').write_text(json.dumps(manifest, indent=2), encoding='utf-8')
++    print(json.dumps({'output': str(out), 'checked': manifest['checked'], 'changed': manifest['changed']}))
++
++
++if __name__ == '__main__':
++    main()
+diff --git a/tools/test-board-skin-flags.py b/tools/test-board-skin-flags.py
+new file mode 100644
+index 0000000..a4a7a8a
+--- /dev/null
++++ b/tools/test-board-skin-flags.py
+@@ -0,0 +1,38 @@
++"""No game/assets required; exercise metadata preservation and QA rejection."""
++import copy
++import importlib.util
++from pathlib import Path
++import unittest
++import xml.etree.ElementTree as ET
++
++spec = importlib.util.spec_from_file_location('repair', Path(__file__).with_name('repair-board-skin-flags.py'))
++repair = importlib.util.module_from_spec(spec)
++spec.loader.exec_module(repair)
++
++
++class RepairTests(unittest.TestCase):
++    def test_skin_bit_preserves_other_flags_and_rigid_models_across_lods(self):
++        root = ET.fromstring('<Drawable><DrawableModelsHigh><Item><Flags value="16"/><HasSkin value="1"/></Item>'
++                             '<Item><Flags value="2"/><HasSkin value="0"/></Item></DrawableModelsHigh>'
++                             '<DrawableModelsLow><Item><Flags value="1"/><HasSkin value="1"/></Item>'
++                             '</DrawableModelsLow></Drawable>')
++        self.assertEqual(repair.repair_flags(root), 1)
++        self.assertEqual([e.get('value') for e in root.iter('Flags')], ['17', '2', '1'])
++        self.assertEqual(repair.repair_flags(root), 0)
++
++    def test_roundtrip_guard_rejects_unrelated_geometry_or_material_changes(self):
++        original = ET.fromstring('<Drawable><Bone tag="3"/><Shader>normal_spec</Shader><Position>1 2 3</Position></Drawable>')
++        for mutate in (lambda x: x.find('Bone').set('tag', '4'),
++                       lambda x: setattr(x.find('Shader'), 'text', 'default'),
++                       lambda x: setattr(x.find('Position'), 'text', '1 2 3.01')):
++            changed = copy.deepcopy(original)
++            mutate(changed)
++            self.assertFalse(repair.same_tree(original, changed))
++
++    def test_roundtrip_guard_accepts_float_format_and_whitespace_only(self):
++        self.assertTrue(repair.same_tree(ET.fromstring('<P a="1">2 3</P>'), ET.fromstring('<P a="1.0"> 2.0000\n3 </P>')))
++        self.assertFalse(repair.same_text('0', 'nan'))
++
++
++if __name__ == '__main__':
++    unittest.main()

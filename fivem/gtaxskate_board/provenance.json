@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "model": "gtaxskate_test_board",
+  "provenance": "Original mathematical geometry and solid RGB colors; no game input assets",
+  "generatorSha256": "87ed192c20e3a0ff16f0819bdf80310f956d59a91f37f80ed7d4d874dc5f9120",
+  "triangles": 568,
+  "vertices": 1704,
+  "boundsMin": [
+    -0.39999999999999997,
+    -0.1075,
+    -0.08
+  ],
+  "boundsMax": [
+    0.39999999999999997,
+    0.1075,
+    0.02499999999999998
+  ],
+  "longAxis": "X",
+  "deckStandingTopZ": 0,
+  "wheelContactZ": -0.08,
+  "units": "metres"
+}

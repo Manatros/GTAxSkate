@@ -1,0 +1,37 @@
+diff --git a/host/src/hud_overlay.cpp b/host/src/hud_overlay.cpp
+index eedea6c..c8aa094 100644
+--- a/host/src/hud_overlay.cpp
++++ b/host/src/hud_overlay.cpp
+@@ -187,6 +187,9 @@ void Start(const std::wstring& iniPath, void* runtime, LogFn log) {
+         return;
+     }
+     g.runtime = runtime;
++    // A script restart must publish the initial viewport even if resolution
++    // and safe zone are unchanged. The renderer and registration stay alive.
++    g.sent = {};
+     g.showRadio = reinterpret_cast<decltype(g.showRadio)>(GetProcAddress(module, "sv_show_radio"));
+     g.getXray = IniFloat(iniPath, L"HallOfMeatXray", 1.0f) != 0.0f
+                     ? reinterpret_cast<SvGetXrayFn>(GetProcAddress(module, "sv_get_xray"))
+diff --git a/host/src/runtime_bridge.cpp b/host/src/runtime_bridge.cpp
+index 1a7f95b..c56aecc 100644
+--- a/host/src/runtime_bridge.cpp
++++ b/host/src/runtime_bridge.cpp
+@@ -4,6 +4,18 @@
+ 
+ bool RuntimeBridge::Load(const wchar_t* dllPath, const std::string& dataRoot, const std::string& worldCache,
+                          const std::string& logPath, std::uint32_t skaterTriangles, std::uint32_t presentationFlags, std::string& error) {
++    // ScriptHookV restarts the script on save load, but the ASI and its audio
++    // feeder remain alive. Reuse their runtime instead of orphaning a session
++    // and leaving the feeder bound to a different handle. Suspend is queued
++    // before the caller reapplies configuration and tracks the new player.
++    if (runtime_) {
++        if (!Deactivate()) {
++            error = "existing runtime could not suspend for script restart";
++            return false;
++        }
++        error.clear();
++        return true;
++    }
+     if (!module_) module_ = LoadLibraryW(dllPath);
+     if (!module_) {
+         error = "LoadLibrary(SkateVRuntime.dll) failed, error " + std::to_string(GetLastError());

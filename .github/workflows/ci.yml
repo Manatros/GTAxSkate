@@ -7,7 +7,30 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
+  fivem-rules:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Privacy scanner regression checks
+        run: python scripts/test-public-privacy.py
+      - name: Verified installer downloads
+        shell: powershell
+        run: ./scripts/test-installer-downloads.ps1
+      - name: Server policy and mocked FiveM integration
+        run: node --test fivem/tests/*.test.js
+      - name: Isolated FiveM installer regression checks
+        shell: powershell
+        run: ./scripts/test-fivem-install.ps1
+      - name: Story test installer and rollback regression checks
+        shell: powershell
+        run: ./scripts/test-test-build-install.ps1
   test:
     runs-on: windows-latest
     strategy:

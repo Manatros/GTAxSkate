@@ -1,0 +1,24 @@
+diff --git a/host/src/main.cpp b/host/src/main.cpp
+index a7b24b0..42c2bd0 100644
+--- a/host/src/main.cpp
++++ b/host/src/main.cpp
+@@ -2821,6 +2821,8 @@ void UpdateActive(Session& s, const Config& cfg, const SvPad& pad) {
+     }
+ 
+     Lap(kPartPose);
++    // CameraView=Skate (view 0): use SK8V's original output below.
++    // Orbit/head/action views are separate additions; never replace this path.
+     if (o.camera_valid) {
+         Call<void>(gta::SET_CAM_COORD, s.cam, o.camera_position.x, o.camera_position.y, o.camera_position.z);
+         Call<void>(gta::SET_CAM_ROT, s.cam, o.camera_rotation.x, o.camera_rotation.y, o.camera_rotation.z, 2);
+@@ -3487,8 +3489,8 @@ std::vector<menu::Page> MenuPages(Session& s) {
+         Choice("Keep the view (walking and skating)", "CameraRemember", {"1", "0"},
+                {"On: the view last used", "Off: always the standard view"}, Bound("CameraRemember")),
+         Choice("Standard view (V cycles)", "CameraView", {"Skate", "Near", "Middle", "Far", "FirstPerson", "Head"},
+-               {"Skate 3", "Near", "Middle", "Far", "First person", "First person (skater's eyes)"}, Bound("CameraView")),
+-        Choice("Skate 3 camera", "Camera", {"High", "Low"}, {"High (Skate 3 default)", "Low"},
++               {"Original SK8V / Skate 3", "Near", "Middle", "Far", "First person", "First person (skater's eyes)"}, Bound("CameraView")),
++        Choice("Original SK8V camera height", "Camera", {"High", "Low"}, {"High (Skate 3 default)", "Low"},
+                Bound("Camera", [] { g_runtime.SetCameraType(g_config.cameraType); })),
+         Number("Field of view scale", "CameraFovScale", D.fovScale, 0.5f, 1.5f, 0.05f, Fixed("x%.2f"), Bound("CameraFovScale")),
+         Choice("Cinematic camera look (R)", "CinemaFilter", {"NG_filmic01", "NG_filmic02", "NG_filmic03", "NG_filmic04", "NG_filmic05", "NG_filmic09", "NG_filmic13", "NG_filmic20", "none"},

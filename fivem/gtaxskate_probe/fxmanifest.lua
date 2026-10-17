@@ -1,0 +1,10 @@
+fx_version 'cerulean'
+game 'gta5'
+author 'Manatros'
+description 'Optional developer WASM capability probe; not the Skate engine'
+version '0.1.0'
+shared_script 'probe-core.js'
+server_script 'server.js'
+client_script 'client.js'
+ui_page 'html/index.html'
+files { 'html/index.html', 'html/probe.js', 'probe-core.js' }

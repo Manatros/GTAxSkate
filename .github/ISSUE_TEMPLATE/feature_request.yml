@@ -1,0 +1,37 @@
+name: Feature request
+description: Describe a player or administrator need and the relevant target.
+title: "[Feature] "
+body:
+  - type: markdown
+    attributes:
+      value: "Check existing requests first. A request does not establish compatibility with an unverified engine or API."
+  - type: dropdown
+    id: target
+    attributes:
+      label: Target
+      options:
+        - Story Mode / SK8V package
+        - FiveM rules / administrator controls
+        - FiveM friends test
+        - Future or unverified integration
+    validations:
+      required: true
+  - type: textarea
+    id: need
+    attributes:
+      label: What problem should this solve?
+      description: "Give a concrete player/admin example and the current behavior."
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome and acceptance example
+      description: "Describe what should happen, including any settings or permissions involved."
+    validations:
+      required: true
+  - type: textarea
+    id: history
+    attributes:
+      label: Existing work, alternatives and references
+      description: "Link relevant issues, source versions or earlier attempts. Explain what should be preserved. Do not attach private game assets."

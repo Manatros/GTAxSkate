@@ -1,0 +1,60 @@
+{
+  "format": "reviewed-upstream-paths",
+  "version": 1,
+  "exceptions": [
+    {
+      "path": "vendor/cc-1.8.0/src/lib.rs",
+      "sha256": "f7a6eff54efe2d223b7a338262b9dbdf8ebeeb7acb75fd455b2928dd6c5d221a",
+      "classes": [
+        "profile_path"
+      ],
+      "reason": "Byte-identical cached published dependency source; upstream example, historical reference or author homepage path, not this project user identity. Original source and attribution retained.",
+      "upstream": "https://docs.rs/crate/cc/1.8.0/source/src/lib.rs"
+    },
+    {
+      "path": "vendor/mp3lame-sys-0.1.11/lame-3.100/aclocal.m4",
+      "sha256": "fba49ee51a2511ab2aca43ea24b98e723b48f27414e0087857d94da31c4241e2",
+      "classes": [
+        "profile_path"
+      ],
+      "reason": "Byte-identical cached published dependency source; upstream example, historical reference or author homepage path, not this project user identity. Original source and attribution retained.",
+      "upstream": "https://docs.rs/crate/mp3lame-sys/0.1.11/source/lame-3.100/aclocal.m4"
+    },
+    {
+      "path": "vendor/mp3lame-sys-0.1.11/lame-3.100/configure",
+      "sha256": "ebef0848f62516bfa920b30a31354919ff64155cfc7c5be8f979248cc98fd71f",
+      "classes": [
+        "profile_path"
+      ],
+      "reason": "Byte-identical cached published dependency source; upstream example, historical reference or author homepage path, not this project user identity. Original source and attribution retained.",
+      "upstream": "https://docs.rs/crate/mp3lame-sys/0.1.11/source/lame-3.100/configure"
+    },
+    {
+      "path": "vendor/mp3lame-sys-0.1.11/lame-3.100/doc/html/contributors.html",
+      "sha256": "d95de6177a11d8e9626ef1ce5a6aaa1903155b617674bb427c53146fe32d2693",
+      "classes": [
+        "profile_path"
+      ],
+      "reason": "Byte-identical cached published dependency source; upstream example, historical reference or author homepage path, not this project user identity. Original source and attribution retained.",
+      "upstream": "https://docs.rs/crate/mp3lame-sys/0.1.11/source/lame-3.100/doc/html/contributors.html"
+    },
+    {
+      "path": "vendor/pxfm-0.1.30/src/bessel/y1_coeffs.rs",
+      "sha256": "458cb875f62a2b4334f845f7e53f0fa05883d7a2b0409e53dc142d2765bc3407",
+      "classes": [
+        "profile_path"
+      ],
+      "reason": "Byte-identical cached published dependency source; upstream example, historical reference or author homepage path, not this project user identity. Original source and attribution retained.",
+      "upstream": "https://docs.rs/crate/pxfm/0.1.30/source/src/bessel/y1_coeffs.rs"
+    },
+    {
+      "path": "vendor/zune-jpeg-0.5.15/src/bitstream.rs",
+      "sha256": "0f053b8d4443b8818fe187be90304a4f3c645ee43bc9984b8baad4c8b39ce387",
+      "classes": [
+        "profile_path"
+      ],
+      "reason": "Byte-identical cached published dependency source; upstream example, historical reference or author homepage path, not this project user identity. Original source and attribution retained.",
+      "upstream": "https://docs.rs/crate/zune-jpeg/0.5.15/source/src/bitstream.rs"
+    }
+  ]
+}

@@ -101,25 +101,132 @@ fn read_wav(path: &Path) -> Result<(u32, u16, Vec<i16>), String> {
     }
     let le32 = |at: usize| data.get(at..at + 4).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]));
     let le16 = |at: usize| data.get(at..at + 2).map(|b| u16::from_le_bytes([b[0], b[1]]));
-    let (mut at, mut format) = (12, None);
-    while let (Some(id), Some(size)) = (data.get(at..at + 4), le32(at + 4)) {
+    let riff_end = 8usize.checked_add(le32(4).ok_or("WAV without RIFF size")? as usize)
+        .filter(|&end| end <= data.len() && end >= 12).ok_or("WAV RIFF bounds are invalid")?;
+    let (mut at, mut format) = (12usize, None);
+    while at < riff_end {
+        if riff_end - at < 8 { return Err("WAV has a truncated chunk header".into()); }
+        let id = &data[at..at + 4];
+        let size = le32(at + 4).ok_or("WAV has a truncated chunk header")? as usize;
         let body = at + 8;
+        let end = body.checked_add(size).filter(|&end| end <= riff_end).ok_or("WAV chunk exceeds RIFF bounds")?;
         match id {
-            b"fmt " => format = Some((le16(body + 2).unwrap_or(0), le32(body + 4).unwrap_or(0), le16(body + 14).unwrap_or(0))),
+            b"fmt " => {
+                if size < 16 { return Err("WAV format chunk is too short".into()); }
+                let encoding = le16(body).ok_or("WAV format chunk is truncated")?;
+                let channels = le16(body + 2).ok_or("WAV format chunk is truncated")?;
+                let rate = le32(body + 4).ok_or("WAV format chunk is truncated")?;
+                let align = le16(body + 12).ok_or("WAV format chunk is truncated")?;
+                let bits = le16(body + 14).ok_or("WAV format chunk is truncated")?;
+                if encoding != 1 { return Err(format!("WAV format is {encoding}, expected PCM (1)")); }
+                if !(1..=2).contains(&channels) { return Err(format!("WAV has {channels} channels, expected 1 or 2")); }
+                if bits != 16 { return Err(format!("WAV is {bits}-bit, expected 16-bit PCM")); }
+                if rate == 0 || align != channels * 2 { return Err("WAV has invalid sample rate or block alignment".into()); }
+                format = Some((channels, rate, bits, align));
+            }
             b"data" => {
-                let (channels, rate, bits) = format.ok_or("WAV without format")?;
-                if bits != 16 || channels == 0 {
-                    return Err(format!("WAV is {bits}-bit, {channels} channels"));
-                }
-                let end = (body + size as usize).min(data.len());
+                let (channels, rate, _, align) = format.ok_or("WAV without format")?;
+                if size % usize::from(align) != 0 { return Err("WAV data ends with an incomplete sample frame".into()); }
                 let samples = data[body..end].chunks_exact(2).map(|b| i16::from_le_bytes([b[0], b[1]])).collect();
                 return Ok((rate, channels, samples));
             }
             _ => {}
         }
-        at = body + size as usize + (size as usize & 1);
+        at = end.checked_add(size & 1).filter(|&next| next <= riff_end).ok_or("WAV chunk padding exceeds RIFF bounds")?;
     }
     Err("WAV without data".into())
+}
+
+fn safe_manifest_entries(text: &str) -> Result<Vec<String>, String> {
+    let mut names = Vec::new();
+    for raw in text.lines().map(str::trim).filter(|line| !line.is_empty()) {
+        let path = Path::new(raw);
+        if path.components().count() != 1 || path.file_name().is_none_or(|n| n != raw)
+            || raw == "." || raw == ".." || raw.contains('/') || raw.contains('\\')
+        {
+            return Err(format!("unsafe entry in {MADE_LIST}: {raw:?}"));
+        }
+        names.push(raw.to_owned());
+    }
+    Ok(names)
+}
+
+fn legacy_mp3_files(out: &Path) -> Result<Vec<String>, String> {
+    let entries = std::fs::read_dir(out).map_err(|e| format!("read {}: {e}", out.display()))?;
+    let mut names = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("read {}: {e}", out.display()))?;
+        let kind = entry.file_type().map_err(|e| format!("inspect {}: {e}", entry.path().display()))?;
+        // An MP3-looking directory or link belongs to the user, not this tool.
+        if !kind.is_file() { continue; }
+        if let Ok(name) = entry.file_name().into_string() {
+            if Path::new(&name).extension().is_some_and(|e| e.eq_ignore_ascii_case("mp3")) {
+                names.push(name);
+            }
+        }
+    }
+    Ok(names)
+}
+
+fn promote(out: &Path, stage: &Path, earlier: &[String], names: &[String]) -> Result<(), String> {
+    let backup = stage.join("previous");
+    std::fs::create_dir(&backup).map_err(|e| e.to_string())?;
+    let manifest = out.join(MADE_LIST);
+    let old_manifest = match std::fs::read(&manifest) {
+        Ok(contents) => Some(contents),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => return Err(format!("read {} before promotion: {error}", manifest.display())),
+    };
+    let mut moved_old: Vec<(PathBuf, PathBuf)> = Vec::new();
+    let mut moved_new: Vec<PathBuf> = Vec::new();
+    let old_paths: Vec<PathBuf> = earlier.iter().map(|n| out.join(n)).collect();
+    let operation = (|| -> Result<(), String> {
+        for (i, src) in old_paths.iter().enumerate() {
+            let kind = match std::fs::symlink_metadata(src) {
+                Ok(metadata) => metadata.file_type(),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(format!("inspect {} before backup: {error}", src.display())),
+            };
+            if !kind.is_file() {
+                return Err(format!("managed soundtrack entry is not a regular file: {}", src.display()));
+            }
+            let dst = backup.join(i.to_string());
+            std::fs::rename(src, &dst).map_err(|e| format!("backup {}: {e}", src.display()))?;
+            moved_old.push((src.clone(), dst));
+        }
+        for name in names {
+            let src = stage.join(name);
+            let dst = out.join(name);
+            std::fs::rename(&src, &dst).map_err(|e| format!("install {}: {e}", dst.display()))?;
+            moved_new.push(dst);
+        }
+        std::fs::write(&manifest, names.join("\n")).map_err(|e| format!("write {}: {e}", manifest.display()))?;
+        Ok(())
+    })();
+    if let Err(error) = operation {
+        let mut restore_errors: Vec<String> = moved_new.iter().rev().filter_map(|path|
+            std::fs::remove_file(path).err().map(|e| format!("remove {}: {e}", path.display()))
+        ).collect();
+        match old_manifest.as_deref() {
+            Some(contents) => if let Err(e) = std::fs::write(&manifest, contents) {
+                restore_errors.push(format!("restore {}: {e}", manifest.display()));
+            },
+            None => if let Err(e) = std::fs::remove_file(&manifest) {
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    restore_errors.push(format!("remove partial {}: {e}", manifest.display()));
+                }
+            },
+        }
+        restore_errors.extend(moved_old.iter().rev().filter_map(|(src, saved)|
+            std::fs::rename(saved, src).err().map(|e| format!("restore {}: {e}", src.display()))
+        ));
+        return Err(if restore_errors.is_empty() {
+            format!("soundtrack promotion failed; previous files restored: {error}")
+        } else {
+            format!("soundtrack promotion failed: {error}; restore errors: {}", restore_errors.join("; "))
+        });
+    }
+    Ok(())
 }
 
 /// An MP3 of the samples (192 kbps, LAME's -q 2, ID3 tags).
@@ -165,28 +272,20 @@ fn run() -> Result<(), String> {
     if list.is_empty() {
         return Err("ipod.mpf lists no songs".into());
     }
-    let work = std::env::temp_dir().join(format!("skate-music-{}", std::process::id()));
-    std::fs::create_dir_all(&work).map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&o.out).map_err(|e| format!("{}: {e}", o.out.display()))?;
     // What an earlier run wrote goes first (older versions also wrote the
     // world's ambience). Only this tool's files: those it listed or, before
     // it kept a list, the MP3s of its own "Skate 3" folder.
     let made = o.out.join(MADE_LIST);
-    let earlier: Vec<PathBuf> = match std::fs::read_to_string(&made) {
-        Ok(text) => text.lines().filter(|l| !l.trim().is_empty()).map(|l| o.out.join(l.trim())).collect(),
-        Err(_) if o.out.file_name().is_some_and(|n| n.eq_ignore_ascii_case("Skate 3")) => std::fs::read_dir(&o.out)
-            .into_iter()
-            .flatten()
-            .flatten()
-            .map(|e| e.path())
-            .filter(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("mp3")))
-            .collect(),
+    let earlier: Vec<String> = match std::fs::read_to_string(&made) {
+        Ok(text) => safe_manifest_entries(&text)?,
+        Err(_) if o.out.file_name().is_some_and(|n| n.eq_ignore_ascii_case("Skate 3")) => legacy_mp3_files(&o.out)?,
         Err(_) => Vec::new(),
     };
-    for old in &earlier {
-        let _ = std::fs::remove_file(old);
-    }
-    let _ = std::fs::remove_file(o.out.join("skate-music-left-out.txt"));
+    // Keep staging on the output volume: Windows rename promotion cannot cross volumes.
+    let work = o.out.join(format!(".skate-music-staging-{}", std::process::id()));
+    if work.exists() { return Err(format!("staging directory already exists: {}", work.display())); }
+    std::fs::create_dir(&work).map_err(|e| format!("{}: {e}", work.display()))?;
     println!("{} songs in Skate 3's soundtrack. Converting to MP3 for Self Radio...", list.len());
     let mpf_text = mpf.to_string_lossy().into_owned();
     let convert = |index: usize| -> Result<String, String> {
@@ -206,7 +305,7 @@ fn run() -> Result<(), String> {
             .and_then(|(rate, channels, samples)| mp3(rate, channels, &samples, &title, track))
             .and_then(|bytes| {
                 let name = format!("{title}.mp3");
-                std::fs::write(o.out.join(&name), bytes).map_err(|e| e.to_string())?;
+                std::fs::write(work.join(&name), bytes).map_err(|e| e.to_string())?;
                 Ok(name)
             });
         let _ = std::fs::remove_file(&wav);
@@ -237,20 +336,21 @@ fn run() -> Result<(), String> {
     });
     let mut written = Vec::new();
     let mut failed = 0;
-    for result in results {
-        match result.into_inner().unwrap() {
+    for result in &results {
+        match result.lock().unwrap().take() {
             Some(Ok(name)) => written.push(name),
             _ => failed += 1,
         }
     }
-    if !o.keep_temp {
+    if failed > 0 {
+        // Errors are printed as each worker finishes; return a useful summary too.
         let _ = std::fs::remove_dir_all(&work);
+        return Err(format!("{failed} of {} tracks failed; see per-track errors above. Previous soundtrack preserved.", list.len()));
     }
-    let _ = std::fs::write(&made, written.join("\n"));
-    if written.is_empty() {
-        return Err("no song could be converted (see the lines above)".into());
-    }
-    println!("Done: {} songs in {}{}", written.len(), o.out.display(), if failed > 0 { format!(" ({failed} failed)") } else { String::new() });
+    promote(&o.out, &work, &earlier, &written)?;
+    let _ = std::fs::remove_file(o.out.join("skate-music-left-out.txt"));
+    if !o.keep_temp { let _ = std::fs::remove_dir_all(&work); }
+    println!("Done: {} songs in {}", written.len(), o.out.display());
     Ok(())
 }
 
@@ -296,6 +396,124 @@ mod tests {
     }
 
     #[test]
+    fn manifest_accepts_only_plain_filenames() {
+        assert_eq!(safe_manifest_entries("one.mp3\ntwo.mp3\n").unwrap(), ["one.mp3", "two.mp3"]);
+        for unsafe_entry in ["../outside.mp3", "sub/file.mp3", "sub\\file.mp3", "C:\\outside.mp3", ".", ".."] {
+            assert!(safe_manifest_entries(unsafe_entry).is_err(), "accepted {unsafe_entry:?}");
+        }
+    }
+
+    #[test]
+    fn legacy_migration_preserves_mp3_named_directories() {
+        let root = std::env::current_dir().unwrap().join(format!(".skate-music-legacy-test-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("notes.mp3")).unwrap();
+        std::fs::write(root.join("notes.mp3").join("keep.txt"), b"user notes").unwrap();
+        std::fs::write(root.join("track.MP3"), b"old track").unwrap();
+        std::fs::write(root.join("other.txt"), b"unrelated file").unwrap();
+        let stage = root.join("stage");
+        std::fs::create_dir(&stage).unwrap();
+        std::fs::write(stage.join("new.mp3"), b"new track").unwrap();
+        let earlier = legacy_mp3_files(&root).unwrap();
+        promote(&root, &stage, &earlier, &["new.mp3".into()]).unwrap();
+        assert_eq!(std::fs::read(root.join("notes.mp3").join("keep.txt")).unwrap(), b"user notes");
+        assert_eq!(std::fs::read(root.join("other.txt")).unwrap(), b"unrelated file");
+        assert!(!root.join("track.MP3").exists());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn promotion_refuses_a_manifest_entry_replaced_with_a_directory() {
+        let root = std::env::current_dir().unwrap().join(format!(".skate-music-manifest-dir-test-{}", std::process::id()));
+        let stage = root.join("stage");
+        std::fs::create_dir_all(&stage).unwrap();
+        std::fs::create_dir(root.join("old.mp3")).unwrap();
+        std::fs::write(root.join("old.mp3").join("keep.txt"), b"user notes").unwrap();
+        std::fs::write(root.join(MADE_LIST), "old.mp3").unwrap();
+        std::fs::write(stage.join("new.mp3"), b"new soundtrack").unwrap();
+        assert!(promote(&root, &stage, &["old.mp3".into()], &["new.mp3".into()]).is_err());
+        assert_eq!(std::fs::read(root.join("old.mp3").join("keep.txt")).unwrap(), b"user notes");
+        assert_eq!(std::fs::read_to_string(root.join(MADE_LIST)).unwrap(), "old.mp3");
+        assert!(!root.join("new.mp3").exists());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn failed_promotion_restores_previous_soundtrack_and_manifest() {
+        let root = std::env::current_dir().unwrap().join(format!(".skate-music-promote-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let out = root.join("out");
+        let stage = out.join("stage");
+        std::fs::create_dir_all(&stage).unwrap();
+        std::fs::write(out.join("old.mp3"), b"old soundtrack").unwrap();
+        std::fs::write(out.join(MADE_LIST), "old.mp3").unwrap();
+        std::fs::write(stage.join("new.mp3"), b"new soundtrack").unwrap();
+
+        let error = promote(&out, &stage, &["old.mp3".into()], &["new.mp3".into(), "missing.mp3".into()]).unwrap_err();
+        assert_eq!(std::fs::read(out.join("old.mp3")).unwrap(), b"old soundtrack");
+        assert_eq!(std::fs::read_to_string(out.join(MADE_LIST)).unwrap(), "old.mp3", "{error}");
+        assert!(!out.join("new.mp3").exists());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn successful_promotion_replaces_managed_files_and_manifest() {
+        let root = std::env::current_dir().unwrap().join(format!(".skate-music-promote-ok-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let out = root.join("out");
+        let stage = out.join(".skate-music-staging-test");
+        std::fs::create_dir_all(&stage).unwrap();
+        std::fs::write(out.join("old.mp3"), b"old soundtrack").unwrap();
+        std::fs::write(out.join(MADE_LIST), "old.mp3").unwrap();
+        std::fs::write(stage.join("new.mp3"), b"new soundtrack").unwrap();
+
+        promote(&out, &stage, &["old.mp3".into()], &["new.mp3".into()]).unwrap();
+        assert!(!out.join("old.mp3").exists());
+        assert_eq!(std::fs::read(out.join("new.mp3")).unwrap(), b"new soundtrack");
+        assert_eq!(std::fs::read_to_string(out.join(MADE_LIST)).unwrap(), "new.mp3");
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    fn tiny_wav(encoding: u16, channels: u16, payload: &[u8], riff_adjust: i32) -> Vec<u8> {
+        let mut data = Vec::new();
+        data.extend_from_slice(b"RIFF");
+        let size = (36usize + payload.len()) as i32 + riff_adjust;
+        data.extend_from_slice(&(size as u32).to_le_bytes());
+        data.extend_from_slice(b"WAVEfmt ");
+        data.extend_from_slice(&16u32.to_le_bytes());
+        data.extend_from_slice(&encoding.to_le_bytes());
+        data.extend_from_slice(&channels.to_le_bytes());
+        data.extend_from_slice(&44_100u32.to_le_bytes());
+        data.extend_from_slice(&(44_100u32 * u32::from(channels) * 2).to_le_bytes());
+        data.extend_from_slice(&(channels * 2).to_le_bytes());
+        data.extend_from_slice(&16u16.to_le_bytes());
+        data.extend_from_slice(b"data");
+        data.extend_from_slice(&(payload.len() as u32).to_le_bytes());
+        data.extend_from_slice(payload);
+        data
+    }
+
+    #[test]
+    fn wav_rejects_non_pcm_channels_bad_bounds_and_partial_frames() {
+        let dir = std::env::temp_dir().join(format!("skate-music-wav-check-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("check.wav");
+        for (label, bytes) in [
+            ("non-PCM", tiny_wav(3, 2, &[0; 4], 0)),
+            ("too many channels", tiny_wav(1, 3, &[0; 6], 0)),
+            ("partial frame", tiny_wav(1, 2, &[0; 2], 0)),
+            ("riff beyond file", tiny_wav(1, 2, &[0; 4], 10)),
+            ("chunk beyond RIFF", { let mut b = tiny_wav(1, 2, &[0; 4], 0); let n = b.len(); b[n - 8..n - 4].copy_from_slice(&100u32.to_le_bytes()); b }),
+        ] {
+            std::fs::write(&path, bytes).unwrap();
+            assert!(read_wav(&path).is_err(), "accepted {label}");
+        }
+        std::fs::write(&path, tiny_wav(1, 2, &[1, 0, 2, 0], 0)).unwrap();
+        let (rate, channels, samples) = read_wav(&path).unwrap();
+        assert_eq!((rate, channels, samples), (44_100, 2, vec![1, 2]));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn reads_wav_and_writes_mp3() {
         let dir = std::env::temp_dir().join(format!("skate-music-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -322,6 +540,8 @@ mod tests {
         for s in &samples {
             data.extend_from_slice(&s.to_le_bytes());
         }
+        let riff_size = (data.len() - 8) as u32;
+        data[4..8].copy_from_slice(&riff_size.to_le_bytes());
         std::fs::write(&wav, data).unwrap();
         let (rate, channels, read) = read_wav(&wav).unwrap();
         assert_eq!((rate, channels), (44_100, 2));

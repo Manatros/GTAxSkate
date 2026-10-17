@@ -1,0 +1,555 @@
+diff --git a/host/include/skatev_runtime.h b/host/include/skatev_runtime.h
+--- a/host/include/skatev_runtime.h
++++ b/host/include/skatev_runtime.h
+@@ -340,6 +340,7 @@
+ // Keyboard and mouse as a controller (optional exports; contributed by GTAxSkate).
+ // sv_keyboard_configure(rt, keys_file_utf8): loads the key file (written with the
+ // defaults when missing); returns how many of its lines could not be read.
++// active flags: 0 releases all; 1 enables input; bit 1 suppresses mouse tricks (package extension).
+ // sv_keyboard_pad(rt, mouse_x, mouse_y, dt, active, out): this frame's pad from
+ // the keys and the mouse look input; 1 when something is pressed (out filled).
+ using SvKeyboardConfigureFn = std::uint32_t(__cdecl*)(void*, const char*);
+@@ -347,6 +348,7 @@
+ // sv_keyboard_hints(rt, on_foot, buf, cap): the keys for the HUD, "key\twhat" lines; returns the
+ // bytes needed (optional export).
+ // sv_keyboard_key(rt, id, buf, cap) / sv_keyboard_bind(rt, id, vk): read and rebind one action's key.
++using SvKeyboardMouseTricksFn = std::uint32_t(__cdecl*)(void*);
+ using SvKeyboardLayoutFn = std::uint32_t(__cdecl*)(void*, const char*);
+ using SvKeyboardKeyFn = std::uint32_t(__cdecl*)(void*, const char*, char*, std::uint32_t);
+ using SvKeyboardBindFn = std::uint32_t(__cdecl*)(void*, const char*, std::uint32_t);
+diff --git a/host/src/main.cpp b/host/src/main.cpp
+--- a/host/src/main.cpp
++++ b/host/src/main.cpp
+@@ -545,6 +545,7 @@
+ 
+ // Keyboard and mouse: on when the runtime has them and the INI allows it.
+ bool g_keyboard = false;
++bool g_weaponWheel = false;
+ bool g_boardArmed = false; // a gun out on the board: the mouse buttons aim and shoot
+ // The controller is what the player uses now (the keyboard and mouse were not
+ // touched since it was): the keys on screen hide, M and F stay the pad's.
+@@ -659,7 +660,7 @@
+         SvPad keys{};
+         const float mx = Call<float>(gta::GET_DISABLED_CONTROL_NORMAL, 0, 1);
+         const float my = Call<float>(gta::GET_DISABLED_CONTROL_NORMAL, 0, 2);
+-        bool typed = g_runtime.KeyboardPad(mx, my, dt, GameFocused() && !menu::IsOpen(), keys);
++        bool typed = g_runtime.KeyboardPad(mx * 100.0f, my * 100.0f, dt, GameFocused() && !menu::IsOpen() && !g_weaponWheel, keys, !g_boardArmed);
+         // GTA's own weapon keys on the board: Tab is the gun button (tap: gun
+         // out or away, hold: GTA's weapon wheel), and with a gun out the
+         // right mouse button aims and the left one shoots (SK8V's drive-by
+@@ -1657,7 +1658,7 @@
+ // Each control is named, so GTA's related actions (disableRelatedActions) are
+ // not walked: that walk cost a player 2.4 ms a frame for the ~310 calls
+ // (8 us each against 0.08 on the owner's PC).
+-bool g_weaponWheel = false;
++
+ 
+ // Script frames since each control last read non-zero. Only controls in use (or released within
+ // the last frames, for GTA's just-released checks) are disabled: DISABLE_CONTROL_ACTION took
+@@ -3458,12 +3459,23 @@
+     // Keyboard keys (contributed by GTAxSkate): Enter, then the new key; saved to SkateVKeys.txt.
+     {
+         menu::Page keys{"Keyboard keys", {}};
+-        // The whole layout first: GTAxSkate's (GTA-like) or like a controller in Skate 3.
+-        keys.items.push_back(menu::Choice("Layout", "KeyLayout", {"standard", "skate"},
+-                                          {"GTAxSkate standard (GTA-like)", "Skate (I J K L trick stick, U O diagonals)"},
+-                                          [](const std::string& v) {
+-                                              if (g_runtime.KeyboardLayout(v.c_str())) g_keyHints[0].clear(), g_keyHints[1].clear();
+-                                          }));
++        // Explicit actions avoid a stale INI label after individual rebinding.
++        const auto applyKeys = [](const char* command) {
++            if (g_runtime.KeyboardLayout(command)) {
++                g_keyHints[0].clear(); g_keyHints[1].clear();
++                Logf("SkateV keys: %s", command);
++            } else {
++                g_routeNotice = "Keys could not be saved/loaded; check the key file.";
++                Logf("SkateV keys: FAILED %s", command);
++            }
++        };
++        keys.items.push_back(Action("GTA - Shift push, Space pop, arrow tricks", [applyKeys] { applyKeys("standard"); }));
++        keys.items.push_back(Action("Twin Stick - WASD + IJKL, Space push", [applyKeys] { applyKeys("skate"); }));
++        keys.items.push_back(Action("Mouse Flick - hold CapsLock for tricks", [applyKeys] { applyKeys("mouse"); }));
++        keys.items.push_back(Action("Arcade - Space ollie, U/O flips, H/L shoves", [applyKeys] { applyKeys("arcade"); }));
++        keys.items.push_back(Action("Save my personal bindings", [applyKeys] { applyKeys("save_custom"); }));
++        keys.items.push_back(Action("Restore my personal bindings", [applyKeys] { applyKeys("custom"); }));
++        keys.items.push_back(Action("Restore bindings from before presets", [applyKeys] { applyKeys("original"); }));
+         const std::pair<const char*, const char*> actions[] = {
+             {"lean_forward", "Lean forward / walk"}, {"lean_back", "Lean back"}, {"steer_left", "Steer left"},
+             {"steer_right", "Steer right"}, {"a", "Push"}, {"pop", "Ollie (hold, let go)"}, {"trick_up", "Trick stick up"},
+@@ -3471,13 +3483,20 @@
+             {"manual", "Manual"}, {"nose_manual", "Nose manual"}, {"lt", "Left grab"}, {"rt", "Right grab"},
+             {"hippie", "Hippie jump"}, {"y", "Get on / off (hold: put away)"}, {"x", "X"}, {"b", "B"},
+             {"retry", "Radio: previous"}, {"object_dropper", "Radio: next"}, {"marker_place", "Set a marker"},
+-            {"marker_return", "Back to the marker (hold)"}};
++            {"marker_return", "Back to the marker (hold)"},
++            {"mouse_trick", "Hold: mouse trick stick"}, {"lb", "Left bumper / modifier"},
++            {"rb", "Hold: skitch"}, {"rs", "Right stick click"},
++            {"ollie", "Arcade: ollie"}, {"nollie", "Arcade: nollie"},
++            {"kickflip", "Arcade: kickflip"}, {"heelflip", "Arcade: heelflip"},
++            {"shove_back", "Arcade: shove-it"}, {"shove_front", "Arcade: front shove-it"},
++            {"flip_360", "Arcade: 360 flip"}};
+         for (const auto& [id, label] : actions) {
+             const std::string action = id;
+             keys.items.push_back(menu::Key(
+                 label, [action] { const std::string k = g_runtime.KeyboardKey(action.c_str()); return k.empty() ? std::string("-") : k; },
+                 [action](int vk) {
+                     if (g_runtime.KeyboardBind(action.c_str(), vk)) g_keyHints[0].clear(), g_keyHints[1].clear();
++                    else g_routeNotice = "Key is reserved for GTA, or could not be saved.";
+                 }));
+         }
+         pages.push_back(std::move(keys));
+diff --git a/host/src/runtime_bridge.cpp b/host/src/runtime_bridge.cpp
+--- a/host/src/runtime_bridge.cpp
++++ b/host/src/runtime_bridge.cpp
+@@ -95,6 +95,7 @@
+     keyboardPad_ = reinterpret_cast<SvKeyboardPadFn>(GetProcAddress(module_, "sv_keyboard_pad"));
+     keyboardHints_ = reinterpret_cast<SvKeyboardHintsFn>(GetProcAddress(module_, "sv_keyboard_hints"));
+     keyboardKey_ = reinterpret_cast<SvKeyboardKeyFn>(GetProcAddress(module_, "sv_keyboard_key"));
++    keyboardMouseTricks_ = reinterpret_cast<SvKeyboardMouseTricksFn>(GetProcAddress(module_, "sv_keyboard_mouse_tricks"));
+     keyboardLayout_ = reinterpret_cast<SvKeyboardLayoutFn>(GetProcAddress(module_, "sv_keyboard_layout"));
+     keyboardBind_ = reinterpret_cast<SvKeyboardBindFn>(GetProcAddress(module_, "sv_keyboard_bind"));
+     if (!missing.empty()) {
+@@ -262,6 +263,10 @@
+     return text;
+ }
+ 
++bool RuntimeBridge::KeyboardMouseTricks() const {
++    return runtime_ && keyboardMouseTricks_ && keyboardMouseTricks_(runtime_) != 0;
++}
++
+ bool RuntimeBridge::KeyboardLayout(const char* name) {
+     return runtime_ && keyboardLayout_ && keyboardLayout_(runtime_, name) != 0;
+ }
+@@ -279,8 +284,8 @@
+     return text;
+ }
+ 
+-bool RuntimeBridge::KeyboardPad(float mouseX, float mouseY, float dt, bool active, SvPad& out) {
+-    return runtime_ && keyboardPad_ && keyboardPad_(runtime_, mouseX, mouseY, dt, active ? 1u : 0u, &out) != 0;
++bool RuntimeBridge::KeyboardPad(float mouseX, float mouseY, float dt, bool active, SvPad& out, bool allowMouse) {
++    return runtime_ && keyboardPad_ && keyboardPad_(runtime_, mouseX, mouseY, dt, active ? (allowMouse ? 1u : 3u) : 0u, &out) != 0;
+ }
+ 
+ bool RuntimeBridge::SetLipRule(bool enabled) {
+diff --git a/host/src/runtime_bridge.h b/host/src/runtime_bridge.h
+--- a/host/src/runtime_bridge.h
++++ b/host/src/runtime_bridge.h
+@@ -53,9 +53,10 @@
+     bool SetLipRule(bool enabled);
+     // Keyboard and mouse (optional exports): false when the runtime has none.
+     bool KeyboardConfigure(const std::string& utf8KeysFile, std::uint32_t& problems);
+-    bool KeyboardPad(float mouseX, float mouseY, float dt, bool active, SvPad& out);
++    bool KeyboardPad(float mouseX, float mouseY, float dt, bool active, SvPad& out, bool allowMouse = true);
+     std::string KeyboardKey(const char* action);     // the key bound, "" when none
+     bool KeyboardBind(const char* action, int vk);    // rebinds and saves SkateVKeys.txt
++    bool KeyboardMouseTricks() const; // optional mouse ownership query
+     bool KeyboardLayout(const char* name);            // "standard" or "skate": every key at once
+     std::string KeyboardHints(bool onFoot); // "key\twhat" lines; empty without the export
+     bool SetDifficulty(int index);
+@@ -127,6 +128,7 @@
+     SvKeyboardPadFn keyboardPad_ = nullptr;
+     SvKeyboardHintsFn keyboardHints_ = nullptr;
+     SvKeyboardKeyFn keyboardKey_ = nullptr;
++    SvKeyboardMouseTricksFn keyboardMouseTricks_ = nullptr;
+     SvKeyboardLayoutFn keyboardLayout_ = nullptr;
+     SvKeyboardBindFn keyboardBind_ = nullptr;
+     SvSetDifficultyFn setDifficulty_ = nullptr;
+diff --git a/rust/skate-input/src/hints.rs b/rust/skate-input/src/hints.rs
+--- a/rust/skate-input/src/hints.rs
++++ b/rust/skate-input/src/hints.rs
+@@ -89,6 +89,15 @@
+     push(&mut out, c, false, "", &["a"], "Push");
+     push(&mut out, c, false, "", &["pop"], "Hold: crouch, let go: ollie");
+     push(&mut out, c, false, "", &["trick_up", "trick_left", "trick_down", "trick_right"], "Trick stick (flick)");
++    if c.modern {
++        push(&mut out, c, false, "", &["ollie", "nollie"], "Ollie / nollie");
++        push(&mut out, c, false, "", &["kickflip", "heelflip"], "Kickflip / heelflip");
++        push(&mut out, c, false, "", &["shove_back", "shove_front"], "Shove-it / front shove-it");
++        push(&mut out, c, false, "", &["flip_360"], "360 flip");
++    }
++    if c.mouse == MouseTrick::Hold {
++        push(&mut out, c, false, "", &["mouse_trick"], "Hold: mouse tricks; release: camera");
++    }
+     push(&mut out, c, false, "", &["manual", "nose_manual"], "Manual / nose manual");
+     push(&mut out, c, false, "", &["lt", "rt"], "Grabs");
+     // Skate's GrabWorld (RB): behind a moving car it holds on (skitching).
+diff --git a/rust/skate-input/src/translate.rs b/rust/skate-input/src/translate.rs
+--- a/rust/skate-input/src/translate.rs
++++ b/rust/skate-input/src/translate.rs
+@@ -206,6 +206,10 @@
+             MouseTrick::Hold => mouse_held,
+             MouseTrick::Always => true,
+         };
++        if !mouse_on || !self.mouse_on {
++            self.mouse = [0., 0.];
++            self.mouse_still = 0.;
++        }
+         self.mouse_on = mouse_on;
+         // Pop: down while held, then up (toward a held side) a moment.
+         if self.pop_held && !pop {
+diff --git a/rust/skatev-runtime/src/keyboard.rs b/rust/skatev-runtime/src/keyboard.rs
+--- a/rust/skatev-runtime/src/keyboard.rs
++++ b/rust/skatev-runtime/src/keyboard.rs
+@@ -9,9 +9,9 @@
+ //! player can rebind any action there).
+ //!
+ //! Default layout (GTA-like): WASD move, Shift push, Space pop (held = stick
+-//! down, let go = flick up), arrows / numpad trick stick, E the board (Y:
++//! down, let go = flick up), arrow trick stick, E the board (Y:
+ //! mount, dismount, hold to put away), Q hippie jump, T Skate's X, Ctrl B,
+-//! the mouse flicks tricks while its trick key is held.
++//! Mouse Flick uses CapsLock as a clutch; otherwise the mouse looks around.
+ 
+ use skate_input::{Controls, Translator};
+ use std::path::PathBuf;
+@@ -37,57 +37,84 @@
+ 
+ static KEYBOARD: Mutex<Option<Keyboard>> = Mutex::new(None);
+ 
+-/// The default keys: GTA-like, every key used once.
+-pub fn default_controls() -> Controls {
+-    let mut controls = Controls::default();
+-    let index = |id: &str| Controls::action_index(id).expect("a Skate action");
+-    // Alt is GTA's character wheel, R its reload, the numpad keeps the trick
+-    // stick only (no one-key tricks there).
+-    for id in ["trick_7", "trick_8", "trick_9", "trick_4", "trick_6", "trick_1", "trick_2", "trick_3", "camera", "mouse_trick", "ls"] {
+-        controls.unbind(index(id));
+-    }
+-    // LB + d-pad left/right is SK8V's radio: Comma and Period, as GTA's own
+-    // radio keys; M stays GTA's interaction menu, so the marker's return is J.
+-    for (id, key) in [("pop", "Space"), ("a", "LShift"), ("x", "T"), ("b", "LCtrl"), ("hippie", "Q"), ("y", "E"),
+-                      ("retry", "Comma"), ("object_dropper", "Period"), ("marker_return", "J")] {
+-        controls.bind(index(id), key).expect("a key");
+-    }
+-    controls.modern = false;
+-    controls.mouse = skate_input::MouseTrick::Off;
+-    controls
+-}
+-
+-/// The keys laid out like a controller in Skate 3: the left hand on W A S D
+-/// as the left stick, the right hand on I J K L as the trick stick (no numpad
+-/// needed), Space the A button (push), Shift X, Ctrl B, E Y.
+-pub fn skate_controls() -> Controls {
+-    let mut controls = default_controls();
+-    let index = |id: &str| Controls::action_index(id).expect("a Skate action");
+-    // U and O the upper diagonals, as on a stick (I J K L held together give the others).
+-    for (id, key) in [("trick_up", "I"), ("trick_left", "J"), ("trick_down", "K"), ("trick_right", "L"), ("trick_7", "U"), ("trick_9", "O"), ("a", "Space"),
+-                      ("x", "LShift"), ("b", "LCtrl"), ("y", "E"), ("marker_return", "H")] {
+-        controls.bind(index(id), key).expect("a key");
+-    }
+-    // The ollie comes from the trick stick (K, then I), as on a controller;
+-    // J went to the stick, so the marker's return is H.
+-    controls.unbind(index("pop"));
+-    controls
+-}
+-
+-/// Replaces every key with a whole layout ("standard": GTAxSkate's, GTA-like;
+-/// "skate": like a controller) and saves the key file.
++/// Four translation mentalities. Start empty: no hidden aliases or disabled
++/// gesture bindings that unexpectedly return when a scheme is enabled.
++fn preset(name: &str) -> Result<Controls, String> {
++    let mut c = Controls::default();
++    for keys in &mut c.keys { keys.clear(); }
++    c.classic = true;
++    c.modern = false;
++    c.mouse = skate_input::MouseTrick::Off;
++    let mut bindings = vec![
++        ("lean_forward", "W"), ("lean_back", "S"), ("steer_left", "A"), ("steer_right", "D"),
++        ("a", "LShift"), ("x", "T"), ("b", "LCtrl"), ("y", "E"), ("hippie", "Q"),
++        ("lt", "Z"), ("rt", "C"), ("manual", "1"), ("nose_manual", "2"),
++        ("lb", "X"), ("rb", "B"), ("rs", "Mouse3"),
++        ("marker_place", "N"), ("marker_return", "J"),
++        ("retry", "Comma"), ("object_dropper", "Period"),
++    ];
++    match name {
++        "standard" => bindings.extend([
++            ("pop", "Space"), ("trick_up", "Up"), ("trick_down", "Down"),
++            ("trick_left", "Left"), ("trick_right", "Right"),
++        ]),
++        "skate" => {
++            bindings.retain(|(id, _)| !matches!(*id, "a" | "x" | "marker_return" | "lt" | "rt" | "manual" | "nose_manual"));
++            bindings.extend([("a", "Space"), ("x", "LShift"), ("marker_return", "5"),
++                ("lt", "U"), ("rt", "O"), ("manual", "H"), ("nose_manual", "P"),
++                ("trick_up", "I"), ("trick_down", "K"), ("trick_left", "J"), ("trick_right", "L")]);
++        }
++        "mouse" => {
++            c.mouse = skate_input::MouseTrick::Hold;
++            // A keyboard clutch works on a normal two-button mouse too.
++            bindings.push(("mouse_trick", "CapsLock"));
++        }
++        "arcade" => {
++            c.modern = true;
++            bindings.extend([("ollie", "Space"), ("nollie", "K"),
++                ("kickflip", "U"), ("heelflip", "O"), ("shove_back", "H"),
++                ("shove_front", "L"), ("flip_360", "P")]);
++        }
++        _ => return Err(format!("no layout {name}")),
++    }
++    for (id, key) in bindings {
++        c.bind(Controls::action_index(id).expect("known action"), key)?;
++    }
++    Ok(c)
++}
++
++pub fn default_controls() -> Controls { preset("standard").unwrap() }
++pub fn skate_controls() -> Controls { preset("skate").unwrap() }
++
++/// Explicit menu commands only; loading a user's file never selects a preset.
++/// Keep the original layout once, plus an explicit personal save slot.
+ pub fn layout(name: &str) -> Result<(), String> {
+-    let controls = match name {
+-        "standard" => default_controls(),
+-        "skate" => skate_controls(),
+-        _ => return Err(format!("no layout {name}")),
+-    };
+     let mut guard = KEYBOARD.lock().map_err(|_| "keyboard state poisoned".to_string())?;
+     let k = guard.as_mut().ok_or("the keyboard is not configured")?;
++    let custom = k.path.with_extension("custom.txt");
++    if name == "save_custom" {
++        return std::fs::write(custom, k.controls.to_text()).map_err(|e| e.to_string());
++    }
++    let controls = if name == "custom" || name == "original" {
++        let path = if name == "custom" { custom } else { k.path.with_extension("before-presets.txt") };
++        let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
++        let (controls, problems) = Controls::from_text(&text);
++        if !problems.is_empty() { return Err(problems.join("; ")); }
++        controls
++    } else { preset(name)? };
++    let backup = k.path.with_extension("before-presets.txt");
++    if !backup.exists() {
++        std::fs::copy(&k.path, backup).map_err(|e| e.to_string())?;
++    }
+     std::fs::write(&k.path, controls.to_text()).map_err(|e| e.to_string())?;
+     k.controls = controls;
+     k.translator = Translator::new();
+     Ok(())
++}
++
++/// Mouse ownership is reported even while the trick stick is centered.
++pub fn mouse_tricks() -> bool {
++    KEYBOARD.lock().ok().and_then(|k| k.as_ref().map(|k| k.translator.mouse_tricks())).unwrap_or(false)
+ }
+ 
+ /// Loads the keys from `path`, writing the defaults there when it does not
+@@ -95,20 +122,7 @@
+ pub fn configure(path: PathBuf) -> Vec<String> {
+     let (controls, problems) = match std::fs::read_to_string(&path) {
+         Ok(text) => {
+-            let (mut controls, problems) = Controls::from_text(&text);
+-            // Files written before the radio keys: the old defaults moved.
+-            let index = |id: &str| Controls::action_index(id).expect("a Skate action");
+-            let mut moved = false;
+-            for (id, old, new) in [("object_dropper", "Y", "Period"), ("marker_return", "M", "J")] {
+-                if controls.keys[index(id)] == [old] {
+-                    let _ = controls.bind(index(id), new);
+-                    moved = true;
+-                }
+-            }
+-            if moved {
+-                let _ = std::fs::write(&path, controls.to_text());
+-            }
+-            (controls, problems)
++            Controls::from_text(&text)
+         }
+         Err(_) => {
+             let controls = default_controls();
+@@ -129,14 +143,20 @@
+ /// This frame's pad from the keyboard and mouse (`mouse`: the frame's look
+ /// input, x right and y down), or none when nothing is configured. `active`
+ /// false (the game has no focus, a menu is open) releases everything.
+-pub fn pad(mouse: [f32; 2], dt: f32, active: bool) -> Option<skate_input::Pad> {
++pub fn pad(mouse: [f32; 2], dt: f32, active: bool, allow_mouse: bool) -> Option<skate_input::Pad> {
+     let mut guard = KEYBOARD.lock().ok()?;
+     let k = guard.as_mut()?;
+     if !active {
+         k.translator.reset();
+         return None;
+     }
+-    Some(k.translator.update(&k.controls, key_down, mouse, dt))
++    if allow_mouse {
++        Some(k.translator.update(&k.controls, key_down, mouse, dt))
++    } else {
++        let mut controls = k.controls.clone();
++        controls.mouse = skate_input::MouseTrick::Off;
++        Some(k.translator.update(&controls, key_down, [0., 0.], dt))
++    }
+ }
+ 
+ /// Whether a pad from `pad` does anything (a key held or the stick moved).
+@@ -166,8 +186,22 @@
+     let mut guard = KEYBOARD.lock().map_err(|_| "keyboard state poisoned".to_string())?;
+     let k = guard.as_mut().ok_or("the keyboard is not configured")?;
+     let index = Controls::action_index(id).ok_or_else(|| format!("no action {id}"))?;
+-    k.controls.bind(index, name)?;
+-    std::fs::write(&k.path, k.controls.to_text()).map_err(|e| e.to_string())?;
++    if matches!(name, "F" | "G" | "M" | "R" | "V" | "Tab" | "Mouse1" | "Mouse2" |
++        "Escape" | "Enter" | "LAlt" | "RAlt" | "F5" | "F6" | "F7" | "F8" | "F10") ||
++        (name == "E" && id != "y") {
++        return Err(format!("{name} is reserved for GTA / the package"));
++    }
++    let mut controls = k.controls.clone();
++    controls.bind(index, name)?;
++    match skate_input::ACTIONS[index].0 {
++        skate_input::Action::Gesture(_) => controls.modern = true,
++        skate_input::Action::MouseTrick => controls.mouse = skate_input::MouseTrick::Hold,
++        skate_input::Action::Trick(_) | skate_input::Action::Manual | skate_input::Action::NoseManual => controls.classic = true,
++        _ => {}
++    }
++    std::fs::write(&k.path, controls.to_text()).map_err(|e| e.to_string())?;
++    k.controls = controls;
++    k.translator.reset();
+     Ok(name.to_string())
+ }
+ 
+@@ -178,9 +212,11 @@
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+-
+-    #[test]
+-    fn old_key_files_get_the_radio_keys() {
++    static TEST_LOCK: Mutex<()> = Mutex::new(());
++
++    #[test]
++    fn loading_preserves_personal_keys() {
++        let _serial = TEST_LOCK.lock().unwrap();
+         let path = std::env::temp_dir().join(format!("skatev-keys-old-{}.txt", std::process::id()));
+         let mut old = default_controls();
+         let index = |id: &str| Controls::action_index(id).unwrap();
+@@ -189,8 +225,8 @@
+         std::fs::write(&path, old.to_text()).unwrap();
+         configure(path.clone());
+         let text = std::fs::read_to_string(&path).unwrap();
+-        assert!(text.contains("bind object_dropper = Period") && text.contains("bind marker_return = J"), "{text}");
+-        assert!(hints(false).contains("Comma, Period\tRadio"), "{}", hints(false));
++        assert_eq!(text, old.to_text());
++        let _ = std::fs::remove_file(path);
+     }
+ 
+     #[test]
+@@ -210,17 +246,19 @@
+ 
+     #[test]
+     fn a_key_is_rebound_and_saved() {
++        let _serial = TEST_LOCK.lock().unwrap();
+         let path = std::env::temp_dir().join(format!("skatev-keys-bind-{}.txt", std::process::id()));
+         let _ = std::fs::remove_file(&path);
+         configure(path.clone());
+-        assert_eq!(bind("hippie", 0x47).unwrap(), "G"); // VK 'G'
+-        assert_eq!(key_of("hippie"), "G");
+-        assert!(std::fs::read_to_string(&path).unwrap().contains("bind hippie = G"));
++        assert_eq!(bind("hippie", 0x35).unwrap(), "5"); // VK 5
++        assert_eq!(key_of("hippie"), "5");
++        assert!(std::fs::read_to_string(&path).unwrap().contains("bind hippie = 5"));
+         assert!(bind("no_such_action", 0x47).is_err());
+     }
+ 
+     #[test]
+     fn the_hints_name_the_default_keys() {
++        let _serial = TEST_LOCK.lock().unwrap();
+         configure(std::env::temp_dir().join(format!("skatev-keys-{}.txt", std::process::id())));
+         let riding = hints(false);
+         assert!(riding.contains("Space	Hold: crouch, let go: ollie"), "{riding}");
+@@ -243,4 +281,76 @@
+             }
+         }
+     }
+-}
++    #[test]
++    fn all_presets_are_unique_roundtrip_and_reserve_gta_keys() {
++        for name in ["standard", "skate", "mouse", "arcade"] {
++            let c = preset(name).unwrap();
++            let (back, errors) = Controls::from_text(&c.to_text());
++            assert!(errors.is_empty(), "{name}: {errors:?}");
++            assert_eq!(back, c);
++            let mut seen = std::collections::HashSet::new();
++            for (i, keys) in c.keys.iter().enumerate() {
++                for key in keys {
++                    assert!(c.uses(skate_input::ACTIONS[i].0), "{name}: inactive {key}");
++                    assert!(seen.insert(*key), "{name}: duplicate {key}");
++                    assert!(!["F", "G", "M", "R", "V", "Tab", "Mouse1", "Mouse2", "LAlt", "F10"].contains(key));
++                }
++            }
++            for id in ["a", "x", "b", "y", "hippie", "lt", "rt", "lb", "rb", "rs",
++                "manual", "nose_manual", "marker_place", "marker_return", "retry", "object_dropper"] {
++                assert_eq!(c.keys[Controls::action_index(id).unwrap()].len(), 1, "{name}: {id}");
++            }
++        }
++    }
++
++    #[test]
++    fn presets_drive_real_pad_actions_and_mouse_ownership() {
++        for name in ["standard", "skate", "mouse", "arcade"] {
++            let c = preset(name).unwrap();
++            let key = c.keys[Controls::action_index("a").unwrap()][0];
++            let mut t = Translator::new();
++            assert_ne!(t.update(&c, |k| k == key, [0.,0.], 0.016).buttons & 0x1000, 0);
++            assert!(t.update(&c, |_| false, [1.,1.], 0.1).right.iter().all(|v| v.abs() < 0.001));
++        }
++        let c = preset("mouse").unwrap();
++        let mut t = Translator::new();
++        let down = t.update(&c, |k| k == "CapsLock", [0., 100.], 0.016);
++        assert!(t.mouse_tricks() && down.right[1] < -0.5);
++        t.update(&c, |_| false, [0.,0.], 0.016);
++        assert!(!t.mouse_tricks());
++        let again = t.update(&c, |k| k == "CapsLock", [0.,0.], 0.1);
++        assert_eq!(again.right, [0.,0.], "clutch must not reuse the last stroke");
++        t.reset();
++        assert!(!t.mouse_tricks());
++    }
++
++    #[test]
++    fn preset_switch_preserves_original_and_personal_save_and_rejects_reserved_keys() {
++        let _serial = TEST_LOCK.lock().unwrap();
++        let path = std::env::temp_dir().join(format!("skatev-presets-{}.txt", std::process::id()));
++        for p in [&path, &path.with_extension("custom.txt"), &path.with_extension("before-presets.txt")] {
++            let _ = std::fs::remove_file(p);
++        }
++        let mut original = default_controls();
++        original.bind(Controls::action_index("hippie").unwrap(), "6").unwrap();
++        std::fs::write(&path, original.to_text()).unwrap();
++        configure(path.clone());
++        layout("save_custom").unwrap();
++        layout("mouse").unwrap();
++        layout("arcade").unwrap();
++        assert_eq!(std::fs::read_to_string(path.with_extension("before-presets.txt")).unwrap(), original.to_text());
++        layout("custom").unwrap();
++        assert_eq!(key_of("hippie"), "6");
++        layout("original").unwrap();
++        let before = std::fs::read_to_string(&path).unwrap();
++        for vk in [0x46,0x47,0x4d,0x52,0x56,0x09,0x01,0x02,0x45] {
++            assert!(bind("hippie", vk).is_err());
++        }
++        assert!(layout("unknown").is_err());
++        assert_eq!(std::fs::read_to_string(&path).unwrap(), before);
++        for p in [&path, &path.with_extension("custom.txt"), &path.with_extension("before-presets.txt")] {
++            let _ = std::fs::remove_file(p);
++        }
++    }
++
++}
+diff --git a/rust/skatev-runtime/src/lib.rs b/rust/skatev-runtime/src/lib.rs
+--- a/rust/skatev-runtime/src/lib.rs
++++ b/rust/skatev-runtime/src/lib.rs
+@@ -1170,7 +1170,7 @@
+         if out.is_null() {
+             return 0;
+         }
+-        let Some(p) = keyboard::pad([mouse_x, mouse_y], dt, active != 0) else { return 0 };
++        let Some(p) = keyboard::pad([mouse_x, mouse_y], dt, active != 0, active & 2 == 0) else { return 0 };
+         if !keyboard::is_active(&p) {
+             return 0;
+         }
+@@ -1186,6 +1186,12 @@
+         out.right_y = axis(p.right[1]);
+         1
+     })
++}
++
++/// Optional package extension: whether the mouse clutch owns this frame.
++#[unsafe(no_mangle)]
++pub extern "C" fn sv_keyboard_mouse_tricks(_rt: *mut c_void) -> u32 {
++    guard(0, || keyboard::mouse_tricks() as u32)
+ }
+ 
+ /// The keyboard's controls for the HUD (UTF-8, NUL-terminated, into `buf`
