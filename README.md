@@ -126,7 +126,7 @@ bindings** to return. The first preset change also keeps `SkateVKeys.before-pres
 so customized hybrids work; reserved GTA/system keys are rejected. Install the
 matching host/runtime pair; mixed versions are unsupported for these extensions.
 
-Controller input follows SK8V; keyboard/mouse support is provided by this fork. Controller camera/trick-stick separation is tracked in [issue #1](https://github.com/Manatros/GTAxSkate/issues/1); the v0.6.0 acceptance test did not separately cover a controller, so the issue stays open until a controller test passes.
+Controller input follows SK8V; keyboard/mouse support is provided by this fork. The controller camera fix ([issue #1](https://github.com/Manatros/GTAxSkate/issues/1)) is confirmed in game: the right stick does tricks without swinging the camera.
 
 ## Known issues
 

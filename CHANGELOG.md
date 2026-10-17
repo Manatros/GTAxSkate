@@ -7,6 +7,7 @@ a new minor version for each state confirmed in a game test, a patch version for
 
 - Installing from a source checkout works again: step 3 downloads the v0.6.0 programs (`GTAxSkate-bin.zip`) and checks their pinned SHA-256 before use. The release binaries are unchanged.
 - README: the Setup download link points to the latest release (the old `dev-build` link was broken). Issue templates link to `main`. NOTICE and the test plan name SK8V 1.1.10.
+- The controller camera fix in v0.6.0 (issue #1) is confirmed in game. Dependabot was removed again.
 
 ## v0.6.0 — accepted Story baseline, 17 October 2026
 
