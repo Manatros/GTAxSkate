@@ -23,7 +23,7 @@ Keep BoardShop=1 and CarryBoard=0 for comparison; SK8V owns animation/transition
 4. Change wheels/deck, paint truck baseplate and hanger separately, select grip.
    Check preview, purchase, riding and return to the saved setup. Preparation
    takes seconds outside the game tick; the existing model stays until ready.
-5. Get on/off, put the board away and compare with official SK8V 1.1.9.
+5. Get on/off, put the board away and compare with official SK8V 1.1.10.
 6. Follow up on stopping: after riding fast, stand still on the board for
    10 seconds. Roll slowly forward/backward, steer and stop again.
 A recording is optional; report the exact failing action and preserve logs.
