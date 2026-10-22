@@ -2,6 +2,13 @@
 
 Start with the [README](README.md), [support boundaries](SUPPORT.md) and existing [GTAxSkate issues](https://github.com/Manatros/GTAxSkate/issues). Explain the problem and reproduction before making a large redesign. Keep one independently reviewable behavior change per pull request.
 
+## Branches
+
+| Branch | Purpose |
+|---|---|
+| `dev` | Latest development state, updated continuously. Base your work on `dev` and open pull requests against `dev`. It may be broken at any time. |
+| `main` | Released, tested state only. `dev` is merged into `main` after CI passes and the build is accepted in an in-game test. Do not push untested work to `main`. |
+
 ## Choose the correct code boundary
 
 | Change | Location / expectation |
