@@ -5,12 +5,16 @@
 # (skate-ped.exe), the soundtrack tool (skate-music.exe), and the part model
 # builder (prepare-board-parts.py with SK8V's _common.py), plus the licences.
 #   powershell -ExecutionPolicy Bypass -File scripts\make-bin.ps1
-param([string] $GplSourceReceipt, [Parameter(Mandatory)] [string] $PrivacyPatternsFile, [string] $ForkPath = '')
+param([string] $GplSourceReceipt, [Parameter(Mandatory)] [string] $PrivacyPatternsFile, [string] $ForkPath = '',
+      # Cargo target folder of the fork's Rust build (skatev-world-cache.exe); default <fork>\rust\target.
+      [string] $CargoTarget = '',
+      # Stage a candidate separately from existing accepted release assets.
+      [string] $Output = '')
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 if (-not (Test-Path -LiteralPath $PrivacyPatternsFile -PathType Leaf)) { throw 'Supply a local -PrivacyPatternsFile; it is never included in the package.' }
 $sk8v = if ($ForkPath) { [IO.Path]::GetFullPath($ForkPath) } else { Join-Path $root 'external\sk8v' }
-$out = Join-Path $root 'build\release'
+$out = if ($Output) { [IO.Path]::GetFullPath($Output) } else { Join-Path $root 'build\release' }
 $stage = Join-Path $out 'bin'
 if (-not $GplSourceReceipt) { $GplSourceReceipt = Join-Path $root 'build\compliance-audit\GPL-SOURCE-RECEIPT.json' }
 if (-not (Test-Path -LiteralPath $GplSourceReceipt -PathType Leaf)) { throw 'Missing GPL corresponding-source receipt; prepare exact source and rebuilt tool hashes before packaging.' }
@@ -56,6 +60,10 @@ $files = @(
     (Join-Path $sk8v 'build\package\SkateVRuntime.dll'),
     (Join-Path $sk8v 'tools\prepare-board-parts.py'),
     (Join-Path $sk8v 'tools\_common.py'),
+    (Join-Path $sk8v 'tools\make-glow-wheels.ps1'),
+    (Join-Path $sk8v 'tools\repair-board-skin-flags.py'),
+    (Join-Path $(if ($CargoTarget) { $CargoTarget } elseif ($env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR } else { Join-Path $sk8v 'rust\target' }) 'release\skatev-world-cache.exe'),
+    (Join-Path $(if ($CargoTarget) { $CargoTarget } elseif ($env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR } else { Join-Path $sk8v 'rust\target' }) 'release\visual-rails.exe'),
     (Join-Path $root 'gta\skate-ped\target\release\skate-ped.exe'),
     (Join-Path $root 'gta\skate-music\target\release\skate-music.exe')
 )
@@ -115,10 +123,21 @@ AssertStage (Join-Path $out 'setup')
 Remove-Item -LiteralPath (Join-Path $out 'setup') -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force (Join-Path $setup 'scripts'), (Join-Path $setup 'bin'), (Join-Path $setup 'custom-assets\decks') | Out-Null
 Copy-Item (Join-Path $root 'Install GTAxSkate.cmd') $setup
-Copy-Item (Join-Path $root 'scripts\install.ps1'), (Join-Path $root 'scripts\get-skate-music.ps1') (Join-Path $setup 'scripts')
+Copy-Item (Join-Path $root 'scripts\install.ps1'), (Join-Path $root 'scripts\get-skate-music.ps1'), (Join-Path $root 'scripts\build-prebaked-map.ps1'), (Join-Path $root 'scripts\install-asset-transaction.ps1') (Join-Path $setup 'scripts')
+Copy-Item (Join-Path $root 'scripts\build-world-collision.ps1') (Join-Path $setup 'scripts')
+New-Item -ItemType Directory -Force (Join-Path $setup 'scripts\world-inspect') | Out-Null
+Copy-Item (Join-Path $root 'scripts\world-inspect\segcheck.py') (Join-Path $setup 'scripts\world-inspect')
+# The setup's installer pins this exact bin zip (a source checkout downloads it from the release).
+$binSha = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+$setupInstaller = Join-Path $setup 'scripts\install.ps1'
+$installerText = [IO.File]::ReadAllText($setupInstaller)
+$installerText = $installerText -replace '(?m)^\$GtaxSkateBinSha256 = ''[0-9a-f]{64}''', ('$GtaxSkateBinSha256 = ''' + $binSha + '''')
+[IO.File]::WriteAllText($setupInstaller, $installerText, (New-Object Text.UTF8Encoding $false))
+Set-Content -LiteralPath (Join-Path $out 'GTAxSkate-bin.sha256') $binSha
 Copy-Item (Join-Path $stage '*') (Join-Path $setup 'bin') -Recurse
 Copy-Item (Join-Path $root 'custom-assets\README.md') (Join-Path $setup 'custom-assets')
 Copy-Item (Join-Path $root 'public\setup\README.txt') $setup
+Copy-Item (Join-Path $root 'public\WORLD-DATA.md') $setup
 Copy-Item (Join-Path $root 'public\LICENSE') (Join-Path $setup 'LICENSE.txt')
 Copy-Item (Join-Path $root 'public\NOTICE') (Join-Path $setup 'NOTICE.txt')
 python (Join-Path $PSScriptRoot 'public-privacy.py') --path $setup --forbidden-patterns-file $PrivacyPatternsFile --reviewed-upstream-exceptions (Join-Path $PSScriptRoot 'reviewed-upstream-paths.json')

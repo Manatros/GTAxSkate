@@ -5,6 +5,17 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
+$cumulative = Join-Path $root 'patches\sk8v-gtaxskate-cumulative.patch'
+if (Test-Path -LiteralPath $cumulative -PathType Leaf) {
+    try {
+        & (Join-Path $PSScriptRoot 'check-cumulative-patch.ps1') -Fork $Fork -Patch $cumulative -WorkingTree | Out-Null
+    } catch {
+        if ($ProbePlayPresets) { return $false }
+        throw
+    }
+    if ($ProbePlayPresets) { return $true }
+    return
+}
 $latest = Join-Path $root 'patches\sk8v-play-presets.patch'
 $prerequisites = @('sk8v-package-menu.patch','sk8v-save-reload.patch','sk8v-hud-tick.patch','sk8v-runtime-reload.patch','sk8v-camera-clearance.patch','sk8v-developer-versions.patch','sk8v-controller-camera.patch','sk8v-board-pose-diagnostics.patch','sk8v-board-skin-flags.patch','sk8v-board-carry-ownership.patch','sk8v-board-composition.patch','sk8v-wheel-presentation.patch','sk8v-original-camera-option.patch','sk8v-private-build.patch','sk8v-keyboard-presets.patch','sk8v-performance-reporting.patch')
 if (-not (Test-Path -LiteralPath $latest -PathType Leaf)) { throw 'Missing package patch: sk8v-play-presets.patch' }

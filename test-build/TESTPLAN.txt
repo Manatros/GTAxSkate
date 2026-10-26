@@ -1,115 +1,38 @@
-Accepted as v0.6.0 on 17 October 2026: exact tested pair, SK8V 1.1.10.
-Known deferred issue: board lighting indoors/in tunnels.
-The steps below remain the regression checklist for subsequent changes.
+GTAxSkate v0.7.0 Story candidate (SK8V 1.1.10)
+Gameplay acceptance pending; v0.6.0 remains stable.
 
-GTAxSkate: Story development test (2026-10-16, SK8V 1.1.10 basis)
+Use the exact ID and binary hashes from manifest.json. No game assets are in
+this binary-only package. Existing converted SK8V/GTAxSkate data are required.
+The separate setup ZIP is for a full installation. No FiveM/Coop parity is claimed.
 
-SCOPED GAME FEEDBACK: The tester said wheel speed appeared correct, then
-confirmed the rear-wheel direction correction works. That direction fix keeps
-the rotation magnitude/cap. Wheel stopping was not separately confirmed in-game.
-Truck steering, shop variants, carry ownership and the full matrix below still
-need their own results. This is not full release acceptance or stable promotion.
+INSTALL
+1. Close GTA V, OpenIV and CodeWalker.
+2. Run Install Test.cmd and supply your GTA V Legacy 1.0.3889.0 folder.
+   Keep the printed backup path. Both binaries are installed together;
+   existing INI, boards and bindings stay intact.
+3. Restart GTA in Story Mode with BattlEye off. Keep the composition helper
+   disabled; use the existing separate board-part models.
 
-OPTIONAL COMPOSED SHOP BOARD:
-Requires existing working SK8V/GTAxSkate data, GTA V Legacy 1.0.3889.0,
-Python >=3.10 and the existing pinned RAGE tool. The stable installer does not
-enable this helper. Read BOARD-COMPOSITION.md in the source repository.
-Keep BoardShop=1 and CarryBoard=0 for comparison; SK8V owns animation/transitions.
-1. With GTA closed, configure the separately backed-up helper:
-   powershell -NoProfile -ExecutionPolicy Bypass -File composer\setup-board-composer.ps1 -Assets "YOUR ASSETS FOLDER" -Python "YOUR python.exe" -Rage "YOUR rage.exe"
-2. Install the binary pair below, then fully restart GTA.
-3. Ride and steer. The log should show:
-   board parts: riding skatev_c_... (single drawable)
-4. Change wheels/deck, paint truck baseplate and hanger separately, select grip.
-   Check preview, purchase, riding and return to the saved setup. Preparation
-   takes seconds outside the game tick; the existing model stays until ready.
-5. Get on/off, put the board away and compare with official SK8V 1.1.10.
-6. Follow up on stopping: after riding fast, stand still on the board for
-   10 seconds. Roll slowly forward/backward, steer and stop again.
-A recording is optional; report the exact failing action and preserve logs.
-Helper rollback uses restore-board-composer.ps1 from its printed backup with
--Backup "HELPER BACKUP FOLDER". Binary rollback is separate (see below).
+TEST
+- Enter through the weapon wheel or SK8V menu. E/Y mounts and dismounts;
+  hold it to leave skate mode. F is not an extra mode switch.
+- Ride quickly through the city and metro. Revisit the last fall-through and
+  floating-collision spots. Compare loading/hitches with the previous build.
+- Ride bowls, flagged stairs, handrails and train tracks. Unflagged stairs are
+  experimental and off by default.
+- Drop a picnic table, flat ramp, half pipe and rail. Ride/grind each. Add and
+  remove several; check FPS, seams, duplicate/floating rails and unload delay.
+  Compare with the collision overlay off using the same graphics/mod settings.
+- Check shop purchases, wheel/truck animation and glow colour; camera V cycle,
+  settings persistence, save/reload, weapons and radio.
+- Note whether metro texture/collision trouble also happens in GTA mode.
+  Stencil causality remains unconfirmed.
 
-This snapshot requires existing working converted data and installs no assets.
-It is not a FiveM/Coop skating port. LS Skate remains unavailable until a verified adapter exists.
+ROLLBACK
+Run restore-test-build.ps1 -Backup "THE PRINTED BACKUP FOLDER" with GTA and
+model tools closed. Settings remain preserved. Do not delete recovery backups.
 
-INSTALL (GTA, OpenIV, CodeWalker closed):
-  Double-click Install Test.cmd and enter your GTA folder when asked.
-  Or run:
-  powershell -NoProfile -ExecutionPolicy Bypass -File install-test-build.ps1 -Package . -Gta "YOUR GTA FOLDER"
-
-Only host/runtime are updated. Existing legacy SkateGTA/SkateExtras ASIs are
-disabled reversibly to match the normal SK8V installer. INI files, boards,
-game saves and archives are left unchanged. Backup/rollback path is printed.
-Your current settings are kept: this test does not automatically select RP.
-
-QUICK NEXT TEST (about15 minutes; full release matrix in TEST-RUN.md):
-A. F10 > Presets > Developer. With controller: right-stick ollies/flips/grabs
-   must NOT swing the camera. Repeat Near/Middle/Far/Head/Skate views (V).
-B. Aim and weapon wheel must still work. Switch to mouse and back with the pad
-   connected; mouse-look and trick input must both remain usable.
-C. Load a save twice, once while skating. HUD returns without preset changes;
-   rolling/push/landing sounds follow this ride. No crash or frozen player.
-D. R cinematic/normal near walls/ramps/low ceilings; no clipping and HUD recovers.
-E. Board shop, get on/off, one F10 menu; restart GTA and check preset persistence.
-Say failing letter/step and timestamp aloud in the video. Keep host/runtime/
-ScriptHookV logs. Do not overwrite saves. Controller GitHubissue1 stays open
-until this actual gameplay test passes. FiveM is a separate optional test below.
-
-SAVE-RELOAD / CAMERA REGRESSION (priority):
-1. Fresh Story start: ride with normal trick HUD and rolling/push/landing sounds.
-2. Load an existing save twice, then one in a different location; include a load
-   while skating. Do not overwrite saves.
-3. After EVERY load: HUD should return without changing presets; sounds should
-   follow this ride, and F10/get on/off/boards/collision should continue working.
-4. Switch R cinematic/normal and V views near walls, ramps and low ceilings.
-   HUD should hide in cinematic and return afterward. Check camera stays outside
-   geometry; collision ray tests cannot guarantee every streamed object.
-5. F10 > Presets > Developer enables input/debug overlays, verbose logs, keys
-   and trick HUD immediately. Developer > Disable diagnostics turns the extra
-   overlays/logs off. Driving physics and server rules are unchanged.
-   F10 > Developer also shows source basis, host build, test receipt and LS status.
-   Receipt is metadata only; LS Skate is not integrated, not auto-detected.
-6. Keep logs immediately if anything fails. Note build id, reload number, which
-   camera/profile, and timestamp. Logs should show one runtime preload across
-   script restarts, suspension/reactivation and a viewport after each restart.
-Data/cache paths and creation-only runtime options require a full GTA restart.
-The runtime job queue is asynchronous; gameplay recovery still needs this test.
-
-MENU REGRESSION (about 10 minutes):
-1. Start Story Mode. With board away: F10 opens exactly one menu; close F10.
-2. Draw board, E to ride. F10 still opens exactly one menu; F10 closes it.
-3. Open each category; Enter/Back and Advanced work. Options stay reachable.
-4. Save Custom. Make a manual setting change; note the value for User.
-5. Presets > RP: near camera, Hardcore, lower pop/push, no glitch assist.
-   No Skate HUD: check trick score, x-ray/records, inputs/debug, hints, radio.
-   F10 must still work. Reload a save and repeat a bail and radio change.
-6. Presets > Developer, then SK8V: full baselines replace earlier settings;
-   original Skate HUD returns immediately. Restart for marked options.
-7. User restores the last manual values; Custom restores the saved snapshot.
-   Restart GTA and repeat. LS Skate reports unavailable and changes nothing.
-   Boards/purchases/wear/personal bindings remain; audio follows each profile.
-8. Quick regression: board equip/get on/off; V/R cameras; G in a board shop;
-   buy/ride your board; Self Radio. E still opens general shop, not an exact
-   displayed-board offer; that feature remains backlog work.
-
-Please report: build id (manifest.json), failing step, expected/actual behavior,
-timestamp and logs from %LOCALAPPDATA%\SkateV (SkateVLegacy.log/runtime log).
-Keep a copy of the logs immediately after a failure. A short video helps.
-
-ROLLBACK (game closed):
-  powershell -NoProfile -ExecutionPolicy Bypass -File restore-test-build.ps1 -Backup "PRINTED BACKUP FOLDER"
-
-Rollback restores prior binaries/active legacy state and install metadata;
-it does not rewind settings you deliberately changed through the test menu.
-
-Separate optional FiveM rules test:
-GTAxSkate-FiveM-Rules-Test.zip contains a server resource/installer and guide.
-Use a test FXServer only. It tests server rules and rejection/reload, not riding.
-# Board-animation diagnosis (latest candidate)
-# Diagnostics supplement the scoped wheel-direction feedback above; other gates remain open.
-# F10 > Presets > Developer; ride/push straight for 15 seconds, steer left/right
-# for 15 seconds, then stop for 5 seconds. Keep the same board setup.
-# The host log records 'board anim diagnostic' lines (at most one per 5 seconds).
-# They distinguish runtime part rotation, pre-write state and immediate readback.
-# Preserve the log after the test before the next game launch.
+Report the candidate ID, failing place/action and minimal redacted logs.
+Automated tests do not establish stable gameplay FPS or full collision accuracy.
+Release requires explicit approval of the exact pair and cannot occur before
+24 October 2026. See TEST-RUN.md for the full regression checklist.

@@ -4,11 +4,17 @@
 # skating), all made from your own Skate 3 and GTA V. Started by
 # "Install GTAxSkate.cmd" in the repo folder.
 #
-#   powershell -ExecutionPolicy Bypass -File scripts\install.ps1 [-Gta <folder>] [-Skate3 <ISO or folder>] [-Redo <step>] [-Until <step>] [-NoMusic]
+#   powershell -ExecutionPolicy Bypass -File scripts\install.ps1 [-Gta <folder>] [-Skate3 <ISO or folder>] [-Redo <step>] [-Until <step>] [-Components boards,music|none] [-NoMusic] [-Remove <component>]
 #
 # It finds what it can by itself and asks only for the rest (a folder or file
 # picker). Every step leaves a receipt in build\install\, so running it again
 # goes on after the last finished step; -Redo <step> runs a step again.
+#
+# -Components boards,glow,music,world selects optional stages; none means core.
+# Defaults: boards, music, world; glow only when CodeWalker is found.
+# Interactive sessions offer a numbered list; GTAXSKATE_NONINTERACTIVE=1 uses
+# defaults. Deselection keeps installed data. -Remove hides options only and
+# retains files; explicit -Components selection restores their flags.
 #
 # Steps:
 #   1 tools    the SK8V release (its Python and rage tool), vgmstream
@@ -16,9 +22,13 @@
 #   3 bin      GTAxSkate's builds: SK8V with our additions, the board tool
 #              (built here when the source is, else from the GTAxSkate release)
 #   4 boards   the board library and every part as a GTA model (a few minutes)
-#   5 music    Skate 3's soundtrack (the iPod's 46 songs) on GTA's Self Radio
+#   5 glow     glowing wheel models (only when CodeWalker is found; -CodeWalker)
+#   6 music    Skate 3's soundtrack (the iPod's 46 songs) on GTA's Self Radio
 #              (-NoMusic skips it)
-#   6 install  our SK8V build over SK8V's (recorded in SK8V's install record,
+#   7 world    the prebaked map: GTA's map collision baked once, the fallback
+#              where GTA's live collision has holes (about 10 minutes, 2.5 GB
+#              while it runs, 0.6 GB kept)
+#   8 install  our SK8V build over SK8V's (recorded in SK8V's install record,
 #              so SK8V's own uninstall and updates treat it as theirs), the
 #              settings; then what only the setup needed is removed
 #
@@ -29,10 +39,15 @@
 param(
     [string] $Gta = '',
     [string] $Skate3 = '',
-    [ValidateSet('', 'tools', 'sk8v', 'bin', 'boards', 'music', 'install')] [string] $Redo = '',
+    [ValidateSet('', 'tools', 'sk8v', 'bin', 'boards', 'glow', 'music', 'world', 'install')] [string] $Redo = '',
     # Stop after this step (testing, or preparing without touching GTA yet).
-    [ValidateSet('', 'tools', 'sk8v', 'bin', 'boards', 'music', 'install')] [string] $Until = '',
+    [ValidateSet('', 'tools', 'sk8v', 'bin', 'boards', 'glow', 'music', 'world', 'install')] [string] $Until = '',
     [switch] $NoMusic,
+    [string] $Components = '',
+    [string] $Remove = '',
+    # CodeWalker's folder (it holds CodeWalker.Core.dll), for the glowing wheel
+    # models; CodeWalker is not bundled. Without it glowing wheels use the light only.
+    [string] $CodeWalker = '',
     # Which parts to install (names as in the list below, comma separated), or
     # 'all'; without it the installer asks once with a list of tick boxes.
     [string] $Parts = '',
@@ -69,11 +84,12 @@ $VgmstreamZip = 'https://github.com/vgmstream/vgmstream/releases/download/r2117/
 $VgmstreamSha256 = '6c4a8a3813864fefed081bbd337dbc0ad93bf88e0b92f5db98d7ab258b22dc6c'
 # GTAxSkate's own builds for a source checkout without a bin folder: the
 # game-accepted release. Update tag and digest together with each release.
-$GtaxSkateRelease = 'v0.6.0'
+$GtaxSkateRelease = 'v0.7.0'
 $GtaxSkateBinZip = "https://github.com/Manatros/GTAxSkate/releases/download/$GtaxSkateRelease/GTAxSkate-bin.zip"
-$GtaxSkateBinSha256 = 'ee2db3fc355eb7c8479bdaeeb486a3584eb388d498573301dfd20b5d6ac647fd'
+$GtaxSkateBinSha256 = '0495d787725a7ca352b922c0223d2fb9d810c9c253594612e665ac8560df3e68'
 $GtaBuild = '1.0.3889.0'
-$Steps = 'tools', 'sk8v', 'bin', 'boards', 'music', 'install'
+$Steps = 'tools', 'sk8v', 'bin', 'boards', 'glow', 'music', 'world', 'install'
+. (Join-Path $PSScriptRoot 'install-asset-transaction.ps1')
 
 Add-Type -AssemblyName System.Windows.Forms
 
@@ -102,6 +118,19 @@ function Run([string]$what, [scriptblock]$block) {
     Say "  $what..." 'DarkGray'
     & $block
     if ($LASTEXITCODE) { Fail "$what failed (exit code $LASTEXITCODE)." }
+}
+function Invoke-WorldCollision([string]$Script, [string]$Gta, [string]$Keys, [string]$Baker, [string]$Rails, [string]$World) {
+    # Windows PowerShell inherited from pwsh can lose its module paths and
+    # Get-FileHash. Always run this pipeline in PowerShell 7 itself.
+    $pwsh = Get-Command pwsh.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $pwsh) { throw 'World collision preparation requires PowerShell 7 (pwsh.exe). Install it and rerun with -Redo world.' }
+    $savedPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        & $pwsh.Source -NoProfile -ExecutionPolicy Bypass -File $Script -Gta $Gta -Keys $Keys -Baker $Baker -Rails $Rails -World $World
+        $worldExit = $LASTEXITCODE
+    } finally { $ErrorActionPreference = $savedPreference }
+    if ($worldExit -ne 0) { throw "build-world-collision.ps1 failed (exit code $worldExit). Previous collision and preparation logs were retained." }
 }
 function Download([string]$url, [string]$to) {
     Say "  downloading $(Split-Path -Leaf $url)..." 'DarkGray'
@@ -165,6 +194,12 @@ function Restart-Elevated {
     if ($Redo) { $argsList += " -Redo $Redo" }
     if ($Until) { $argsList += " -Until $Until" }
     if ($NoMusic) { $argsList += ' -NoMusic' }
+    $componentArg = if ($selectedComponents.Count) { $selectedComponents -join ',' } else { 'none' }
+    $argsList += " -Components $componentArg"
+    if ($Remove) { $argsList += " -Remove $Remove" }
+    if ($Parts) { $argsList += " -Parts $Parts" }
+    if ($Choose) { $argsList += ' -Choose' }
+    if ($CodeWalker) { $argsList += " -CodeWalker `"$CodeWalker`"" }
     $argsList += ' -ResumeTranscript'
     try { Start-Process (Join-Path $root 'Install GTAxSkate.cmd') -Verb RunAs -ArgumentList $argsList | Out-Null }
     catch { Fail "No write access to $Gta and administrator rights were declined." }
@@ -194,6 +229,56 @@ function Find-Gta {
     ''
 }
 
+# Resolve CodeWalker before choosing defaults.
+if (-not $CodeWalker) { $CodeWalker = Known 'CodeWalker' }
+if (-not $CodeWalker) {
+    foreach ($c in (Join-Path $root 'tools\CodeWalker'), (Join-Path $env:USERPROFILE 'Downloads\CodeWalker'), (Join-Path $env:ProgramFiles 'CodeWalker')) {
+        if (Test-Path -LiteralPath (Join-Path $c 'CodeWalker.Core.dll')) { $CodeWalker = $c; break }
+    }
+}
+$componentNames = @('boards', 'glow', 'music', 'world')
+$interactive = [Environment]::UserInteractive -and $env:GTAXSKATE_NONINTERACTIVE -ne '1'
+try { $interactive = $interactive -and -not [Console]::IsInputRedirected -and [Console]::WindowHeight -gt 0 } catch { $interactive = $false }
+function Parse-Components([string]$value) {
+    if ($value -eq 'none' -or [string]::IsNullOrWhiteSpace($value)) { return }
+    if ($value -eq 'all') { return $componentNames }
+    foreach ($name in ($value -split ',')) {
+        $name = $name.Trim().ToLowerInvariant()
+        if ($componentNames -notcontains $name) { Fail "Unknown component '$name'. Use boards, glow, music, world, all or none." }
+        $name
+    }
+}
+$componentsExplicit = $PSBoundParameters.ContainsKey('Components')
+$selectedComponents = @('boards', 'music', 'world')
+if ($CodeWalker -and (Test-Path -LiteralPath (Join-Path $CodeWalker 'CodeWalker.Core.dll'))) { $selectedComponents += 'glow' }
+if ($componentsExplicit) { $selectedComponents = @(Parse-Components $Components) }
+elseif ($interactive) {
+    Say 'Optional components (core is always installed):' 'White'
+    for ($i = 0; $i -lt $componentNames.Count; $i++) {
+        $name = $componentNames[$i]
+        $default = if ($selectedComponents -contains $name) { 'ON' } else { 'OFF' }
+        Say "  $($i + 1). $name [$default]"
+    }
+    $answer = Read-Host 'Enter keeps defaults; or enter numbers to install (1,3), or none'
+    if ($answer.Trim()) {
+        if ($answer.Trim() -eq 'none') { $selectedComponents = @() }
+        else {
+            $selectedComponents = @(foreach ($number in ($answer -split ',')) {
+                if ($number.Trim() -notmatch '^[1-4]$') { Fail 'Choose component numbers 1-4, or none.' }
+                $componentNames[[int]$number.Trim() - 1]
+            })
+        }
+    }
+}
+if ($NoMusic) { $selectedComponents = @($selectedComponents | Where-Object { $_ -ne 'music' }) }
+$removedComponents = @(Parse-Components (Known 'RemovedComponents'))
+if ($componentsExplicit) { $removedComponents = @($removedComponents | Where-Object { $selectedComponents -notcontains $_ }) }
+$removedComponents = @($removedComponents) + @(Parse-Components $Remove)
+$selectedComponents = @($selectedComponents | Where-Object { $removedComponents -notcontains $_ })
+Remember 'RemovedComponents' ($removedComponents -join ',')
+function Component-On([string]$name) { $selectedComponents -contains $name }
+if ($Remove) { Say 'Removal only hides component options; installed files are retained.' 'Yellow' }
+
 Say 'GTAxSkate installer' 'White'
 Say 'Install logs and remembered folder choices stay locally in build\install; this installer does not upload them.' 'DarkGray'
 Say 'Logs can contain personal folder paths. Review and redact excerpts before sharing them publicly.' 'DarkGray'
@@ -204,8 +289,8 @@ if (-not $Gta -or -not (Test-Path -LiteralPath (Join-Path $Gta 'GTA5.exe'))) { F
 $version = (Get-Item -LiteralPath (Join-Path $Gta 'GTA5.exe')).VersionInfo.FileVersion
 if ($version -and $version -ne $GtaBuild) { Say "  Note: SK8V is made for GTA V $GtaBuild; yours is $version." 'Yellow' }
 if (-not $Skate3) { $Skate3 = Known 'Skate3' }
-if (-not (Is-Done 'boards') -and (-not $Skate3 -or -not (Test-Path -LiteralPath $Skate3))) { $Skate3 = Pick-Skate3 }
-if (-not (Is-Done 'boards') -and (-not $Skate3 -or -not (Test-Path -LiteralPath $Skate3))) { Fail 'Your Skate 3 disc image or folder was not found.' }
+if ((-not (Is-Done 'sk8v') -or ((Component-On 'boards') -and -not (Is-Done 'boards'))) -and (-not $Skate3 -or -not (Test-Path -LiteralPath $Skate3))) { $Skate3 = Pick-Skate3 }
+if ((-not (Is-Done 'sk8v') -or ((Component-On 'boards') -and -not (Is-Done 'boards'))) -and (-not $Skate3 -or -not (Test-Path -LiteralPath $Skate3))) { Fail 'Your Skate 3 disc image or folder was not found.' }
 Remember 'Gta' $Gta
 Remember 'Skate3' $Skate3
 $known | ConvertTo-Json | Set-Content $settings
@@ -225,7 +310,7 @@ $catalog = @(
     @{ N = 'stamina'; T = 'Stamina: skating trains it, it sets push and pop';                On = $true;  Ini = @{ Stamina = '1', '0' } },
     @{ N = 'peds';    T = 'People knocked over survive';                                     On = $true;  Ini = @{ PedsSurvive = '1', '0' } },
     @{ N = 'hurt';    T = 'A limp after hard bails';                                         On = $true;  Ini = @{ Injuries = '1', '0' } },
-    @{ N = 'carry';   T = 'The board from the weapon wheel stays in hand (swing it; E or F gets on)'; On = $false; Ini = @{ CarryBoard = '1', '0' } }
+    @{ N = 'carry';   T = 'The board from the weapon wheel stays in hand in GTA (swing it as a melee weapon)'; On = $false; Ini = @{ CarryBoard = '1', '0' } }
 )
 # Stance, as SK8V's own setup asks it: the last answer, else the installed SK8V's.
 $Stance = Known 'Stance'
@@ -256,7 +341,8 @@ function Choose-Parts {
     ($catalog | Where-Object { $list.CheckedItems.Contains($_.T) } | ForEach-Object { $_.N }) -join ','
 }
 if (-not $Parts) { $Parts = Known 'Parts' }
-if (-not $Parts -or $Choose) { $Parts = Choose-Parts }
+if (-not $Parts -and (-not $interactive -or $componentsExplicit)) { $Parts = ($catalog | Where-Object { $_.On } | ForEach-Object { $_.N }) -join ',' }
+if ((-not $Parts -or $Choose) -and $interactive) { $Parts = Choose-Parts }
 Remember 'Stance' $Stance
 if ($Parts -eq 'all') { $Parts = ($catalog | ForEach-Object { $_.N }) -join ',' }
 $chosen = $Parts -split ',' | ForEach-Object { $_.Trim() }
@@ -269,6 +355,13 @@ if (-not (Writable $Gta)) { Restart-Elevated }
 if (-not (Writable $Gta)) { Fail "No write access to $Gta, even as administrator (is the drive read-only, or an antivirus blocking it?)." }
 
 function Stop-After([string]$step) { if ($Until -eq $step) { Say ''; Say "Stopped after '$step' (-Until)." 'Yellow'; exit 0 } }
+if ($Redo) {
+    for ($i = [array]::IndexOf($Steps, $Redo); $i -ge 0 -and $i -lt $Steps.Count; $i++) {
+        if ($componentNames -contains $Steps[$i] -and -not (Component-On $Steps[$i])) { continue }
+        Remove-Item -LiteralPath (Join-Path $receipts "$($Steps[$i]).done") -Force -ErrorAction SilentlyContinue
+        if ($Steps[$i] -eq 'boards') { Remove-Item -LiteralPath (Join-Path $receipts 'skinfix.done') -Force -ErrorAction SilentlyContinue }
+    }
+}
 
 # --- 1 tools -----------------------------------------------------------------
 $release = Join-Path $external "sk8v-release\SK8V-$Sk8vTag"
@@ -410,13 +503,31 @@ $shipped = Join-Path $root 'bin'
 # A developer's newer build counts as a new 'bin' step.
 $newer = (Test-Path -LiteralPath (Join-Path $package 'SkateVLegacy.asi')) -and (Test-Path -LiteralPath (Join-Path $bin 'SkateVLegacy.asi')) -and
          ((Get-Item (Join-Path $package 'SkateVLegacy.asi')).LastWriteTime -gt (Get-Item (Join-Path $bin 'SkateVLegacy.asi')).LastWriteTime)
+# A newer package unpacked over an older one: its bin folder differs from the copy made last time.
+if ((Test-Path -LiteralPath (Join-Path $shipped 'SkateVLegacy.asi')) -and (Test-Path -LiteralPath (Join-Path $bin 'SkateVLegacy.asi')) -and
+    (Get-FileHash -LiteralPath (Join-Path $shipped 'SkateVLegacy.asi')).Hash -ne (Get-FileHash -LiteralPath (Join-Path $bin 'SkateVLegacy.asi')).Hash) { $newer = $true }
+if (Test-Path -LiteralPath $shipped -PathType Container) {
+    foreach ($f in Get-ChildItem -LiteralPath $shipped -Recurse -File) {
+        $relative = $f.FullName.Substring($shipped.TrimEnd('\').Length + 1)
+        $cached = Join-Path $bin $relative
+        if (-not (Test-Path -LiteralPath $cached -PathType Leaf) -or
+            (Get-FileHash -LiteralPath $f.FullName).Hash -ne (Get-FileHash -LiteralPath $cached).Hash) { $newer = $true; break }
+    }
+}
+if ((Test-Path -LiteralPath (Join-Path $package 'SkateVRuntime.dll')) -and (Test-Path -LiteralPath (Join-Path $bin 'SkateVRuntime.dll')) -and
+    ((Get-Item (Join-Path $package 'SkateVRuntime.dll')).LastWriteTime -gt (Get-Item (Join-Path $bin 'SkateVRuntime.dll')).LastWriteTime)) { $newer = $true }
 if (-not (Is-Done 'bin') -or $newer) {
     $ped = Join-Path $root 'gta\skate-ped\target\release\skate-ped.exe'
     $music = Join-Path $root 'gta\skate-music\target\release\skate-music.exe'
     if ((Test-Path -LiteralPath (Join-Path $package 'SkateVLegacy.asi')) -and (Test-Path -LiteralPath $ped)) {
         # A developer's checkout: the builds made here.
         Copy-Item (Join-Path $package 'SkateVLegacy.asi'), (Join-Path $package 'SkateVRuntime.dll') $bin -Force
-        Copy-Item (Join-Path $sk8vSrc 'tools\prepare-board-parts.py'), (Join-Path $sk8vSrc 'tools\_common.py') $bin -Force
+        Copy-Item (Join-Path $sk8vSrc 'tools\prepare-board-parts.py'), (Join-Path $sk8vSrc 'tools\_common.py'), (Join-Path $sk8vSrc 'tools\make-glow-wheels.ps1'), (Join-Path $sk8vSrc 'tools\repair-board-skin-flags.py') $bin -Force
+        $baker = Join-Path $sk8vSrc 'rust\target\release\skatev-world-cache.exe'
+        if ($env:CARGO_TARGET_DIR) { $baker = Join-Path $env:CARGO_TARGET_DIR 'release\skatev-world-cache.exe' }
+        if (Test-Path -LiteralPath $baker) { Copy-Item $baker $bin -Force }
+        $railExporter = Join-Path (Split-Path -Parent $baker) 'visual-rails.exe'
+        if (Test-Path -LiteralPath $railExporter) { Copy-Item $railExporter $bin -Force }
         Copy-Item $ped $bin -Force
         if (Test-Path -LiteralPath $music) { Copy-Item $music $bin -Force }
     } elseif (Test-Path -LiteralPath (Join-Path $shipped 'SkateVLegacy.asi')) {
@@ -442,10 +553,11 @@ Stop-After 'bin'
 $models = Join-Path $data 'board-models'
 $ped = Join-Path $bin 'skate-ped.exe'
 Step 4 'Boards: the library and every part as a GTA model (a few minutes)'
-if (-not (Wants 'shop')) { Say '  skipped (board shop not chosen)' 'DarkGray' }
+if (-not (Component-On 'boards')) { Say '  skipped (not chosen)' 'DarkGray' }
 elseif (-not (Is-Done 'boards')) {
     $disc = Disc-With @('data/content/createacharacter.big')
-    if (-not (Test-Path -LiteralPath (Join-Path $assets 'private\boards\library.json'))) {
+    if (-not ((Test-Path -LiteralPath (Join-Path $assets 'private\boards\library.json')) -and
+        (Test-Path -LiteralPath (Join-Path $assets 'private\board-parts\parts.json')))) {
         $engine = Join-Path $release 'upstream\skate-3-rust-engine-donor'
         Run 'Preparing the board library' { & $ped --assets $assets --prepare-boards --game $disc --engine $engine --python $python }
     }
@@ -464,15 +576,93 @@ elseif (-not (Is-Done 'boards')) {
     if (-not (Test-Path -LiteralPath (Join-Path $parts 'parts.json'))) { Fail 'The part models were not built.' }
     Remove-Item -LiteralPath $models -Recurse -Force -ErrorAction SilentlyContinue
     Done 'boards'
+    Done 'skinfix'  # just built with the skin render bit set
+}
+# Part models built by an older install can lack the skin render bit (Flags=0
+# with HasSkin=1): GTA then draws trucks and wheels rigid. Checked once; only
+# that bit changes (SK8V's rage tool rebuilds and compares every other field
+# and the embedded textures), and only files still as they were are replaced.
+if ((Component-On 'boards') -and (Is-Done 'boards') -and -not (Test-Path -LiteralPath (Join-Path $receipts 'skinfix.done'))) {
+    $fixTool = Join-Path $bin 'repair-board-skin-flags.py'
+    $fixStage = Join-Path $data ('skin-fix-' + [guid]::NewGuid().ToString('N'))
+    try {
+        if (Get-Process GTA5 -ErrorAction SilentlyContinue) { throw 'GTA V is running' }
+        if (-not (Test-Path -LiteralPath $fixTool)) { throw 'this package has no repair-board-skin-flags.py' }
+        Say '  checking the part models for the skin render bit (once, a few minutes)...' 'DarkGray'
+        & $python $fixTool --assets $assets --out $fixStage --rage $rage --workers 6
+        if ($LASTEXITCODE) { throw "repair-board-skin-flags.py failed (exit code $LASTEXITCODE)" }
+        $fix = Get-Content -LiteralPath (Join-Path $fixStage 'manifest.json') -Raw | ConvertFrom-Json
+        $repairFiles = @($fix.files | Where-Object { $_.changedModels -gt 0 })
+        $recovery = Join-Path $data ('asset-backups\skin-' + [guid]::NewGuid().ToString('N'))
+        $transaction = Install-AssetTransaction -TargetRoot $assets -StageRoot $fixStage -Files $repairFiles -BackupRoot $recovery
+        Say "  $($fix.checked) part models checked, $($transaction.installed) repaired; backup: $recovery" 'DarkGray'
+        Done 'skinfix'
+    } catch {
+        if ($_.Exception.Message -like '*ROLLBACK INCOMPLETE*') { Fail $_.Exception.Message }
+        Say "  the skin render bit check was skipped: $($_.Exception.Message)" 'Yellow'
+        Say '  If wheels and trucks look rigid in game, run the installer again (GTA closed).' 'Yellow'
+    }
 }
 Say '  ready' 'Green'
 Stop-After 'boards'
 
+# --- 5 glow ------------------------------------------------------------------
+# Glowing wheels (F10 > Skating): an emissive copy of every wheel part, made with
+# CodeWalker's library, which is not ours to ship. Without it the option still
+# lights the wheels, they just do not glow themselves.
+Step 5 'Glowing wheel models (needs CodeWalker, optional)'
+if (-not (Component-On 'glow')) { Say '  skipped (not chosen)' 'DarkGray' }
+elseif (-not (Test-Path -LiteralPath (Join-Path $assets 'private\board-parts\parts.json'))) {
+    Say '  skipped: glow needs board part models. Select boards too, or install boards first.' 'Yellow'
+}
+elseif (-not (Is-Done 'glow')) {
+    if (-not $CodeWalker) { $CodeWalker = Known 'CodeWalker' }
+    if (-not $CodeWalker) {
+        foreach ($c in (Join-Path $root 'tools\CodeWalker'), (Join-Path $env:USERPROFILE 'Downloads\CodeWalker'), (Join-Path $env:ProgramFiles 'CodeWalker')) {
+            if (Test-Path -LiteralPath (Join-Path $c 'CodeWalker.Core.dll')) { $CodeWalker = $c; break }
+        }
+    }
+    $glowTool = Join-Path $bin 'make-glow-wheels.ps1'
+    if (-not $CodeWalker -or -not (Test-Path -LiteralPath (Join-Path $CodeWalker 'CodeWalker.Core.dll'))) {
+        Say '  skipped: CodeWalker not found. Glowing wheels then light the wheels without glowing themselves.' 'Yellow'
+        Say '  To add them later: run the installer with -CodeWalker <folder with CodeWalker.Core.dll> -Redo glow.' 'Yellow'
+    } elseif (-not (Test-Path -LiteralPath $glowTool)) {
+        Say '  skipped: this package has no make-glow-wheels.ps1.' 'Yellow'
+    } else {
+        Remember 'CodeWalker' $CodeWalker
+        $known | ConvertTo-Json | Set-Content $settings
+        $parts = Join-Path $assets 'private\board-parts'
+        $glowStage = Join-Path $data ('glow-stage-' + [guid]::NewGuid().ToString('N'))
+        try {
+            Say '  building the glowing wheel models...' 'DarkGray'
+            powershell -NoProfile -ExecutionPolicy Bypass -File $glowTool -Parts $parts -Out $glowStage -CodeWalker $CodeWalker -Colours
+            if ($LASTEXITCODE) { throw "make-glow-wheels.ps1 failed (exit code $LASTEXITCODE)" }
+            $glowFiles = @(Get-ChildItem -LiteralPath $glowStage -File | Where-Object { $_.Name -match '_glow.*\.(ydr|ytyp)$' })
+            if (-not $glowFiles.Count) { throw 'No glowing wheel models were generated.' }
+            $payload = Join-Path $glowStage 'payload'
+            New-Item -ItemType Directory -Path $payload -Force | Out-Null
+            $plan = @($glowFiles | ForEach-Object {
+                Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $payload $_.Name)
+                [pscustomobject]@{ name = $_.Name; sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash }
+            })
+            if (Get-Process GTA5 -ErrorAction SilentlyContinue) { throw 'Close GTA V before installing glowing wheel models.' }
+            $recovery = Join-Path $data ('asset-backups\glow-' + [guid]::NewGuid().ToString('N'))
+            Install-AssetTransaction -TargetRoot $parts -StageRoot $glowStage -Files $plan -BackupRoot $recovery | Out-Null
+            Done 'glow'
+        } catch {
+            if ($_.Exception.Message -like '*ROLLBACK INCOMPLETE*') { Fail $_.Exception.Message }
+            Say "  glowing wheel models skipped: $($_.Exception.Message)" 'Yellow'
+        }
+    }
+}
+Say '  ready' 'Green'
+Stop-After 'glow'
+
 # --- 5 music -----------------------------------------------------------------
 # The in-game iPod's 46 songs (data\audio\music); not part of SK8V, which
 # plays GTA's radio while skating.
-Step 5 'Skate 3 soundtrack on Self Radio (about a minute)'
-if ($NoMusic -or -not (Wants 'music')) { Say '  skipped (not chosen)' 'DarkGray' }
+Step 6 'Skate 3 soundtrack on Self Radio (about a minute)'
+if (-not (Component-On 'music')) { Say '  skipped (not chosen)' 'DarkGray' }
 elseif (-not (Is-Done 'music')) {
     # Optional: a failure is reported and left for the next run, the rest goes on.
     try {
@@ -487,8 +677,76 @@ elseif (-not (Is-Done 'music')) {
 Say '  ready' 'Green'
 Stop-After 'music'
 
+# --- 7 world -----------------------------------------------------------------
+# The prebaked map (runtime baked.rs reads <data>\world\sk8v-map.svwc): every map
+# collision file of your GTA V baked once, used where GTA's live collision has a
+# hole while it streams. Optional: without it skating uses the live collision only.
+Step 7 'World collision from your Story Mode archives'
+if (Component-On 'world') {
+$worldBaker = Join-Path $bin 'skatev-world-cache.exe'
+$stateSafeWorld = $false
+if (Test-Path -LiteralPath $worldBaker) {
+    $savedPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $worldFormat = (& $worldBaker --world-format 2>$null | Out-String).Trim()
+        $stateSafeWorld = ($LASTEXITCODE -eq 0 -and $worldFormat -eq 'SVWT-LIVE 1')
+    } catch { $stateSafeWorld = $false }
+    finally { $ErrorActionPreference = $savedPreference }
+}
+$worldDone = Is-Done 'world'
+if ($stateSafeWorld -and $worldDone) {
+    try {
+        $worldReceipt = Get-Content -LiteralPath (Join-Path $data 'world\collision-build.json') -Raw | ConvertFrom-Json
+        $worldDone = ($worldReceipt.bakerSha256 -eq (Get-FileHash -LiteralPath $worldBaker).Hash -and
+            $worldReceipt.railsSha256 -eq (Get-FileHash -LiteralPath (Join-Path $bin 'visual-rails.exe')).Hash -and
+            (Test-Path -LiteralPath (Join-Path $data 'world\tiles\live-cells.txt')))
+        if ($worldDone) {
+            $savedPreference = $ErrorActionPreference
+            try {
+                $ErrorActionPreference = 'Continue'
+                # The region the receipt records (whole map since 2026-10-24; older receipts: city box).
+                $region = if ($worldReceipt.region) { @($worldReceipt.region) } else { @(-2200, 1500, -3500, 1000) }
+                & $worldBaker --verify-world (Join-Path $data 'world') $region[0] $region[1] $region[2] $region[3] *> $null
+                $worldDone = ($LASTEXITCODE -eq 0)
+            } finally { $ErrorActionPreference = $savedPreference }
+        }
+    } catch { $worldDone = $false }
+}
+if (-not $worldDone) {
+    try {
+        $world = Join-Path $data 'world'
+        $keys = Join-Path $data 'gta\gta-keys'
+        if (-not (Test-Path -LiteralPath (Join-Path $keys 'gtav_aes_key.dat'))) {
+            Say '  reading the archive keys from GTA5.exe...' 'DarkGray'
+            & $rage --no-update-check extract-keys --exe $Gta -o $keys
+            if ($LASTEXITCODE) { throw "rage extract-keys failed (exit code $LASTEXITCODE)" }
+        }
+        if ((Free-GB $Gta) -lt $(if ($stateSafeWorld) { 6 } else { 3 })) { throw 'not enough free space on the GTA V drive for collision preparation and recovery' }
+        if (-not (Test-Path -LiteralPath (Join-Path $bin 'skatev-world-cache.exe'))) { throw 'this package has no skatev-world-cache.exe' }
+        if ($stateSafeWorld) {
+            Invoke-WorldCollision -Script (Join-Path $PSScriptRoot 'build-world-collision.ps1') -Gta $Gta -Keys $keys -Baker $worldBaker `
+                -Rails (Join-Path $bin 'visual-rails.exe') -World $world
+        } else {
+            # Accepted older binaries retain their established map format.
+            $rpf = Join-Path $release 'tools\bin\sk8v-rpf.exe'
+            & (Join-Path $PSScriptRoot 'build-prebaked-map.ps1') -Gta $Gta -Out (Join-Path $data 'gta\collision') -Rpf $rpf -Keys $keys `
+                -Baker $worldBaker -World $world
+        }
+        if (-not (Test-Path -LiteralPath (Join-Path $world 'sk8v-map.svwc'))) { throw 'no sk8v-map.svwc was written' }
+        Done 'world'
+    } catch {
+        if ($stateSafeWorld) { Fail "World collision preparation stopped: $($_.Exception.Message)" }
+        Say "  the prebaked map was skipped: $($_.Exception.Message)" 'Yellow'
+        Say '  Skating works without it (live collision only). To retry: run the installer with -Redo world.' 'Yellow'
+    }
+}
+} else { Say '  skipped (not chosen; live collision remains available)' 'DarkGray' }
+Say '  ready' 'Green'
+Stop-After 'world'
+
 # --- 6 install ---------------------------------------------------------------
-Step 6 'Installing into GTA V'
+Step 8 'Installing into GTA V'
 if (Get-Process GTA5 -ErrorAction SilentlyContinue) { Fail 'GTA V is running: close it first.' }
 # SK8V's install record gets our two files' hashes: its uninstall then
 # removes them and its next setup replaces them, as with its own (it keeps
@@ -605,10 +863,26 @@ foreach ($c in $catalog) {
     }
 }
 # With the soundtrack on Self Radio, skating plays it.
-if (-not $NoMusic -and (Wants 'music') -and (Is-Done 'music')) { Add-Key 'SkateRadio' 'RADIO_19_USER' }
+if ((Component-On 'music') -and (Test-Path -LiteralPath (Join-Path $receipts 'music.done'))) { Add-Key 'SkateRadio' 'RADIO_19_USER' }
 foreach ($key in 'DrawBoard', 'DrawSkater') { $text = $text -replace "(?m)^$key=0", "$key=1" }
 $text = ($text -replace "`r+`n", "`n") -replace "`n", "`r`n"
 [IO.File]::WriteAllText($ini, $text, [Text.Encoding]::Unicode)
+# Actual installed state, independent of this selection and -Redo.
+$installed = @{
+    boards = ((Test-Path -LiteralPath (Join-Path $receipts 'boards.done')) -or
+        ((Test-Path -LiteralPath (Join-Path $assets 'private\boards\library.json')) -and
+        (Test-Path -LiteralPath (Join-Path $assets 'private\board-parts\parts.json'))))
+    glow = ((Test-Path -LiteralPath (Join-Path $receipts 'glow.done')) -or
+        @(Get-ChildItem -LiteralPath (Join-Path $assets 'private\board-parts') -Filter '*_glow*.ydr' -File -ErrorAction SilentlyContinue).Count -gt 0)
+    music = (Test-Path -LiteralPath (Join-Path $receipts 'music.done'))
+    world = ((Test-Path -LiteralPath (Join-Path $receipts 'world.done')) -or
+        (Test-Path -LiteralPath (Join-Path $data 'world\sk8v-map.svwc')))
+}
+$componentLines = foreach ($name in $componentNames) {
+    $present = $installed[$name] -and $removedComponents -notcontains $name
+    '{0}={1}' -f $name, [int][bool]$present
+}
+[IO.File]::WriteAllLines((Join-Path $Gta 'SkateVLegacy.components.txt'), [string[]]$componentLines, [Text.Encoding]::ASCII)
 Done 'install'
 
 # What only the setup needed, as SK8V's own --clean removes it (about 1-2 GB):
@@ -619,10 +893,11 @@ if (-not (Test-Path -LiteralPath $Skate3 -PathType Container)) { Remove-Item -Li
 
 Say ''
 Say 'GTAxSkate is installed.' 'Green'
-Say 'In GTA V (story mode): pick the skateboard in the weapon wheel or press F to skate. WASD, Shift push, Space ollie, arrows tricks,' 'White'
-Say 'E on/off the board, F back to GTA, V camera, R cinematic camera. G in Binco, the Discount Store or Suburban opens the board shop.' 'White'
+Say 'In GTA V (story mode): pick the skateboard in the weapon wheel to skate. WASD, Shift push, Space ollie, arrows tricks,' 'White'
+Say 'E (or Y) on/off the board, hold E (or Y) back to GTA on foot, V camera, R cinematic camera. G in Binco, the Discount Store or Suburban opens the board shop.' 'White'
 Say 'Settings: the SK8V menu (F10; keys and camera on its pages), or SkateVLegacy.ini; keys: SkateVKeys.txt.' 'White'
-if (-not $NoMusic -and (Wants 'music') -and (Is-Done 'music')) {
+Say 'Other mods: if a key clashes with another mod (trainers, menus), rebind it in F10 > Keyboard keys. See README: Mod compatibility.' 'White'
+if ((Component-On 'music') -and (Test-Path -LiteralPath (Join-Path $receipts 'music.done'))) {
     Say 'Skate 3 soundtrack: in GTA V once Settings > Audio > Self Radio Mode: Radio, then Perform Full Scan.' 'White'
 }
 try { Stop-Transcript | Out-Null } catch { }

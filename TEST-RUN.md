@@ -1,85 +1,61 @@
-# Acceptance and future regression checklist
+# v0.7.0 gameplay checklist — 26 October 2026
 
-**17 October 2026:** the maintainer completed a recording of the installed `test-presets-20261016-a17823f` build, reports that everything seems to work, and approves it as the new main version (v0.6.0). Board lighting indoors and in tunnels is a known deferred issue. The checklist below remains useful for future regression tests; this acceptance does not assert every row was independently logged or exercised.
+Manatros authorized release on 26 October 2026. The final candidate below is
+installed but gameplay untested. Earlier tests confirmed the object dropper
+working; that does not establish a pass for the complete final checklist.
+Automated results are recorded separately in the release report.
 
-Update, 16 October 2026: the tester reports plausible wheel speed and confirms
-the corrected rear-wheel direction. Stationary behavior was not separately
-confirmed. This limited feedback does not replace the controller/reload/audio/
-camera/shop tests below or approve main. Story development uses SK8V 1.1.10;
-[BOARD-COMPOSITION.md](BOARD-COMPOSITION.md) explains the optional helper's setup
-and separate rollback.
+**Candidate:** `test-20261026l-rc-b27eec6`, SK8V 1.1.10.
 
-Plan dated 14 October 2026: validate the next dev candidate before promoting its
-state to main or a confirmed release. A passing workflow does not replace a game
-test. A statement that testing finished is insufficient: results, logs and any
-video must identify the tested build.
+| Identity | Value |
+|---|---|
+| Host SHA-256 | `07ebf870abdc3388cb401fed437631c55290fe7fc377cde0051b3ac5c23d9097` |
+| Runtime SHA-256 | `06a1e60ebd9619cd188a2d69aa166f2a4130098c98f63ddad36e6bde2c1ea242` |
+| World rules | `4217eedcd28b7deb` |
+| W01–W12 final gameplay results | **NOT RUN** |
 
-## Before testing (about 3 minutes)
+## Before testing (about 5 minutes)
 
-1. Close GTA/FiveM, OpenIV and CodeWalker. Install through the test package's
-   installer and retain the backup/rollback path. Preserve INI, boards, bindings,
-   saves and archives.
-2. Record the build ID from `manifest.json` and F10 > Developer (host build/
-   receipt). Source tags and receipts are distinct from checked binary hashes.
-   The candidate must contain the GitHub #1 controller fix; v0.5.4 and earlier
-   local packages do not contain it.
-3. Connect the controller; record its model and Steam Input/DS4Windows setup.
-   If recording, check the microphone. Use GTA Legacy 1.0.3889.0 Story with
-   BattlEye off. Do not use GTA Online.
-4. Select F10 > Presets > Developer. Input/debug displays and VerboseLog must
-   appear; Developer now resets all exposed settings to its documented baseline. Save Custom first if you want to return to the current setup.
+1. Use PowerShell 7 (`pwsh`) for the world step. Close GTA V, OpenIV and CodeWalker. Install the candidate with the world component.
+   Do not start GTA while step 7 (world) is still replacing files: a test during the install
+   is invalid.
+2. Start GTA, open F10 > World > World collision and activate the
+   **World collision: best/changed** status row to restore recommended settings. Every test below runs
+   on the best settings unless a step says otherwise.
+3. Ride once. `%LOCALAPPDATA%\SkateV\SkateVRuntime.log` must show `baked world: N tiles` with
+   N > 0 and **no** line `installed tiles are from another bake`. If that warning appears,
+   stop: the test would run on GTA's raw collision.
+4. Record with the microphone if possible (say where you are). At every problem use F10 >
+   World > World collision > **Mark this spot**; the log gets `MARK n at x y z`.
+   Enable F10 > Advanced > Developer options, then collision view (F10 > Developer) where noted.
+   MARK-INFO in the runtime log includes nearby surface origins and named live areas.
 
-## Required Story tests (about 20–25 minutes)
+## Required tests (about 30 minutes)
 
-| ID | Action | Expected evidence |
+| ID | Where / action | Expected |
 |---|---|---|
-| S01 | Equip/put away the board; mount/dismount with E/F; open/close F10 twice on foot and riding | Exactly one menu; no hangs or duplicate boards. |
-| S02 — GitHub #1 | Stand still and ride straight; circle/flick the controller right stick and perform several tricks | No free camera turn triggered by the trick stick. Automatic travel-direction following remains allowed. Record time and input display. |
-| S03 — GitHub #1 | Repeat S02 in V views near/middle/far, skater first person and Skate view | Trick stick stays separate from looking in every view. |
-| S04 — GitHub #1 | Aim/open weapon wheel with controller; switch to mouse/keyboard and back | Intentional aiming/look works; mouse look returns; idle/virtual controller does not block keyboard. |
-| S05 | Switch R cinematic/filmer and V repeatedly; ride near a wall, ramp, curb and low ceiling | No camera trapping or falling under the map; cinematic hides Skate HUD, normal view restores it. Individual GTA text messages are not Skate HUD. |
-| S06 | Load an existing save three times: inactive, skating and another location; do not overwrite it | No fatal callback; skating, boards, collision and inputs still work. |
-| S07 | After EVERY load, ride, push, jump/land; inspect HUD without changing presets | Trick HUD returns automatically; Skate sounds follow current movement. A live audio-stream log alone is insufficient. |
-| S08 | Save Custom; change a setting manually; select SK8V, RP, Developer, then User and Custom; restart GTA | Full profile values replace prior tuning. User restores manual values; Custom restores its saved snapshot. RP hides every Skate overlay, including after reload, bails and radio changes. LS Skate shows unavailable and changes nothing. Boards and personal bindings survive. |
-| S09 | Disable Developer diagnostics and continue riding | Extra inputs/debug/VerboseLog disabled; normal HUD remains; no sustained flicker. |
-| S10 | Open shop with G/E; check preview/purchase/riding; return through V/R; check normal GTA controls and Self Radio | Existing flows work. Do not claim exact display-board purchasing, which remains backlog. |
-| S11 | Ride at least 10 more minutes; repeat two reloads if possible | No new crash, substantial persistent performance loss or lost state. Record FPS/frame times and log timestamps; do not infer a memory leak without measurement. |
+| W01 | **Vespucci park stairs** (around -1374, -1396): ride down and up every flight, including the short ones and the pool stairs | Steps, not a ramp; no hole at the foot of the stairs; no slope over the last steps; no grind line on each step |
+| W02 | **Vespucci bowl transitions**: ride from the big pool into the bean bowl and back several times (around -1379, -1385); ride both bean bowls | Smooth transition, no invisible grind line or bump on the crease, the board follows the visible bowl. Copings still grindable |
+| W03 | W02 again with F10 > World > World collision > *High-res skateparks* off, then activate **World collision: best/changed** | Off should feel coarser (GTA's own collision). Note which feels right. The reset brings back the best settings |
+| W04 | **No holes in the five skateparks**: Vespucci Beach (-1374, -1396), Hawick (280, -206), Little Seoul (-950, -786), Strawberry (-266, -1571), La Mesa rails (718, -1231). Ride every floor, bowl and ramp edge | No falling through, no invisible edges or walls; mark anything odd |
+| W05 | **Object dropper**: press Insert (or F10 > World > *Build a park*); drop a rail, a half pipe, a quarter pipe and a bench; ride, grind, then *remove all objects* | Placed objects are solid; rail grinds from end to end with no lip at either end; the rail's legs are not solid; the half pipe's base has no step; no duplicate rails; removal clears everything |
+| W06 | **Train track grinds** (metro tunnel between Del Perro and Portola Drive; a freight track outside) | Two grind lines per steel rail (one per edge); the board sits on the steel, not inside it; the line does not change midway; no added rail boxes or invisible obstacles |
+| W07 | **Metro stations** (Portola Drive, around -806, -103 and -804, -129): stairs, handrails, platform edges, turnstiles | Stairs ride as steps; handrails grindable and as straight as the rail; no invisible barrier; turnstiles push |
+| W08 | **Menu reset and warning**: on F10 > World > World collision, turn one switch off (for example *Grind tubes*); then the **World collision: best/changed** status row; then *Reset all settings to GTAxSkate defaults* | A warning appears when the switch leaves its best value; each reset shows its notice and the switches return to their recommended values; keys, boards and purchases stay |
+| W09 | **Performance**: ride 10 minutes through the city, the metro and a park; also change two settings while riding | Note FPS while skating (an overlay or the verbose log's frame timings), stutter with time stamps, and whether settings change while riding. No new crash |
+| W10 | **Known issues, only confirm** (do not spend long): railings with a solid wall under them, metro handrail zigzag, palm trunks, scaffolding and power poles, benches and protruding prop boxes, the road step near Clinton Ave (around 41, 301) | Mark each spot and record whether it remains; release authorization does not prove these fixed |
+| W11 | **Earlier features still fine**: enter with the weapon wheel, hold Y (E) to leave; V cycles cameras; board shop, wheel animation, glowing wheels; cars collide and parked cars grind; save and reload once | As in v0.6.0 |
+| W12 | **Board shops:** visit Suburban and the marked Vespucci Beach Skate Shop; browse daily stock and parts, buy a board, leave and return, advance one game day | Displays have sensible placement, E opens the Skate Shop, purchases persist and stock rotates; final display changes currently untested |
 
-## FiveM: separate approval block (about 15 minutes after setup)
-
-Prerequisites: new isolated server, Cfx key kept local and deliberately configured
-access settings. See [FIVEM-FRIENDS-TEST.md](FIVEM-FRIENDS-TEST.md). This is an
-experimental SK8M Lua fallback with four multipliers, not Skate 3/WASM physics.
-The published missing-model test remains paused until a replacement is verified.
-
-| ID | Action | Expected result |
-|---|---|---|
-| F01 | Connect locally; F6, W/S/A/D/Space; F8 skatedev and skaterules | All resources required by that package run; board/ped usable; valid rules with four supported fields. Older published package has three resources, newer source preparation four. |
-| F02 | Server Developer policy; try `skateset PushSpeed 1.1`, then `skateset PushSpeed 99` and `skateset Pop 2` | 1.1 confirmed; 99/unsupported Pop refused. This does not establish physics anti-cheat. |
-| F03 | Restore locked policy; server skaterules_reload; retry adjustment | Rider stops; adjustment blocked; only administrator changes policy. |
-| F04 | Stop/restart rules, adapter and skateboard resources while riding | No persistently frozen character/camera or stale boards; mounting blocked without valid rules. |
-| F05 | Friend joins from a different Internet connection | Mutual riders/boards/tricks visible; test spawn, bail, distance/streaming, late joining and disconnect/reconnect. Local hairpin routing is not an external network test. |
-
-An unconfigured server or unperformed two-player test means NOT RUN, never PASS.
-Do not advertise FiveM as confirmed multiplayer without these results. Define the
-actual release scope before main; unverified features remain dev/experimental.
-
-## Record the approval result
+## Record the result
 
 | Field | Entry |
 |---|---|
-| Tester, date/time | |
-| Build ID, host/runtime hashes | Use manifest.json; do not guess. |
-| Controller / input software | |
-| S01–S11 | PASS / FAIL / NOT RUN per ID |
-| F01–F05 | PASS / FAIL / NOT RUN per ID |
-| Failures | ID, timestamp, expected/actual result, reproducible steps |
-| Video/logs | Host/runtime/ScriptHookV or FiveM client/server; remove keys, tokens and personal data before sharing. |
-| main approval | Explicit decision after review; never automatic. |
+| Date and time, recording file | |
+| Build ID, host and runtime hashes, tiles rules hash | from `manifest.json` and the log; do not guess |
+| W01-W12 | PASS / FAIL / NOT RUN per ID, with MARK numbers |
+| FPS while skating | city / metro / park |
+| Release decision | the maintainer's explicit word only |
 
-Block main on a crash, reproducible controller-camera issue #1, HUD/audio failure
-after reload, installation/rollback data loss or new blocking gameplay defect.
-Before promotion: passing CI for the exact tested commit, matching test binary
-hashes, assessed findings, documented limits and checked release assets. Never
-present an old untested ZIP as a new build. GitHub #1 stays open until an actual
-controller test confirms success; a C++ fixture is not player confirmation.
+A passing automated test or bake check is not a game test. "Fixed" only after the
+maintainer's test.

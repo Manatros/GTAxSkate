@@ -1,13 +1,164 @@
 # Changelog
 
 All notable changes, newest first. Versions follow [semantic versioning](https://semver.org/):
-a new minor version for each state confirmed in a game test, a patch version for fixes.
+minor versions collect features; patch versions collect fixes. Each release records its validation limits.
 
-## Unreleased (main)
+## v0.7.0 — 26 October 2026
 
-- Installing from a source checkout works again: step 3 downloads the v0.6.0 programs (`GTAxSkate-bin.zip`) and checks their pinned SHA-256 before use. The release binaries are unchanged.
-- README: the Setup download link points to the latest release (the old `dev-build` link was broken). Issue templates link to `main`. NOTICE and the test plan name SK8V 1.1.10.
-- The controller camera fix in v0.6.0 (issue #1) is confirmed in game. Dependabot was removed again.
+Manatros authorized this release on 26 October 2026. It preserves the exact
+`test-20261026l-rc-b27eec6` host/runtime pair, based on SK8V 1.1.10. World rules:
+`4217eedcd28b7deb`. Release authorization is not a final gameplay pass: the object
+dropper was confirmed working during earlier tests; the final bowl, rail and shop
+changes remain untested in game. No overall FPS improvement is claimed.
+
+### Highlights
+
+- **Object dropper:** press **Insert** to build your own park with ramps, rails and benches.
+- **GTA world collision as the base**, with high-res skatepark bowl curves.
+- More continuous grind rails, cleaner joins and fewer false grind lines.
+- World collision settings together at the top of the World page, with a reversible comparison.
+- Board shops with daily stock and a **Skate Shop at Vespucci Beach**; final displays untested.
+
+### World collision and skateparks
+
+- **Baked world collision.** The installer builds the whole Story map (open world, interiors,
+  metro, tunnels) from your own GTA archives into 64 m tiles of collision and grind rails, all
+  made by one rule set. The game loads tiles around you, to reduce live rebuilding and keep static surfaces consistent between visits. Places whose collision depends on the game state stay on
+  GTA's live collision.
+- One build, one rules hash: tiles from another build are skipped and the log says so
+  (`installed tiles are from another bake`). Reinstalling the world replaces the whole tile set
+  and keeps the previous one in a recovery folder.
+- **High-res skateparks** *(final changes untested in game)*: GTA collision remains the base.
+  Visible park meshes refine bowl curves where the coarse collision differs by at least 3 cm
+  across a face of at least 0.25 square metres, with a matching visible face within 40 degrees.
+  Floors, stairs and other surfaces keep GTA collision. F10 > World > World collision >
+  *High-res skateparks* (on by default).
+- No added fallback floors, generic prop boxes or rail boxes in this build. Foliage cleanup
+  preserves ground and excludes tree canopies.
+- Walls that are only camera or bullet blockers no longer stop the board; only their floors are
+  kept where appropriate.
+- Fall-through rescue: if you drop through the map, you are put back on GTA's ground, also
+  during bails and on slopes.
+- Water stays swimmable.
+- A placed or standing object no longer turns its whole area into raw GTA collision.
+
+### Stairs
+
+- Stairs GTA marks as stairs ride as steps (GTA's walking ramp over them is replaced by the
+  real steps). Switch: F10 > World > *Stairs as steps*.
+- Skatepark stairs (Vespucci) ride as steps: the walking ramp lying over the real steps is cut
+  away piece by piece, without opening holes at the foot of the stairs.
+- Step edges are not grind rails, so a staircase is no longer a row of rails. *Grind every
+  stair step* (F10 > World, off by default) turns them on.
+- Stairs GTA does not mark stay as GTA made them; *Unmarked stairs as steps* is a developer
+  test switch (off).
+
+### Grind rails and train tracks
+
+- Round rails, copings and railing bars (GTA's tube shapes) get a grind line on their top.
+- Handrails and railings that GTA's collision leaves out get grind lines from the visible
+  models (for example the Portola Drive station stairs).
+- Train and metro tracks are grindable: each steel rail has two grind lines, one on each edge
+  of the rail head, with cleaner joins between segments; metro height/alignment still needs gameplay validation.
+- Cleaner lines: near-duplicate lines merge, pieces of one rail join, lines are straightened,
+  bends are bridged only where the rail turns, steep pieces and lower parallel bars are dropped.
+- Fewer false rails: no rail on seams of curved surfaces, on open edges with nothing beneath,
+  on edges without a real drop, or under a surface less than 1.2 m above the line.
+- Rail ends are flush: placed and standing rails no longer have a lip that launches you.
+- Curb bevels (no-grind kerb ramps) stay clear of grindable ledges and bowl lips.
+
+### Object dropper
+
+- Drop GTA's skate park props, rails, benches, tables, barriers and stunt ramps anywhere and
+  ride them like the map. Open it with **Insert** (rebindable; F9 is left to Menyoo) or F10 >
+  World > *Build a park*; *remove all objects* clears them.
+- Dropped objects are fixed ground for Skate, with the map's edge joining, so seams do not
+  brake the board; their rails are built into the area once (no duplicate rails).
+- The half pipe gets approach slopes onto its raised base; the rail's diagonal legs are not
+  solid, only the top bar; the dropper has its own orbit camera.
+
+### Cars, people and props
+
+- Each car collides with its own shape read from GTA (no spoiler it does not have; add-on
+  cars use their real shape, remembered per model); broken-off parts collide on their own.
+- Moving car collision is carried with the car every tick; parked cars can
+  be grinded along their edges.
+- Light hits scratch GTA's own cars instead of denting them (*Board scratches*); dents are
+  skipped on add-on cars (prevents a GTA crash).
+- People: a light touch only bumps a person (shove and a voice line) instead of a ragdoll.
+- Doors swing open gently; doors without a template collide; turnstiles can be pushed.
+- Static objects use their own collision; synthetic fallback boxes are removed.
+
+### Menu and settings
+
+- **GTAxSkate preset** is the first-run default: the recommended settings for a new player.
+- **Warning on changed world settings:** when a world collision switch moves away from its best
+  value, a notice warns that collision can break in some places.
+- F10 > World starts with **World collision**. Activate its status row (**World collision: best**
+  or **changed**) to restore recommended world settings. A full settings reset is also available.
+- *Compare: plain GTA collision* switches every world rule off to compare a spot with
+  GTA's own collision; *Mark this spot* writes your exact position to the log for reports.
+- **Developer options** (F10 > Advanced, off by default) shows the Developer page and the
+  diagnostics; World collision settings remain on the World page.
+- Options of installer components you left out are hidden.
+- Clearer menu: grouped pages with headings, help text for every row.
+- Settings save in one write (about 15 ms instead of a 2 s freeze) and also save when the GTA
+  folder does not allow new files.
+- Collision view (Developer): what Skate collides with, including grind rails, baked
+  tiles and live (unbaked) GTA collision in their own colours.
+
+### Board, shop and visuals
+
+- Shops have daily rotating stock, expanded Suburban wall displays and parts, and a Skate Shop
+  at the marked closed skateboarding shop near Vespucci Beach. Press E at its entrance. These
+  final display/placement changes are untested in game.
+- Shop board wheels spin and trucks turn again (part models now carry the skin flag).
+- The ridden board keeps a reserve of model slots, so browsing the shop no longer swaps it for
+  the plain default board.
+- Shop: neighbouring entries preload, the preview waits briefly while scrolling, the old board
+  stays until the new one is ready.
+- **Glowing wheels** (F10 > Board): the wheels themselves glow, in their own colour or a chosen
+  one, with a soft glow on the ground.
+- The board no longer looks too bright in tunnels and indoors (it takes GTA's ambient light of
+  its spot). Lighting there is better but not finished.
+- Metro floor and ceiling textures are no longer mistaken for board textures (an SK8V texture
+  cache bug that could corrupt them).
+- Cameras: **V** cycles GTA's own gameplay cameras (near, middle, far, first person) and SK8V's
+  original Skate 3 camera; the choice is remembered.
+- Skate mode is entered through the weapon wheel as in SK8V and left by holding Skate's Y
+  (E in the GTA keyboard layout). The extra F key is gone.
+
+### Performance
+
+- Skate starts loading during GTA's loading screen, so the first ride does not wait.
+- Baked tiles avoid slow live collision builds while riding; areas with very dense grind lines
+  are capped to stay within the collision builder's capacity.
+- Lower load peak (about 300 MB less) and no 2 s freeze when changing settings.
+- No FPS claim yet: please report FPS while skating (see the test checklist).
+
+### Installer
+
+- Choose components: boards, glow, music, world (`-Components boards,glow,music,world`, the
+  numbered list, `-Components none` for core only). The choice is written to
+  `SkateVLegacy.components.txt`.
+- Step 7 (world) builds the whole map, checks it, and only then replaces the old data in one
+  step; the previous data is kept. Includes the high-res park meshes. `-Redo world` repeats it.
+- Optional asset repairs (glow, board skin flags) back up and roll back partial copies.
+- A failed world build keeps the previous installed world dataset. PowerShell 7 (`pwsh`)
+  is required for the world step.
+
+### Known issues and validation limits
+
+- Metro handrails and track grind height/alignment remain under investigation. Some joins may
+  still drop the board; the final continuous-rail changes have not had a gameplay pass.
+- A few kerbs and pillars have missing or mismatched collision, including an invisible kerb
+  and pillars in Vinewood. Mark affected spots for reports.
+- Some railings remain solid walls; some scaffolding and power poles have missing collision.
+- Final high-res bowl transitions and shop displays/stock still need in-game validation.
+- Moving cars cannot be grinded; parked cars can. Board lighting indoors/tunnels needs work.
+- The board shop registers at most 240 new part models per session; restart GTA to see more.
+- The world step takes a long time and needs several GB of free space.
+- GTA Online, Enhanced, LS Skate and multiplayer parity are not supported by this Story release.
 
 ## v0.6.0 — accepted Story baseline, 17 October 2026
 

@@ -12,9 +12,9 @@ Copyright 2026 becaring, Apache License 2.0:
   LS-Skate-LiveCollision.
 
 The GTAxSkate-bin.zip release builds (SkateVLegacy.asi, SkateVRuntime.dll,
-prepare-board-parts.py, _common.py) are SK8V, modified: release v0.6.0 uses
+prepare-board-parts.py, _common.py) are SK8V, modified: release v0.7.0 uses
 SK8V 1.1.10 with GTAxSkate's additions
-(keyboard and mouse, board shop, camera views, trainer tuning and stamina, map helpers, skate radio, gentle peds, vehicle shapes), built
+(keyboard and mouse, board shop, camera views, trainer tuning and stamina, map helpers, skate radio, gentle peds, vehicle shapes, object dropper, tiled world collision, high-res bowl curves and daily shop stock), built
 from https://github.com/Manatros/SK8V (branch skatemods). The changed files say what was added.
 
 The Skate engine core (skate-host) comes from the 2010 Rust Rewrite Mashup,
