@@ -134,7 +134,8 @@ function Invoke-WorldCollision([string]$Script, [string]$Gta, [string]$Keys, [st
 }
 function Download([string]$url, [string]$to) {
     Say "  downloading $(Split-Path -Leaf $url)..." 'DarkGray'
-    Invoke-WebRequest -UseBasicParsing $url -OutFile $to
+    try { Invoke-WebRequest -UseBasicParsing $url -OutFile $to }
+    catch { Fail "Could not download $(Split-Path -Leaf $url) ($($_.Exception.Message)). Check your internet connection or firewall/antivirus." }
 }
 function Get-VerifiedArchive([string]$url, [string]$to, [string]$sha256) {
     if ($sha256 -notmatch '^[a-fA-F0-9]{64}$') { throw 'Invalid pinned download checksum.' }
@@ -170,11 +171,11 @@ function Pick-Folder([string]$prompt) {
 }
 function Pick-Skate3 {
     $dialog = New-Object System.Windows.Forms.OpenFileDialog
-    $dialog.Title = 'Your Skate 3 (Xbox 360) disc image, or Cancel to pick its extracted folder'
-    $dialog.Filter = 'Disc image (*.iso)|*.iso|All files|*.*'
+    $dialog.Title = 'Pick your Skate 3 .iso file (do not mount it), or Cancel to pick an extracted folder'
+    $dialog.Filter = 'Xbox 360 disc image (*.iso;default.xex)|*.iso;default.xex|All files|*.*'
     $owner = Owner
     try { if ($dialog.ShowDialog($owner) -eq 'OK') { return $dialog.FileName } } finally { $owner.Close() }
-    Pick-Folder 'Your extracted Skate 3 folder (it holds default.xex)'
+    Pick-Folder 'Your extracted Skate 3 folder (holds default.xex and data\)'
 }
 function Free-GB([string]$path) {
     try { [math]::Round((New-Object IO.DriveInfo ([IO.Path]::GetPathRoot((Resolve-Path -LiteralPath $path).Path))).AvailableFreeSpace / 1GB, 1) } catch { 999 }
@@ -190,16 +191,16 @@ function Restart-Elevated {
     if ($admin) { return }
     Say '  The GTA V folder needs administrator rights: starting again as administrator (confirm the Windows prompt)...' 'Yellow'
     # The same launcher (it pauses at the end), with the answers given so far.
-    $argsList = "-Gta `"$Gta`" -Skate3 `"$Skate3`""
+    $argsList = "-Gta `"$($Gta.TrimEnd('\'))`" -Skate3 `"$($Skate3.TrimEnd('\'))`""
     if ($Redo) { $argsList += " -Redo $Redo" }
     if ($Until) { $argsList += " -Until $Until" }
     if ($NoMusic) { $argsList += ' -NoMusic' }
     $componentArg = if ($selectedComponents.Count) { $selectedComponents -join ',' } else { 'none' }
     $argsList += " -Components $componentArg"
     if ($Remove) { $argsList += " -Remove $Remove" }
-    if ($Parts) { $argsList += " -Parts $Parts" }
+    if ($Parts) { $argsList += " -Parts `"$Parts`"" }
     if ($Choose) { $argsList += ' -Choose' }
-    if ($CodeWalker) { $argsList += " -CodeWalker `"$CodeWalker`"" }
+    if ($CodeWalker) { $argsList += " -CodeWalker `"$($CodeWalker.TrimEnd('\'))`"" }
     $argsList += ' -ResumeTranscript'
     try { Start-Process (Join-Path $root 'Install GTAxSkate.cmd') -Verb RunAs -ArgumentList $argsList | Out-Null }
     catch { Fail "No write access to $Gta and administrator rights were declined." }
@@ -214,9 +215,13 @@ function Remember([string]$name, [string]$value) { $known | Add-Member -NoteProp
 function Known([string]$name) { $p = $known.PSObject.Properties[$name]; if ($p) { [string]$p.Value } else { '' } }
 
 function Find-Gta {
-    foreach ($key in 'HKLM:\SOFTWARE\WOW6432Node\Rockstar Games\Grand Theft Auto V', 'HKLM:\SOFTWARE\WOW6432Node\Rockstar Games\GTAV') {
-        $p = (Get-ItemProperty $key -ErrorAction SilentlyContinue).InstallFolder
-        if ($p -and (Test-Path -LiteralPath (Join-Path $p 'GTA5.exe'))) { return $p }
+    foreach ($key in 'HKLM:\SOFTWARE\WOW6432Node\Rockstar Games\Grand Theft Auto V',
+                     'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Steam App 271590',
+                     'HKLM:\SOFTWARE\WOW6432Node\Rockstar Games\GTAV') {
+        $p = Get-ItemProperty $key -ErrorAction SilentlyContinue
+        foreach ($v in $p.InstallFolder, $p.InstallLocation) {
+            if ($v -and (Test-Path -LiteralPath (Join-Path $v 'GTA5.exe'))) { return $v }
+        }
     }
     foreach ($drive in Get-PSDrive -PSProvider FileSystem) {
         foreach ($rel in 'Games\Grand Theft Auto V Legacy', 'Program Files\Rockstar Games\Grand Theft Auto V',
@@ -228,6 +233,137 @@ function Find-Gta {
     }
     ''
 }
+
+function Test-GtaSource([string]$path) {
+    if (-not $path -or -not (Test-Path -LiteralPath $path)) { return 'GTA V Legacy (GTA5.exe) was not found.' }
+    if (Test-Path -LiteralPath $path -PathType Leaf) {
+        $script:Gta = Split-Path -Parent $path
+        $path = $script:Gta
+    }
+    $exe = Join-Path $path 'GTA5.exe'
+    if (-not (Test-Path -LiteralPath $exe)) {
+        if (Test-Path -LiteralPath (Join-Path $path 'GTA5_Enhanced.exe')) {
+            return "$path is GTA V Enhanced (GTA5_Enhanced.exe). GTAxSkate and SK8V require GTA V Legacy ($GtaBuild), which has GTA5.exe."
+        }
+        return "GTA5.exe was not found in $path. Pick your GTA V Legacy folder."
+    }
+    $ver = (Get-Item -LiteralPath $exe).VersionInfo.FileVersion
+    if ($ver -ne $GtaBuild) {
+        return "SK8V needs GTA V Legacy $GtaBuild; your GTA5.exe is $(if ($ver) { $ver } else { 'unknown' }). GTA V Enhanced does not work."
+    }
+    if (-not (Test-Path -LiteralPath (Join-Path $path 'update\update.rpf'))) {
+        return "update\update.rpf is missing in ${path}: verify GTA V in its launcher first."
+    }
+    if (-not (Test-Path -LiteralPath (Join-Path $path 'ScriptHookV.dll'))) {
+        Say ''
+        Say '  Script Hook V is missing (no ScriptHookV.dll in the GTA folder).' 'Yellow'
+        Say '  Download it from http://www.dev-c.com/gtav/scripthookv/ and copy' 'Yellow'
+        Say '  ScriptHookV.dll and dinput8.dll from its bin folder into:' 'Yellow'
+        Say "  $path" 'Yellow'
+        return 'Script Hook V is not installed.'
+    }
+    ''
+}
+
+function Test-Skate3Source([string]$path) {
+    if (-not $path -or -not (Test-Path -LiteralPath $path)) { return 'Your Skate 3 disc image or folder was not found.' }
+    if (Test-Path -LiteralPath $path -PathType Container) {
+        foreach ($parent in (Split-Path -Parent $path), (Split-Path -Parent (Split-Path -Parent $path))) {
+            if ($parent -and (Test-Path -LiteralPath (Join-Path $parent 'default.xex'))) {
+                $script:Skate3 = $parent
+                $path = $parent
+                break
+            }
+        }
+        if (-not (Test-Path -LiteralPath (Join-Path $path 'default.xex'))) {
+            $subXex = @(Get-ChildItem -LiteralPath $path -Directory -ErrorAction SilentlyContinue | Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'default.xex') })
+            if ($subXex.Count -eq 1) {
+                $script:Skate3 = $subXex[0].FullName
+                $path = $script:Skate3
+            }
+        }
+        $isos = @(Get-ChildItem -LiteralPath $path -Filter '*.iso' -File -ErrorAction SilentlyContinue)
+        if (-not (Test-Path -LiteralPath (Join-Path $path 'default.xex')) -and $isos.Count -eq 1) {
+            $script:Skate3 = $isos[0].FullName
+            return Test-Skate3Source $script:Skate3
+        }
+        $archives = @(Get-ChildItem -LiteralPath $path -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension -match '^\.(zip|7z|rar)$' })
+        if (-not (Test-Path -LiteralPath (Join-Path $path 'default.xex')) -and $archives.Count -gt 0) {
+            return "$($archives[0].FullName) is still a compressed archive ($($archives[0].Extension)). Unzip it first so you have the .iso file, then pick the .iso file."
+        }
+        $missing = @('default.xex', 'data\big\db.big', 'data\content\createacharacter.big') | Where-Object { -not (Test-Path -LiteralPath (Join-Path $path $_)) }
+        if ($missing) {
+            return "$path is missing $($missing -join ', '). Do not mount or double-click the ISO in Windows (Windows only sees the video partition); pick the .iso file itself, or a fully extracted Xbox 360 disc folder."
+        }
+        return ''
+    }
+    $item = Get-Item -LiteralPath $path
+    if ($item.Name -ieq 'default.xex') {
+        $script:Skate3 = $item.DirectoryName
+        return Test-Skate3Source $script:Skate3
+    }
+    if ($item.Extension -match '^\.(zip|7z|rar)$') {
+        return "$path is still a compressed archive ($($item.Extension)). Unzip it first so you have the .iso file, then pick the .iso file."
+    }
+    if ($item.Name -ieq 'PS3_DISC.SFB' -or $item.Extension -ieq '.xex') {
+        return "$path is not an Xbox 360 Skate 3 .iso or default.xex. Pick your Xbox 360 .iso file or the extracted folder with default.xex."
+    }
+    $fs = [IO.File]::OpenRead($item.FullName)
+    try {
+        $buf = New-Object byte[] 20
+        foreach ($base in 0L, 0xFD90000L, 0x2080000L, 0x18300000L) {
+            $offset = $base + 32L * 2048L
+            if ($item.Length -lt ($offset + 20L)) { continue }
+            [void]$fs.Seek($offset, [IO.SeekOrigin]::Begin)
+            if ($fs.Read($buf, 0, 20) -eq 20 -and [Text.Encoding]::ASCII.GetString($buf) -eq 'MICROSOFT*XBOX*MEDIA') { return '' }
+        }
+    } finally { $fs.Dispose() }
+    return "$path is not an Xbox 360 Skate 3 disc image (no XDVDFS partition found). Pick your .iso file or extracted Skate 3 folder."
+}
+
+function Resolve-Skate3Source {
+    if (-not $script:Skate3 -or -not (Test-Path -LiteralPath $script:Skate3)) { $script:Skate3 = Pick-Skate3 }
+    $skateProblem = ''
+    for ($attempt = 0; $attempt -lt 2; $attempt++) {
+        $skateProblem = Test-Skate3Source $script:Skate3
+        if (-not $skateProblem) { break }
+        Say ''
+        Say "  $skateProblem" 'Yellow'
+        $script:Skate3 = Pick-Skate3
+        if (-not $script:Skate3) { break }
+    }
+    if ($skateProblem) { Fail $skateProblem }
+}
+
+Say 'GTAxSkate installer' 'White'
+Say 'Install logs and remembered folder choices stay locally in build\install; this installer does not upload them.' 'DarkGray'
+Say 'Logs can contain personal folder paths. Review and redact excerpts before sharing them publicly.' 'DarkGray'
+if (Get-Process GTA5, GTA5_Enhanced, OpenIV, CodeWalker -ErrorAction SilentlyContinue) { Fail 'Close GTA V, OpenIV and CodeWalker first.' }
+if (-not $Gta) { $Gta = Known 'Gta' }
+if (-not $Gta) { $Gta = Find-Gta }
+if (-not $Gta -or -not (Test-Path -LiteralPath (Join-Path $Gta 'GTA5.exe'))) { $Gta = Pick-Folder 'Your GTA V Legacy folder (it holds GTA5.exe)' }
+$gtaProblem = Test-GtaSource $Gta
+if ($gtaProblem -and $Gta -eq (Known 'Gta') -and $gtaProblem -notlike '*Script Hook V*') {
+    Say "  Note: $gtaProblem" 'Yellow'
+    $Gta = Pick-Folder 'Your GTA V Legacy folder (it holds GTA5.exe)'
+    $gtaProblem = Test-GtaSource $Gta
+}
+if ($gtaProblem) { Fail $gtaProblem }
+if (-not ('dinput8.dll', 'version.dll', 'winmm.dll', 'dsound.dll', 'xinput1_3.dll' | Where-Object { Test-Path -LiteralPath (Join-Path $Gta $_) })) {
+    Say '  Note: no ASI loader found (dinput8.dll from Script Hook V''s bin folder): without one GTA loads no mods.' 'Yellow'
+}
+$hookVersion = (Get-Item (Join-Path $Gta 'ScriptHookV.dll')).VersionInfo.FileVersion
+if ($hookVersion -and $hookVersion -notlike '3889.*') {
+    Say "  Note: your Script Hook V is $hookVersion; GTA V $GtaBuild needs v3889.0 (1158.13 or newer). Update it if GTA shows a Script Hook V error." 'Yellow'
+}
+$existingData = if (Test-Path -LiteralPath (Join-Path $Gta 'GTAxSkate\skate-data\assets')) { Join-Path $Gta 'GTAxSkate' } else { Join-Path $Gta 'SK8V' }
+if (-not (Is-Done 'sk8v')) {
+    $free = Free-GB $Gta
+    $need = if (Test-Path -LiteralPath (Join-Path $existingData '.stages')) { 3 } else { 8 }
+    if ($free -lt $need) { Fail "Only $free GB free on the GTA V drive; the setup needs about $need GB. Free some space and run it again." }
+}
+if (-not $Skate3) { $Skate3 = Known 'Skate3' }
+if (-not (Is-Done 'sk8v')) { Resolve-Skate3Source }
 
 # Resolve CodeWalker before choosing defaults.
 if (-not $CodeWalker) { $CodeWalker = Known 'CodeWalker' }
@@ -278,23 +414,10 @@ $selectedComponents = @($selectedComponents | Where-Object { $removedComponents 
 Remember 'RemovedComponents' ($removedComponents -join ',')
 function Component-On([string]$name) { $selectedComponents -contains $name }
 if ($Remove) { Say 'Removal only hides component options; installed files are retained.' 'Yellow' }
-
-Say 'GTAxSkate installer' 'White'
-Say 'Install logs and remembered folder choices stay locally in build\install; this installer does not upload them.' 'DarkGray'
-Say 'Logs can contain personal folder paths. Review and redact excerpts before sharing them publicly.' 'DarkGray'
-if (-not $Gta) { $Gta = Known 'Gta' }
-if (-not $Gta) { $Gta = Find-Gta }
-if (-not $Gta -or -not (Test-Path -LiteralPath (Join-Path $Gta 'GTA5.exe'))) { $Gta = Pick-Folder 'Your GTA V Legacy folder (it holds GTA5.exe)' }
-if (-not $Gta -or -not (Test-Path -LiteralPath (Join-Path $Gta 'GTA5.exe'))) { Fail 'GTA V Legacy (GTA5.exe) was not found.' }
-$version = (Get-Item -LiteralPath (Join-Path $Gta 'GTA5.exe')).VersionInfo.FileVersion
-if ($version -and $version -ne $GtaBuild) { Say "  Note: SK8V is made for GTA V $GtaBuild; yours is $version." 'Yellow' }
-if (-not $Skate3) { $Skate3 = Known 'Skate3' }
-if ((-not (Is-Done 'sk8v') -or ((Component-On 'boards') -and -not (Is-Done 'boards'))) -and (-not $Skate3 -or -not (Test-Path -LiteralPath $Skate3))) { $Skate3 = Pick-Skate3 }
-if ((-not (Is-Done 'sk8v') -or ((Component-On 'boards') -and -not (Is-Done 'boards'))) -and (-not $Skate3 -or -not (Test-Path -LiteralPath $Skate3))) { Fail 'Your Skate 3 disc image or folder was not found.' }
+if ((Is-Done 'sk8v') -and (Component-On 'boards') -and -not (Is-Done 'boards')) { Resolve-Skate3Source }
 Remember 'Gta' $Gta
 Remember 'Skate3' $Skate3
 $known | ConvertTo-Json | Set-Content $settings
-if (Get-Process GTA5 -ErrorAction SilentlyContinue) { Fail 'GTA V is running: close it first.' }
 Say "  GTA V:  $Gta"
 Say "  Skate 3: $Skate3"
 
@@ -421,32 +544,6 @@ $assets = Join-Path $data 'skate-data\assets'
 Step 2 'SK8V: Skate 3 data from your disc, installed into GTA V (10-30 minutes)'
 $iniKeep = Join-Path $receipts 'SkateVLegacy.ini.kept'
 if (-not (Is-Done 'sk8v')) {
-    # SK8V's setup checks these too, but its message scrolls away above
-    # its other output: say it here, plainly, before it starts.
-    if ($version -ne $GtaBuild) {
-        Fail "SK8V needs GTA V Legacy $GtaBuild; your GTA5.exe is $(if ($version) { $version } else { 'unknown' }). GTA V Enhanced does not work."
-    }
-    if (-not (Test-Path -LiteralPath (Join-Path $Gta 'update\update.rpf'))) { Fail 'update\update.rpf is missing: verify GTA V in its launcher first.' }
-    if (-not (Test-Path -LiteralPath (Join-Path $Gta 'ScriptHookV.dll'))) {
-        Say ''
-        Say '  Script Hook V is missing (no ScriptHookV.dll in the GTA folder).' 'Yellow'
-        Say '  Download it from http://www.dev-c.com/gtav/scripthookv/ and copy' 'Yellow'
-        Say '  ScriptHookV.dll and dinput8.dll from its bin folder into:' 'Yellow'
-        Say "  $Gta" 'Yellow'
-        Fail 'Script Hook V is not installed.'
-    }
-    # An ASI loader: Script Hook V's dinput8.dll, or another (Ultimate ASI Loader names).
-    if (-not ('dinput8.dll', 'version.dll', 'winmm.dll', 'dsound.dll', 'xinput1_3.dll' | Where-Object { Test-Path -LiteralPath (Join-Path $Gta $_) })) {
-        Say '  Note: no ASI loader found (dinput8.dll from Script Hook V''s bin folder): without one GTA loads no mods.' 'Yellow'
-    }
-    $hookVersion = (Get-Item (Join-Path $Gta 'ScriptHookV.dll')).VersionInfo.FileVersion
-    if ($hookVersion -and $hookVersion -notlike '3889.*') {
-        Say "  Note: your Script Hook V is $hookVersion; GTA V $GtaBuild needs v3889.0 (1158.13 or newer). Update it if GTA shows a Script Hook V error." 'Yellow'
-    }
-    # SK8V asks for about 7 GB free (2 GB stay); the board parts add about 1 GB.
-    $free = Free-GB $Gta
-    $need = if (Test-Path -LiteralPath (Join-Path $data '.stages')) { 3 } else { 8 }
-    if ($free -lt $need) { Fail "Only $free GB free on the GTA V drive; the setup needs about $need GB. Free some space and run it again." }
     $iniNow = Join-Path $Gta 'SkateVLegacy.ini'
     if (Test-Path -LiteralPath $iniNow) { Copy-Item $iniNow $iniKeep -Force }
     # SK8V's own setup does everything SK8V needs (data, its DLC pack, its
@@ -555,7 +652,7 @@ $ped = Join-Path $bin 'skate-ped.exe'
 Step 4 'Boards: the library and every part as a GTA model (a few minutes)'
 if (-not (Component-On 'boards')) { Say '  skipped (not chosen)' 'DarkGray' }
 elseif (-not (Is-Done 'boards')) {
-    $disc = Disc-With @('data/content/createacharacter.big')
+    $disc = Disc-With @('data/big/db.big', 'data/content/createacharacter.big')
     if (-not ((Test-Path -LiteralPath (Join-Path $assets 'private\boards\library.json')) -and
         (Test-Path -LiteralPath (Join-Path $assets 'private\board-parts\parts.json')))) {
         $engine = Join-Path $release 'upstream\skate-3-rust-engine-donor'
