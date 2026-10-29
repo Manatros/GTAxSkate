@@ -1,4 +1,4 @@
-GTAxSkate v0.7.0: Skate 3 in GTA V (Legacy)
+GTAxSkate v0.7.1: Skate 3 in GTA V (Legacy)
 ============================================
 
 SK8V (by becaring) with GTAxSkate's additions: keyboard and mouse,

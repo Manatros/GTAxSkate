@@ -141,7 +141,15 @@ def publication_blocks(manifest, now):
     return blocks
 
 
-def check_weekly_gate(latest, now):
+def is_same_series_patch(latest_tag, new_tag):
+    m1 = re.fullmatch(r'v(\d+)\.(\d+)\.(\d+)', str(latest_tag or ''))
+    m2 = re.fullmatch(r'v(\d+)\.(\d+)\.(\d+)', str(new_tag or ''))
+    return bool(m1 and m2 and m1.groups()[:2] == m2.groups()[:2] and int(m2.group(3)) > int(m1.group(3)))
+
+
+def check_weekly_gate(latest, now, tag=''):
+    if is_same_series_patch(latest.get('tag_name'), tag):
+        return
     published = datetime.datetime.fromisoformat(latest['published_at'].replace('Z', '+00:00'))
     if published.tzinfo is None or now < published + datetime.timedelta(days=7):
         raise ValueError('Weekly release gate: seven days since the latest publication have not elapsed')
@@ -185,7 +193,7 @@ def main():
         with urllib.request.urlopen(req, timeout=600) as response:
             return json.load(response)
 
-    check_weekly_gate(api('/releases/latest'), now)
+    check_weekly_gate(api('/releases/latest'), now, args.tag)
     main_sha = api('/git/ref/heads/main')['object']['sha']
     ref = api(f'/git/ref/tags/{args.tag}')['object']
     tag_sha = api('/git/tags/' + ref['sha'])['object']['sha'] if ref['type'] == 'tag' else ref['sha']
@@ -227,7 +235,7 @@ def main():
     for name in names:
         if remote[name].get('digest') != 'sha256:' + expected_hashes[name]:
             sys.exit(f'{name}: server digest differs')
-    check_weekly_gate(api('/releases/latest'), datetime.datetime.now(datetime.timezone.utc))
+    check_weekly_gate(api('/releases/latest'), datetime.datetime.now(datetime.timezone.utc), args.tag)
     release = api(f"/releases/{release['id']}", {'name': args.title, 'body': body, 'draft': False,
                                                   'prerelease': False, 'make_latest': 'true'}, 'PATCH')
     latest = api('/releases/latest')

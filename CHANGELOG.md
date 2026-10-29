@@ -3,6 +3,33 @@
 All notable changes, newest first. Versions follow [semantic versioning](https://semver.org/):
 minor versions collect features; patch versions collect fixes. Each release records its validation limits.
 
+## v0.7.1 — 29 October 2026
+
+Installer and setup fix release on the unchanged v0.7.0 host/runtime pair
+(`test-20261026l-rc-b27eec6`, SK8V 1.1.10, world rules `4217eedcd28b7deb`).
+No runtime or world-baker binaries changed.
+
+### Installer and setup
+
+- **Upfront Skate 3 source checks:** checks extracted Skate 3 folders for `default.xex`,
+  `data\big\db.big` and `data\content\createacharacter.big` before setup begins. Mounted
+  Xbox 360 ISOs in Windows Explorer (which only expose the outer video partition) are
+  caught immediately with a prompt to pick the `.iso` file directly or a complete
+  extracted folder.
+- **Xbox 360 ISO and archive validation:** checks `.iso` files for an XDVDFS partition
+  (`MICROSOFT*XBOX*MEDIA`), catches unextracted `.zip`, `.7z` and `.rar` archives (or
+  folders containing them) with instructions to unzip first, and auto-resolves when
+  `default.xex`, a `data` subfolder, a single nested `Skate 3` folder or a folder holding
+  a single `.iso` file is picked.
+- **Upfront GTA V and environment checks:** checks for running GTA V / OpenIV / CodeWalker
+  processes, GTA V Legacy (`1.0.3889.0`) vs. Enhanced (`GTA5_Enhanced.exe`),
+  `update\update.rpf`, `ScriptHookV.dll`, ASI loader presence and free disk space before
+  asking component or feature prompts. Added Steam `InstallLocation` registry detection
+  and fixed trailing-backslash quoting when restarting elevated as administrator.
+- **Step 4 (`boards`) ISO extraction:** extracts both `data/big/db.big` and
+  `data/content/createacharacter.big` via `Disc-With` so resumed installs or `-Redo boards`
+  with an ISO do not fail with a missing `db.big` after `SK8V\disc` cleanup.
+
 ## v0.7.0 — 26 October 2026
 
 Manatros authorized this release on 26 October 2026. It preserves the exact

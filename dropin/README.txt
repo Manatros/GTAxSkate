@@ -1,5 +1,5 @@
-GTAxSkate v0.7.0 drop-in for SK8V 1.1.10
-================================
+GTAxSkate v0.7.1 drop-in for SK8V 1.1.10
+========================================
 
 Skate 3 in GTA V (SK8V by becaring) with GTAxSkate's optional additions.
 Authorized by Manatros on 26 October 2026. Exact installed candidate:

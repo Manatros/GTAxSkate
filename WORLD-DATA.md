@@ -1,10 +1,10 @@
-# Local world data (v0.7.0)
+# Local world data (v0.7.1)
 
 World collision is generated on your PC from your own GTA V Legacy Story Mode
 archives. Do not redistribute extracted collision, archive keys, meshes, rails or
 baked tiles.
 
-The world step requires **PowerShell 7 (`pwsh`)**. Release v0.7.0 uses world rules
+The world step requires **PowerShell 7 (`pwsh`)**. Release v0.7.1 uses world rules
 `4217eedcd28b7deb`. Older tiles are incompatible and skipped; rerun Setup with
 `-Redo world` after installing the matching host/runtime. The binary-only drop-in
 does not rebuild world data. This build does not add fallback floors, generic
