@@ -134,7 +134,7 @@ promise working co-op.
 
 ## Adapter contract and future versions
 
-Our package code and server policy remain outside SK8V/LS Skate sources.
+Our package code and server policy remain outside the SK8V sources.
 Server exports are `GetPolicy()` and `GetEffectiveSettings(playerId)`; a missing
 policy/player returns `null`. A future adapter must deny skating on `null`,
 check protocol version and supported capabilities, and use confirmed values on
@@ -150,7 +150,7 @@ the current revision, so old requests cannot become current again after restart.
 
 Compatibility is by versioned interface and capabilities, not just a newer
 version number. Unsupported options must be hidden/locked; no silent fallback
-may bypass the server. No public LS Skate API has been verified. A stable
+may bypass the server. A stable
 interface can make updates routine, but arbitrary future changes cannot be
 guaranteed without adapter maintenance. The existing Legacy menu patch still
 fails with a clear conflict if an upstream change requires adaptation.

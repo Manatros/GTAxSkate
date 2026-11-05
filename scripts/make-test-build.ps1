@@ -38,6 +38,7 @@ $manifest = [ordered]@{
     rootCommit=$rootCommit; forkCommit=$forkCommit
     sk8vBasis=$basis
     buildReceipt=$buildReceipt
+    cumulativePatchSha256=$(if (Test-Path -LiteralPath (Join-Path $root 'patches\sk8v-gtaxskate-cumulative.patch')) { (Get-FileHash -LiteralPath (Join-Path $root 'patches\sk8v-gtaxskate-cumulative.patch') -Algorithm SHA256).Hash.ToLowerInvariant() } else { $null })
     menuPatchSha256=(Get-FileHash -LiteralPath $patch -Algorithm SHA256).Hash.ToLowerInvariant()
     saveReloadPatchSha256=(Get-FileHash -LiteralPath (Join-Path $root 'patches\sk8v-save-reload.patch') -Algorithm SHA256).Hash.ToLowerInvariant()
     hudTickPatchSha256=(Get-FileHash -LiteralPath (Join-Path $root 'patches\sk8v-hud-tick.patch') -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -59,7 +60,7 @@ $manifest = [ordered]@{
     builtUtc=[DateTime]::UtcNow.ToString('o'); files=$files
     provenance='Source revision and exact rebuilt host/runtime hashes verified against GTAxSkate-build.json. Gameplay acceptance remains pending.'
     tests='See TESTPLAN.txt and source QA logs. Game confirmation pending.'
-    limitations=@('Story Mode only; GTA preset is WIP/no-op.', 'Rear wheel direction confirmed in game; speed appeared correct. Standstill and remaining animation checks still pending.', 'No FiveM/Coop skating runtime in this package.', 'Existing player INI/boards remain unchanged.')
+    limitations=@('Story Mode Legacy only; gameplay acceptance of this candidate is pending.', 'Metro collision/rendering, high-speed streaming, stairs and placed-prop performance require a new test.', 'No FiveM/Coop skating runtime in this package.', 'Existing player INI/boards remain unchanged.')
 }
 [IO.File]::WriteAllText((Join-Path $story 'manifest.json'), ($manifest | ConvertTo-Json -Depth 8))
 Copy-Item -LiteralPath (Join-Path $root 'scripts\install-test-build.ps1'),(Join-Path $root 'scripts\restore-test-build.ps1') -Destination $story

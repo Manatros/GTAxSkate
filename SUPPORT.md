@@ -7,15 +7,24 @@ Use [GTAxSkate issues](https://github.com/Manatros/GTAxSkate/issues) for install
 | Story Mode | Windows, GTA V Legacy 1.0.3889.0. Report the exact GTAxSkate test/release ID and SK8V build. |
 | FiveM rules | Experimental server settings resource; installing rules alone does not install skating. |
 | FiveM friends test | Experimental pinned SK8M Lua fallback, client-owned physics and four supported adjustments. Requires manual server setup and actual two-client verification. |
-| GTA Online, Enhanced, other co-op/LS Skate versions | Do not assume compatibility from Story Mode or FiveM results. Provide exact versions; unverified targets are not advertised as working. |
+| GTA Online, Enhanced, other co-op versions | Do not assume compatibility from Story Mode or FiveM results. Provide exact versions; unverified targets are not advertised as working. |
 
 The [SK8V fork](https://github.com/Manatros/SK8V) contains basis/contribution source. File package problems centrally in GTAxSkate rather than opening duplicate reports in both repositories. If a report belongs to upstream SK8V, include the original issue link when discussing it there.
 
-## Known issues in v0.6.0
+## Known issues in stable v0.7.1
 
-- Board lighting indoors and in tunnels can look wrong; deferred after the accepted 17 October Story test.
-- Menu organization, text readability, GTA-native styling and simpler navigation are planned improvements.
-- LS Skate has no verified adapter. FiveM and Coop remain separate experimental targets.
+v0.7.1 updates the installer and retains v0.7.0 game binaries. Known limitations
+include mismatched bowl/railing and metro collision, interrupted track grinds,
+unfinished shop displays, indoor board lighting, and the 240 part-model session
+limit. See the full [stable known-issues list](README.md#known-issues).
+
+v0.8.0 remains in development: the 4 November candidate reported collision and
+trick-line problems; collectible rewards, placements, developer travel and shops
+still need validation. Source fixes are not a gameplay pass. See the
+[test status and checklist](TEST-RUN.md).
+
+FiveM and Coop remain separate experimental targets; the FiveM friends prototype
+is paused with a missing-board model.
 
 ## Useful evidence
 
