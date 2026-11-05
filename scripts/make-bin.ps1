@@ -108,6 +108,8 @@ AssertStage $drop
 Remove-Item -LiteralPath $drop -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force $drop | Out-Null
 Copy-Item (Join-Path $sk8v 'build\package\SkateVLegacy.asi'), (Join-Path $sk8v 'build\package\SkateVRuntime.dll') $drop
+New-Item -ItemType Directory -Force (Join-Path $drop 'GTAxSkate') | Out-Null
+Copy-Item -LiteralPath $collectibles -Destination (Join-Path $drop 'GTAxSkate\collectibles.tsv')
 Copy-Item (Join-Path $root 'public\dropin\README.txt') $drop
 Copy-Item (Join-Path $stage 'LICENSE-SK8V.txt'), (Join-Path $stage 'NOTICE-SK8V.txt'), (Join-Path $stage 'NOTICE.txt'), (Join-Path $stage 'VERSION.txt'), (Join-Path $stage 'THIRD-PARTY-NOTICES.txt'), (Join-Path $stage 'COMPONENT-LICENSES.md') $drop
 Copy-Item (Join-Path $stage 'licenses') $drop -Recurse
