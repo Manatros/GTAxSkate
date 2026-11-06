@@ -5,7 +5,7 @@ minor versions collect features; patch versions collect fixes. Each release reco
 
 ## Unreleased — v0.8.0 draft
 
-Development candidate: `test-collect3b-20261104-089d9a5`, source `089d9a5`,
+Latest installed test: `test-20261105-202900-e5e0944`, source `e5e0944`,
 SK8V 1.1.10, world rules `4e0bd490339654a6`. This is not a release.
 
 - Collectibles v3: find parts and songs, unlock boards for purchase, and earn
@@ -20,9 +20,19 @@ SK8V 1.1.10, world rules `4e0bd490339654a6`. This is not a release.
   Existing placed data has not been regenerated.
 - Packaging preparation: include collectible places and the song-restoration helper.
 
-**Gameplay status, 4 November:** collision and trick-line problems were reported;
-review is in progress. These changes are not accepted fixes. Collision, line rewards,
-shops and the broader regression checklist still need validation.
+- Expanded finite secret pool from 61 to 136 unlocks while preserving existing
+  saved assignment order and unlocked items.
+- Added 20 Hall of Meat and banked trick-line score milestones, including
+  historical record reconciliation. Gameplay validation remains pending.
+- Developer collectible travel attempts a streamed, verified nearby arrival;
+  refused travel sets GPS. Pending native results and model-clearance coverage
+  remain open review findings.
+
+**Gameplay status, 5 November:** the latest recording reports detached bowl
+collision, missing ramp sections, broken wall collision, missing grind edges
+and train-rail alignment problems. Collision corrections are in development;
+they have not passed release acceptance. Rewards, shops, replay and the broader
+regression checklist still need validation.
 
 ## v0.7.1 — 29 October 2026
 

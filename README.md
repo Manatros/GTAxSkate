@@ -27,7 +27,7 @@ is made from your own copies of the games.
 
 The current stable version **v0.7.1** uses SK8V **1.1.10**. The 29 October update changes the installer; the game binaries remain those authorized for v0.7.0 on 26 October. The host/runtime pair preserves `test-20261026l-rc-b27eec6` exactly (world rules `4217eedcd28b7deb`). The object dropper worked in earlier gameplay tests; this final candidate's bowl, rail and shop changes remain untested in game.
 
-**v0.8.0 development (not released):** candidate `test-collect3b-20261104-089d9a5` (source `089d9a5`, world rules `4e0bd490339654a6`) includes collectibles v3 and trick lines, the first replay phase, visible railing bars and connector work. The 4 November gameplay test reported collision and trick-line problems; these are under review. Collision, line rewards and shop behaviour need further testing before release. See the [test checklist](TEST-RUN.md) and [draft changelog](CHANGELOG.md).
+**v0.8.0 development (not released):** latest installed test `test-20261105-202900-e5e0944` (source `e5e0944`, world rules `4e0bd490339654a6`) includes collectibles v3, trick lines, replay phase 1, a larger finite unlock pool and score milestones. The 5 November gameplay test still reports bowl/ramp collision and grind-rail problems. Corrections are being tested separately; no release acceptance is claimed. Rewards, travel, shops and regression checks remain open. See the [test checklist](TEST-RUN.md) and [draft changelog](CHANGELOG.md).
 
 Complete SK8V, RP, User, Custom and Developer settings profiles cover 120 menu settings. Keyboard presets remain separate, preserving personal bindings. SK8V retains animation and transition ownership.
 

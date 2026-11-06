@@ -1,14 +1,16 @@
 # Gameplay validation
 
-## Current development candidate — 4 November 2026
+## Current development candidate — 5 November 2026
 
-**Not released:** `test-collect3b-20261104-089d9a5`, source `089d9a5`,
+**Not released:** `test-20261105-202900-e5e0944`, source `e5e0944`,
 SK8V 1.1.10, world rules `4e0bd490339654a6`.
-The 4 November test reported collision and trick-line problems. Review is in
-complete; this candidate has not passed release acceptance. Source `e520f35`
-adds a tested finite-reward correction after this gameplay run; it still needs
-in-game validation. Check that surplus pickups vanish, no cash fallback remains,
-Unlock 0 does not consume progress, and existing finds survive restart.
+The latest test still reports detached bowl collision, missing ramp sections,
+wall fragments, missing grind edges and train-rail alignment problems.
+Collision corrections are under isolated validation and are not installed fixes.
+Verify the expanded 136-item finite unlock pool, unchanged old assignments,
+Hall of Meat and banked-line score milestones, restart persistence and reset.
+Developer travel must refuse unsafe arrivals without moving the player and set
+GPS instead; pending native probes and model-clearance coverage remain open.
 
 | Area | Current result / next check |
 |---|---|

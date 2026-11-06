@@ -3842,10 +3842,10 @@ index 0000000000000000000000000000000000000000..30f4bf4879e275c48defda6060590ace
 +} // namespace camera
 diff --git a/host/src/collectibles.cpp b/host/src/collectibles.cpp
 new file mode 100644
-index 0000000000000000000000000000000000000000..f8085c57f89f22a642a7e8772cc4488919cd2cea
+index 0000000000000000000000000000000000000000..780d0ce4459e9693e5f088597334ab318c355889
 --- /dev/null
 +++ b/host/src/collectibles.cpp
-@@ -0,0 +1,641 @@
+@@ -0,0 +1,776 @@
 +#include "collectibles.h"
 +
 +#include <windows.h>
@@ -3867,6 +3867,7 @@ index 0000000000000000000000000000000000000000..f8085c57f89f22a642a7e8772cc44889
 +#include "collectibles_logic.h"
 +#include "hud_overlay.h"
 +#include "natives.h"
++#include "records_ui.h"
 +
 +namespace collectibles {
 +namespace {
@@ -3901,6 +3902,7 @@ index 0000000000000000000000000000000000000000..f8085c57f89f22a642a7e8772cc44889
 +std::wstring g_placesPath, g_progressPath, g_songsDir;
 +std::vector<Item> g_items;
 +std::vector<Item> g_lineBoards;  // one board per trick line (rev 4)
++std::vector<Item> g_scoreItems;  // Hall of Meat and banked trick-line milestones
 +LineRun g_line;                  // the line being ridden
 +Progress g_progress;
 +std::map<std::string, int> g_blips;
@@ -3925,6 +3927,8 @@ index 0000000000000000000000000000000000000000..f8085c57f89f22a642a7e8772cc44889
 +std::map<std::string, DWORD> g_itemWaiting;  // a deck not shown yet: since when (logged once after 15 s)
 +std::set<std::string> g_itemFailLogged;
 +std::set<int> g_tracksOnDisk;  // song files present (either form), from the last reconcile
++TravelSession g_travel;
++std::uint32_t g_lastScoreSeq = 0;
 +
 +void Log(const std::string& text) {
 +    if (g_log) g_log(("collectibles: " + text).c_str());
@@ -4095,7 +4099,8 @@ index 0000000000000000000000000000000000000000..f8085c57f89f22a642a7e8772cc44889
 +        if (g_partsAssigned && mine != g_assigned.end() && !mine->second.key.empty()) result = boardshop::Unlock(mine->second.key);
 +        if (result == 1 || result == 2) {
 +            reward = "part:" + mine->second.key;
-+            text = "Unlocked in the skate shop: " + mine->second.title;
++            text = (it.id.rfind("R", 0) == 0 ? "Unlocked in the skate shop (" + it.place + "): " : "Unlocked in the skate shop: ") +
++                   mine->second.title;
 +            g_unlockedKeys.insert(mine->second.key);
 +        }
 +    } else {
@@ -4122,6 +4127,8 @@ index 0000000000000000000000000000000000000000..f8085c57f89f22a642a7e8772cc44889
 +        // Songs still need GTA's quick scan, which the popup cannot say.
 +        if (it.kind == Kind::Song && reward.rfind("song:", 0) == 0)
 +            Notice(Summary() + ": Settings > Audio > Perform Quick Scan to hear it.");
++        else if (it.id.rfind("R", 0) == 0)
++            Notice(Summary() + ": " + text);
 +    } else {
 +        Call<void>(PLAY_SOUND_FRONTEND, -1, "PICK_UP", "HUD_FRONTEND_DEFAULT_SOUNDSET", 1);
 +        Notice(Summary() + ": " + text);
@@ -4235,10 +4242,74 @@ index 0000000000000000000000000000000000000000..f8085c57f89f22a642a7e8772cc44889
 +    Log(it.id + " found");
 +}
 +
++TravelAdapter GtaTravelAdapter() {
++    TravelAdapter api{};
++    api.selectedItem = [](std::string& id, std::string& label, float (&xyz)[3], void*) {
++        label = SelectedLabel();
++        if (!SelectedPlace(xyz)) return false;
++        id = g_items[g_sel].id;
++        return true;
++    };
++    api.isLoadSceneActive = [](void*) { return Call<BOOL>(IS_NEW_LOAD_SCENE_ACTIVE) != 0; };
++    api.isLoadSceneLoaded = [](void*) { return Call<BOOL>(IS_NEW_LOAD_SCENE_LOADED) != 0; };
++    api.requestCollision = [](float x, float y, float z, void*) { Call<void>(REQUEST_COLLISION_AT_COORD, x, y, z); };
++    api.startLoadSceneSphere = [](float x, float y, float z, float radius, void*) {
++        return Call<BOOL>(NEW_LOAD_SCENE_START_SPHERE, x, y, z, radius, 0) != 0;
++    };
++    api.stopLoadScene = [](void*) { Call<void>(NEW_LOAD_SCENE_STOP); };
++    api.getPedBounds = [](int ped, void*) {
++        TravelBounds b{};
++        if (!ped || !Call<BOOL>(DOES_ENTITY_EXIST, ped)) return b;
++        const Hash model = Call<Hash>(GET_ENTITY_MODEL, ped);
++        if (!Call<BOOL>(IS_MODEL_VALID, model)) return b;
++        Vector3 lo{}, hi{};
++        Call<void>(GET_MODEL_DIMENSIONS, model, &lo, &hi);
++        b.valid = true;
++        b.min[0] = lo.x, b.min[1] = lo.y, b.min[2] = lo.z;
++        b.max[0] = hi.x, b.max[1] = hi.y, b.max[2] = hi.z;
++        return b;
++    };
++    api.getSafeCoord = [](float x, float y, float z, float (&out)[3], void*) {
++        Vector3 nav{};
++        if (!Call<BOOL>(GET_SAFE_COORD_FOR_PED, x, y, z, FALSE, &nav, 10)) return false;
++        out[0] = nav.x, out[1] = nav.y, out[2] = nav.z;
++        return true;
++    };
++    api.probeFloor = [](float x, float y, float zTop, float zBottom, int ignorePed, void*) {
++        TravelLosSample s{};
++        const int h = Call<int>(START_EXPENSIVE_SYNCHRONOUS_SHAPE_TEST_LOS_PROBE, x, y, zTop, x, y, zBottom, 1, ignorePed, 7);
++        BOOL hit = 0;
++        Vector3 end{}, normal{};
++        Entity entity = 0;
++        s.status = Call<int>(GET_SHAPE_TEST_RESULT, h, &hit, &end, &normal, &entity);
++        s.hit = (hit != 0);
++        s.worldEntity = (entity == 0);
++        s.z = end.z;
++        s.normalZ = normal.z;
++        return s;
++    };
++    api.probeCapsule = [](float x, float y, float z1, float z2, float radius, int ignorePed, void*) {
++        TravelCapsuleResult r{};
++        const int h = Call<int>(START_SHAPE_TEST_CAPSULE, x, y, z1, x, y, z2, radius, 511, ignorePed, 7);
++        BOOL hit = 0;
++        Vector3 end{}, normal{};
++        Entity entity = 0;
++        r.status = Call<int>(GET_SHAPE_TEST_RESULT, h, &hit, &end, &normal, &entity);
++        r.hit = (hit != 0);
++        return r;
++    };
++    api.teleportPed = [](int ped, float x, float y, float z, void*) {
++        Call<void>(SET_ENTITY_COORDS_NO_OFFSET, ped, x, y, z, 0, 0, 0);
++    };
++    api.setWaypoint = [](float x, float y, void*) { Call<void>(SET_NEW_WAYPOINT, x, y); };
++    return api;
++}
++
 +}  // namespace
 +
 +void Start(const std::wstring& gameDir, bool enabled, util::LogFn log) {
 +    g_log = log;
++    TravelCancel(g_travel, GtaTravelAdapter());
 +    g_placesPath = gameDir + L"GTAxSkate\\collectibles.tsv";
 +    // Collectibles v3 starts fresh (design 2026-11-03-collectibles-v3); v2's
 +    // collectibles.txt stays for a rollback.
@@ -4261,8 +4332,10 @@ index 0000000000000000000000000000000000000000..f8085c57f89f22a642a7e8772cc44889
 +    int parts = 0, earned = 0;
 +    int boards = 0;
 +    g_lineBoards = LineBoards(g_items);
++    g_scoreItems = ScoreMilestones();
 +    for (const Item& it : g_items) parts += GivesParts(it.kind), boards += it.kind == Kind::Board;
 +    parts += static_cast<int>(g_lineBoards.size()), boards += static_cast<int>(g_lineBoards.size());
++    parts += static_cast<int>(g_scoreItems.size());
 +    earned = static_cast<int>(EarnedKeys(g_progress).size());
 +    int locked = boardshop::SetSecrets(parts, boards);
 +    const std::string list = boardshop::SecretList();
@@ -4279,7 +4352,36 @@ index 0000000000000000000000000000000000000000..f8085c57f89f22a642a7e8772cc44889
 +    }
 +    std::vector<Item> withLines = g_items;
 +    withLines.insert(withLines.end(), g_lineBoards.begin(), g_lineBoards.end());
++    withLines.insert(withLines.end(), g_scoreItems.begin(), g_scoreItems.end());
 +    g_assigned = Assign(withLines, list);
++    const recordsui::ScoreSnapshot scores = recordsui::PollScores();
++    g_lastScoreSeq = scores.sequence;
++    int fromRecords = 0;
++    if (g_partsAssigned && scores.ready) {
++        for (unsigned cat : {1u, 2u}) {
++            const unsigned best = cat == 1u ? scores.homBest : scores.lineBest;
++            for (const Item& it : ScoreEarned(g_scoreItems, g_progress, cat, best)) {
++                const auto mine = g_assigned.find(it.id);
++                if (mine == g_assigned.end() || mine->second.key.empty()) continue;
++                const int res = boardshop::Unlock(mine->second.key);
++                if (res == 1 || res == 2) {
++                    const std::string reward = "part:" + mine->second.key;
++                    if (RecordReward(g_progress, it.id, reward)) {
++                        g_unlockedKeys.insert(mine->second.key);
++                        ++fromRecords;
++                        Log(it.id + " (" + it.place + ") unlocked from records: " + reward);
++                    }
++                }
++            }
++        }
++        if (fromRecords > 0) {
++            Save();
++            if (g_wasEnabled) {
++                Notice(Summary() + ": " + std::to_string(fromRecords) +
++                       " unlocked in the skate shop from your Hall of Meat and Trick Line records");
++            }
++        }
++    }
 +    Log(std::string("each collectible holds its item") + (g_partsAssigned ? "" : " (songs only: the runtime lists no secrets)") + "; " + Summary());
 +}
 +
@@ -4327,6 +4429,13 @@ index 0000000000000000000000000000000000000000..f8085c57f89f22a642a7e8772cc44889
 +    if (g_songsPending && GetTickCount() >= g_nextSongRetry) Reconcile(true);
 +    ChooseMusicModel();
 +    const Vector3 me = Call<Vector3>(GET_ENTITY_COORDS, ped, 0);
++    if (const recordsui::ScoreSnapshot scores = recordsui::PollScores(); scores.ready && scores.sequence != g_lastScoreSeq) {
++        g_lastScoreSeq = scores.sequence;
++        for (Item it : ScoreEarned(g_scoreItems, g_progress, scores.category, scores.score)) {
++            it.x = me.x, it.y = me.y, it.z = me.z;
++            Earn(it);
++        }
++    }
 +    const std::set<std::string> items = ShowItems(me);
 +    // A teleport (travel, respawn) is no ride through everything between.
 +    const float jx = skater[0] - g_prev[0], jy = skater[1] - g_prev[1], jz = skater[2] - g_prev[2];
@@ -4423,6 +4532,11 @@ index 0000000000000000000000000000000000000000..f8085c57f89f22a642a7e8772cc44889
 +        const bool done = StateOf(g_progress, line.id) == State::Collected;
 +        ++all, got += done, ++parts, partsGot += done;
 +    }
++    for (const Item& score : g_scoreItems) {
++        if (!HasReward(score, g_assigned, g_tracksOnDisk)) continue;
++        const bool done = StateOf(g_progress, score.id) == State::Collected;
++        ++all, got += done, ++parts, partsGot += done;
++    }
 +    char text[128];
 +    std::snprintf(text, sizeof(text), "Collectibles: %d/%d (parts %d/%d, songs %d/%d)", got, all, partsGot, parts, songsGot, songs);
 +    return text;
@@ -4448,8 +4562,9 @@ index 0000000000000000000000000000000000000000..f8085c57f89f22a642a7e8772cc44889
 +    if (!HasReward(g_items[g_sel], g_assigned, g_tracksOnDisk)) Step(+1);
 +    if (!HasReward(g_items[g_sel], g_assigned, g_tracksOnDisk)) return "Collectible: none with an available unlock";
 +    const Item& it = g_items[g_sel];
-+    const State st = StateOf(g_progress, it.id);
-+    return "Collectible: " + it.id + (it.kind == Kind::Board ? " board " : it.kind == Kind::Part ? " part " : " song ") +
++    const State st = StateOf(g_progress, it.kind == Kind::Line ? LineGroup(it.id) : it.id);
++    const char* kind = it.kind == Kind::Board ? " board " : it.kind == Kind::Part ? " part " : it.kind == Kind::Line ? " line " : " song ";
++    return "Collectible: " + it.id + kind +
 +           (st == State::Collected ? "[collected] " : st == State::Found ? "[found] " : "[hidden] ") + it.place;
 +}
 +
@@ -4463,11 +4578,30 @@ index 0000000000000000000000000000000000000000..f8085c57f89f22a642a7e8772cc44889
 +}
 +
 +bool SelectedPlace(float (&xyz)[3]) {
++    if (g_items.empty()) return false;
++    if (g_sel < 0 || g_sel >= static_cast<int>(g_items.size())) g_sel = 0;
++    if (!HasReward(g_items[g_sel], g_assigned, g_tracksOnDisk)) Step(+1);
 +    if (g_sel < 0 || g_sel >= static_cast<int>(g_items.size())) return false;
 +    const Item& it = g_items[g_sel];
 +    if (!HasReward(it, g_assigned, g_tracksOnDisk)) return false;
 +    xyz[0] = it.x, xyz[1] = it.y, xyz[2] = it.z;
 +    return true;
++}
++
++std::string RequestTravel(const TravelGuard& guard) {
++    const std::string msg = TravelRequest(g_travel, guard, GetTickCount(), GtaTravelAdapter());
++    if (!msg.empty()) Log("travel: " + msg);
++    else Log("travel: streaming " + g_travel.targetId);
++    return msg;
++}
++
++void TickTravel(const TravelGuard& guard) {
++    if (!g_travel.active) return;
++    const std::string msg = TravelTick(g_travel, guard, GetTickCount(), GtaTravelAdapter());
++    if (!msg.empty()) {
++        Log("travel: " + msg);
++        Notice(msg);
++    }
 +}
 +
 +std::vector<int> Entities() {
@@ -4478,6 +4612,7 @@ index 0000000000000000000000000000000000000000..f8085c57f89f22a642a7e8772cc44889
 +}
 +
 +void Clear() {
++    TravelCancel(g_travel, GtaTravelAdapter());
 +    ClearItems();
 +    for (auto& [id, b] : g_blips) {
 +        int handle = b;
@@ -4489,10 +4624,10 @@ index 0000000000000000000000000000000000000000..f8085c57f89f22a642a7e8772cc44889
 +}  // namespace collectibles
 diff --git a/host/src/collectibles.h b/host/src/collectibles.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..98176972a6ec89768ae83382b9511ac1deda2b5d
+index 0000000000000000000000000000000000000000..1cd7f62472755202219d380e4d8834090edb21bd
 --- /dev/null
 +++ b/host/src/collectibles.h
-@@ -0,0 +1,52 @@
+@@ -0,0 +1,55 @@
 +#pragma once
 +// Hidden collectibles (contributed by GTAxSkate, design 2026-11-01-collectibles):
 +// question marks on grind rails all over the map. Seen from afar while
@@ -4529,9 +4664,12 @@ index 0000000000000000000000000000000000000000..98176972a6ec89768ae83382b9511ac1
 +const char* RouteToNearestFound();
 +
 +// Developer travel: the selected collectible, stepping and its place.
++struct TravelGuard;
 +std::string SelectedLabel();
 +void Step(int direction);
 +bool SelectedPlace(float (&xyz)[3]);
++std::string RequestTravel(const TravelGuard& guard);
++void TickTravel(const TravelGuard& guard);
 +
 +// Removes blips and the items shown (script shutdown, Collectibles off).
 +void Clear();
@@ -4547,10 +4685,10 @@ index 0000000000000000000000000000000000000000..98176972a6ec89768ae83382b9511ac1
 +}  // namespace collectibles
 diff --git a/host/src/collectibles_logic.cpp b/host/src/collectibles_logic.cpp
 new file mode 100644
-index 0000000000000000000000000000000000000000..3f03d11fed57d2b6687456fbd1af42f1d337d712
+index 0000000000000000000000000000000000000000..f54f925f6a532a460e467f56066775ca4df22760
 --- /dev/null
 +++ b/host/src/collectibles_logic.cpp
-@@ -0,0 +1,369 @@
+@@ -0,0 +1,615 @@
 +#include "collectibles_logic.h"
 +
 +#include <algorithm>
@@ -4872,6 +5010,61 @@ index 0000000000000000000000000000000000000000..3f03d11fed57d2b6687456fbd1af42f1
 +    return out;
 +}
 +
++const std::vector<ScoreMilestone>& ScoreMilestoneTable() {
++    static const std::vector<ScoreMilestone> kTable = {
++        {"R01", 1, 5000, "Hall of Meat 5,000 pts"},
++        {"R02", 1, 10000, "Hall of Meat 10,000 pts"},
++        {"R03", 1, 15000, "Hall of Meat 15,000 pts"},
++        {"R04", 1, 20000, "Hall of Meat 20,000 pts"},
++        {"R05", 1, 25000, "Hall of Meat 25,000 pts"},
++        {"R06", 1, 30000, "Hall of Meat 30,000 pts"},
++        {"R07", 1, 40000, "Hall of Meat 40,000 pts"},
++        {"R08", 1, 50000, "Hall of Meat 50,000 pts"},
++        {"R09", 1, 60000, "Hall of Meat 60,000 pts"},
++        {"R10", 1, 75000, "Hall of Meat 75,000 pts"},
++        {"R11", 2, 500, "Trick line 500 pts"},
++        {"R12", 2, 1000, "Trick line 1,000 pts"},
++        {"R13", 2, 1500, "Trick line 1,500 pts"},
++        {"R14", 2, 2500, "Trick line 2,500 pts"},
++        {"R15", 2, 3500, "Trick line 3,500 pts"},
++        {"R16", 2, 5000, "Trick line 5,000 pts"},
++        {"R17", 2, 6500, "Trick line 6,500 pts"},
++        {"R18", 2, 8000, "Trick line 8,000 pts"},
++        {"R19", 2, 10000, "Trick line 10,000 pts"},
++        {"R20", 2, 12500, "Trick line 12,500 pts"},
++    };
++    return kTable;
++}
++
++std::vector<Item> ScoreMilestones() {
++    std::vector<Item> out;
++    for (const ScoreMilestone& m : ScoreMilestoneTable()) {
++        Item it;
++        it.id = m.id;
++        it.kind = Kind::Part;
++        it.place = m.place;
++        out.push_back(it);
++    }
++    return out;
++}
++
++std::vector<Item> ScoreEarned(const std::vector<Item>& milestones, const Progress& progress,
++                              unsigned category, unsigned score) {
++    std::vector<Item> out;
++    if (score == 0) return out;
++    const auto& table = ScoreMilestoneTable();
++    for (const Item& it : milestones) {
++        if (StateOf(progress, it.id) == State::Collected) continue;
++        for (const ScoreMilestone& m : table) {
++            if (it.id == m.id && m.category == category && score >= m.threshold) {
++                out.push_back(it);
++                break;
++            }
++        }
++    }
++    return out;
++}
++
 +LineEvent LineUpdate(LineRun& run, const std::string& hitLine, int hitStep, int steps, unsigned now, bool bailed) {
 +    if (!run.line.empty()) {
 +        if (bailed || now - run.legStart > kLegMs) {
@@ -4919,13 +5112,204 @@ index 0000000000000000000000000000000000000000..3f03d11fed57d2b6687456fbd1af42f1
 +    return "Unlocked";
 +}
 +
++void TravelCandidateOffset(int index, float (&dxDy)[2]) {
++    static constexpr float kDiag = 2.82842712f;  // 4.0 * sqrt(0.5)
++    static constexpr float kOffsets[kTravelCandidateCount][2] = {
++        {4.0f, 0.0f}, {-4.0f, 0.0f}, {0.0f, 4.0f}, {0.0f, -4.0f},
++        {kDiag, kDiag}, {-kDiag, kDiag}, {kDiag, -kDiag}, {-kDiag, -kDiag},
++    };
++    const int i = (index < 0 || index >= kTravelCandidateCount) ? 0 : index;
++    dxDy[0] = kOffsets[i][0], dxDy[1] = kOffsets[i][1];
++}
++
++bool TravelCheckBounds(const TravelBounds& b, float& outFootOffset) {
++    if (!b.valid) return false;
++    for (int i = 0; i < 3; ++i)
++        if (!std::isfinite(b.min[i]) || !std::isfinite(b.max[i]) || b.max[i] <= b.min[i]) return false;
++    const float halfX = std::max(std::abs(b.min[0]), std::abs(b.max[0]));
++    const float halfY = std::max(std::abs(b.min[1]), std::abs(b.max[1]));
++    const float height = b.max[2] - b.min[2];
++    const float foot = -b.min[2];
++    if (halfX > 0.45f || halfY > 0.45f || height > 2.10f || foot < 0.50f || foot > 1.25f) return false;
++    outFootOffset = foot;
++    return true;
++}
++
++bool TravelCheckSafeCoord(const float (&marker)[3], const float (&req)[2], const float (&nav)[3]) {
++    for (int i = 0; i < 3; ++i)
++        if (!std::isfinite(marker[i]) || !std::isfinite(nav[i])) return false;
++    if (!std::isfinite(req[0]) || !std::isfinite(req[1])) return false;
++    const float rx = nav[0] - req[0], ry = nav[1] - req[1];
++    if (rx * rx + ry * ry > 2.0f * 2.0f) return false;
++    const float mx = nav[0] - marker[0], my = nav[1] - marker[1];
++    if (mx * mx + my * my < 2.5f * 2.5f) return false;
++    const float dz = nav[2] - marker[2];
++    return dz >= -2.5f && dz <= -0.5f;
++}
++
++bool TravelCheckFloorSupport(float navZ, const TravelLosSample (&samples)[5], float& outSupportZ) {
++    if (!std::isfinite(navZ)) return false;
++    float lo = 1e30f, hi = -1e30f;
++    for (const TravelLosSample& s : samples) {
++        if (s.status != 2 || !s.hit || !s.worldEntity) return false;
++        if (!std::isfinite(s.z) || !std::isfinite(s.normalZ)) return false;
++        if (s.normalZ < 0.94f || std::abs(s.z - navZ) > 0.15f) return false;
++        lo = std::min(lo, s.z), hi = std::max(hi, s.z);
++    }
++    if (hi - lo > 0.10f) return false;
++    outSupportZ = hi;
++    return true;
++}
++
++void TravelCapsuleSpheres(float supportZ, float& outZ1, float& outZ2) {
++    const float zBase = supportZ + kTravelCapsuleBaseClearance;
++    const float zTop = zBase + kTravelCapsuleHeight;
++    outZ1 = zBase + kTravelCapsuleRadius;
++    outZ2 = zTop - kTravelCapsuleRadius;
++}
++
++const char* TravelGuardReason(const TravelGuard& g) {
++    if (g.ped == 0) return "no player ped";
++    for (int i = 0; i < 3; ++i)
++        if (!std::isfinite(g.pos[i])) return "invalid player position";
++    if (g.replayActive) return "replay active";
++    if (g.frontendActive) return "frontend active";
++    if (g.shopOpen) return "board shop open";
++    if (g.dropperOpen) return "object dropper open";
++    if (!g.ready || g.poseFadingOut || g.fadingCam) return "leave skate mode first";
++    if (g.inVehicle) return "leave vehicle first";
++    if (!g.onFoot || g.ragdoll || g.falling || g.inAir || g.lifecycleBlocked) return "stand on foot first";
++    return nullptr;
++}
++
++void TravelCancel(TravelSession& session, const TravelAdapter& api) {
++    if (session.ownsScene && api.stopLoadScene) api.stopLoadScene(api.ctx);
++    session = TravelSession{};
++}
++
++std::string TravelRequest(TravelSession& session, const TravelGuard& guard, unsigned nowMs, const TravelAdapter& api) {
++    if (session.active) TravelCancel(session, api);
++    std::string id, label;
++    float targetPos[3] = {0, 0, 0};
++    if (!api.selectedItem || !api.selectedItem(id, label, targetPos, api.ctx)) return "Collectibles: none selected";
++    for (int i = 0; i < 3; ++i)
++        if (!std::isfinite(targetPos[i])) return "Collectibles: invalid coordinates";
++    if (const char* reason = TravelGuardReason(guard)) {
++        if (api.setWaypoint) api.setWaypoint(targetPos[0], targetPos[1], api.ctx);
++        return std::string("Collectibles travel refused (") + reason + "); GPS set instead";
++    }
++    float footOffset = 1.0f;
++    if (!api.getPedBounds || !TravelCheckBounds(api.getPedBounds(guard.ped, api.ctx), footOffset)) {
++        if (api.setWaypoint) api.setWaypoint(targetPos[0], targetPos[1], api.ctx);
++        return "Collectibles travel refused (unsupported ped bounds); GPS set instead";
++    }
++    if (api.isLoadSceneActive && api.isLoadSceneActive(api.ctx)) {
++        if (api.setWaypoint) api.setWaypoint(targetPos[0], targetPos[1], api.ctx);
++        return "Collectibles travel refused (load scene already active); GPS set instead";
++    }
++    if (api.requestCollision) api.requestCollision(targetPos[0], targetPos[1], targetPos[2], api.ctx);
++    if (!api.startLoadSceneSphere || !api.startLoadSceneSphere(targetPos[0], targetPos[1], targetPos[2], kTravelSceneRadius, api.ctx)) {
++        if (api.setWaypoint) api.setWaypoint(targetPos[0], targetPos[1], api.ctx);
++        return "Collectibles travel refused (load scene failed to start); GPS set instead";
++    }
++    session.active = true;
++    session.ownsScene = true;
++    session.startPed = guard.ped;
++    session.targetId = id;
++    session.targetLabel = label;
++    for (int i = 0; i < 3; ++i) {
++        session.targetPos[i] = targetPos[i];
++        session.startPos[i] = guard.pos[i];
++    }
++    session.footOffset = footOffset;
++    session.deadlineMs = nowMs + kTravelTimeoutMs;
++    return "";
++}
++
++std::string TravelTick(TravelSession& session, const TravelGuard& guard, unsigned nowMs, const TravelAdapter& api) {
++    if (!session.active) return "";
++    if (const char* reason = TravelGuardReason(guard)) {
++        TravelCancel(session, api);
++        return std::string("Collectibles travel cancelled (") + reason + ")";
++    }
++    if (guard.ped != session.startPed) {
++        TravelCancel(session, api);
++        return "Collectibles travel cancelled (player ped changed)";
++    }
++    std::string curId, curLabel;
++    float curPos[3] = {0, 0, 0};
++    if (!api.selectedItem || !api.selectedItem(curId, curLabel, curPos, api.ctx) || curId != session.targetId) {
++        TravelCancel(session, api);
++        return "Collectibles travel cancelled (selection changed)";
++    }
++    const float dx = guard.pos[0] - session.startPos[0];
++    const float dy = guard.pos[1] - session.startPos[1];
++    const float dz = guard.pos[2] - session.startPos[2];
++    if (dx * dx + dy * dy + dz * dz > kTravelMoveLimit * kTravelMoveLimit) {
++        TravelCancel(session, api);
++        return "Collectibles travel cancelled (player moved)";
++    }
++    if (static_cast<int>(nowMs - session.deadlineMs) > 0) {
++        const float tx = session.targetPos[0], ty = session.targetPos[1];
++        TravelCancel(session, api);
++        if (api.setWaypoint) api.setWaypoint(tx, ty, api.ctx);
++        return "Collectibles travel timed out; GPS set instead";
++    }
++    if (api.requestCollision) api.requestCollision(session.targetPos[0], session.targetPos[1], session.targetPos[2], api.ctx);
++    if (!api.isLoadSceneActive || !api.isLoadSceneActive(api.ctx)) {
++        session.ownsScene = false;
++        const float tx = session.targetPos[0], ty = session.targetPos[1];
++        TravelCancel(session, api);
++        if (api.setWaypoint) api.setWaypoint(tx, ty, api.ctx);
++        return "Collectibles travel failed (load scene interrupted); GPS set instead";
++    }
++    if (!api.isLoadSceneLoaded || !api.isLoadSceneLoaded(api.ctx)) return "";
++
++    static constexpr float kSampleOffsets[5][2] = {
++        {0.0f, 0.0f}, {0.4f, 0.0f}, {-0.4f, 0.0f}, {0.0f, 0.4f}, {0.0f, -0.4f}};
++    for (int i = 0; i < kTravelCandidateCount; ++i) {
++        float off[2] = {0, 0};
++        TravelCandidateOffset(i, off);
++        const float req[2] = {session.targetPos[0] + off[0], session.targetPos[1] + off[1]};
++        float nav[3] = {0, 0, 0};
++        if (!api.getSafeCoord || !api.getSafeCoord(req[0], req[1], session.targetPos[2], nav, api.ctx)) continue;
++        if (!TravelCheckSafeCoord(session.targetPos, req, nav)) continue;
++        if (!api.probeFloor) continue;
++        TravelLosSample samples[5]{};
++        for (int s = 0; s < 5; ++s) {
++            samples[s] = api.probeFloor(nav[0] + kSampleOffsets[s][0], nav[1] + kSampleOffsets[s][1],
++                                        nav[2] + 0.30f, nav[2] - 0.30f, guard.ped, api.ctx);
++        }
++        float supportZ = 0.0f;
++        if (!TravelCheckFloorSupport(nav[2], samples, supportZ)) continue;
++        float z1 = 0.0f, z2 = 0.0f;
++        TravelCapsuleSpheres(supportZ, z1, z2);
++        if (!api.probeCapsule) continue;
++        const TravelCapsuleResult cap = api.probeCapsule(nav[0], nav[1], z1, z2, kTravelCapsuleRadius, guard.ped, api.ctx);
++        if (cap.status != 2 || cap.hit) continue;
++        if (TravelGuardReason(guard) != nullptr || guard.ped != session.startPed) break;
++        const float originZ = supportZ + session.footOffset;
++        if (!std::isfinite(originZ)) continue;
++        const std::string arrived = session.targetLabel;
++        const int ped = session.startPed;
++        if (api.teleportPed) api.teleportPed(ped, nav[0], nav[1], originZ, api.ctx);
++        TravelCancel(session, api);
++        return arrived;
++    }
++    const float tx = session.targetPos[0], ty = session.targetPos[1];
++    const std::string id = session.targetId;
++    TravelCancel(session, api);
++    if (api.setWaypoint) api.setWaypoint(tx, ty, api.ctx);
++    return "Collectibles travel: no safe floor verified near " + id + "; GPS set instead";
++}
++
 +}  // namespace collectibles
 diff --git a/host/src/collectibles_logic.h b/host/src/collectibles_logic.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..6499d436c4fbf814bdc3466fa1d9eadfcea4cbee
+index 0000000000000000000000000000000000000000..cf15b4767abd4befd26acc4dafa165a29b549977
 --- /dev/null
 +++ b/host/src/collectibles_logic.h
-@@ -0,0 +1,125 @@
+@@ -0,0 +1,226 @@
 +#pragma once
 +// Hidden collectibles (design 2026-11-01-collectibles): the places
 +// (GTAxSkate\collectibles.tsv, from scripts/collectibles/place.py), the
@@ -5027,6 +5411,23 @@ index 0000000000000000000000000000000000000000..6499d436c4fbf814bdc3466fa1d9eadf
 +// lines get their boards from Assign like any other board.
 +std::vector<Item> LineBoards(const std::vector<Item>& items);
 +
++// High-score milestones (design 2026-11-05-expanded-secret-and-score-unlocks):
++// 10 Hall of Meat tiers ("R01".."R10", category 1) and 10 banked trick-line
++// tiers ("R11".."R20", category 2), sorting after "D151" and "L06" so they
++// take secrets after all spatial and park-line collectibles without shifting
++// any existing assignment.
++struct ScoreMilestone {
++    const char* id;
++    unsigned category;   // 1 Hall of Meat, 2 banked trick line
++    unsigned threshold;  // points required
++    const char* place;
++};
++const std::vector<ScoreMilestone>& ScoreMilestoneTable();
++std::vector<Item> ScoreMilestones();
++// Uncollected milestone items in `milestones` reached by `score` in `category`.
++std::vector<Item> ScoreEarned(const std::vector<Item>& milestones, const Progress& progress,
++                              unsigned category, unsigned score);
++
 +// A line being ridden: which line, the next step (1-based), when the leg began.
 +struct LineRun {
 +    std::string line;
@@ -5049,6 +5450,90 @@ index 0000000000000000000000000000000000000000..6499d436c4fbf814bdc3466fa1d9eadf
 +// `reward`: "part:deck:...", "part:grip:...", "song:NN", "cash:N";
 +// `name`: the shop's label of the part.
 +std::string PopupEarned(const std::string& reward, const std::string& name);
++
++// Safe developer collectible travel (design 2026-11-05-safe-collectible-travel).
++inline constexpr int kTravelCandidateCount = 8;
++inline constexpr unsigned kTravelTimeoutMs = 5000;
++inline constexpr float kTravelSceneRadius = 25.0f;
++inline constexpr float kTravelMoveLimit = 0.30f;
++inline constexpr float kTravelCapsuleRadius = 0.40f;
++inline constexpr float kTravelCapsuleHeight = 1.90f;
++inline constexpr float kTravelCapsuleBaseClearance = 0.05f;
++
++struct TravelGuard {
++    bool ready = false;
++    bool poseFadingOut = false;
++    bool fadingCam = false;
++    bool lifecycleBlocked = false;
++    bool replayActive = false;
++    bool dropperOpen = false;
++    bool shopOpen = false;
++    bool frontendActive = false;
++    bool onFoot = false;
++    bool inVehicle = false;
++    bool ragdoll = false;
++    bool falling = false;
++    bool inAir = false;
++    int ped = 0;
++    float pos[3] = {0, 0, 0};
++};
++
++struct TravelBounds {
++    bool valid = false;
++    float min[3] = {0, 0, 0};
++    float max[3] = {0, 0, 0};
++};
++
++struct TravelLosSample {
++    int status = 0;  // 0 invalid, 1 pending, 2 complete
++    bool hit = false;
++    bool worldEntity = false;
++    float z = 0.0f;
++    float normalZ = 0.0f;
++};
++
++struct TravelCapsuleResult {
++    int status = 0;  // 0 invalid, 1 pending, 2 complete
++    bool hit = false;
++};
++
++struct TravelAdapter {
++    bool (*selectedItem)(std::string& id, std::string& label, float (&xyz)[3], void* ctx) = nullptr;
++    bool (*isLoadSceneActive)(void* ctx) = nullptr;
++    bool (*isLoadSceneLoaded)(void* ctx) = nullptr;
++    void (*requestCollision)(float x, float y, float z, void* ctx) = nullptr;
++    bool (*startLoadSceneSphere)(float x, float y, float z, float radius, void* ctx) = nullptr;
++    void (*stopLoadScene)(void* ctx) = nullptr;
++    TravelBounds (*getPedBounds)(int ped, void* ctx) = nullptr;
++    bool (*getSafeCoord)(float x, float y, float z, float (&out)[3], void* ctx) = nullptr;
++    TravelLosSample (*probeFloor)(float x, float y, float zTop, float zBottom, int ignorePed, void* ctx) = nullptr;
++    TravelCapsuleResult (*probeCapsule)(float x, float y, float z1, float z2, float radius, int ignorePed, void* ctx) = nullptr;
++    void (*teleportPed)(int ped, float x, float y, float z, void* ctx) = nullptr;
++    void (*setWaypoint)(float x, float y, void* ctx) = nullptr;
++    void* ctx = nullptr;
++};
++
++struct TravelSession {
++    bool active = false;
++    bool ownsScene = false;
++    int startPed = 0;
++    std::string targetId;
++    std::string targetLabel;
++    float targetPos[3] = {0, 0, 0};
++    float startPos[3] = {0, 0, 0};
++    float footOffset = 1.0f;
++    unsigned deadlineMs = 0;
++};
++
++void TravelCandidateOffset(int index, float (&dxDy)[2]);
++bool TravelCheckBounds(const TravelBounds& b, float& outFootOffset);
++bool TravelCheckSafeCoord(const float (&marker)[3], const float (&req)[2], const float (&nav)[3]);
++bool TravelCheckFloorSupport(float navZ, const TravelLosSample (&samples)[5], float& outSupportZ);
++void TravelCapsuleSpheres(float supportZ, float& outZ1, float& outZ2);
++const char* TravelGuardReason(const TravelGuard& g);
++std::string TravelRequest(TravelSession& session, const TravelGuard& guard, unsigned nowMs, const TravelAdapter& api);
++std::string TravelTick(TravelSession& session, const TravelGuard& guard, unsigned nowMs, const TravelAdapter& api);
++void TravelCancel(TravelSession& session, const TravelAdapter& api);
 +
 +}  // namespace collectibles
 diff --git a/host/src/collision_view.cpp b/host/src/collision_view.cpp
@@ -5940,7 +6425,7 @@ index 8883ed238c5aeee9b93b4c86df47b6324d2169d2..1dd7bc9fdd86d50241952118cb8ff033
  class BoardAction {
  public:
 diff --git a/host/src/main.cpp b/host/src/main.cpp
-index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..57df26bf665e364434cd73c188b2ed6eb0009907 100644
+index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..f52b848ca3578ea744c915aa337632b3029f47df 100644
 --- a/host/src/main.cpp
 +++ b/host/src/main.cpp
 @@ -2,13 +2,18 @@
@@ -7704,7 +8189,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..57df26bf665e364434cd73c188b2ed6e
  void ApplyQuirk() {
      const Config& c = g_config;
      SvQuirkConfig q{};
-@@ -2561,6 +3568,272 @@ menu::Item Emote(const char* label, int direction, const Config& D) {
+@@ -2561,6 +3568,297 @@ menu::Item Emote(const char* label, int direction, const Config& D) {
      return i;
  }
  
@@ -7901,6 +8386,31 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..57df26bf665e364434cd73c188b2ed6e
 +}
 +std::string WorldLabel() { return "World collision: " + WorldState(g_config); }
 +
++collectibles::TravelGuard CurrentTravelGuard(const Session& s, const Config& cfg) {
++    collectibles::TravelGuard g{};
++    const Ped ped = Call<Ped>(gta::PLAYER_PED_ID);
++    g.ped = ped;
++    if (ped) {
++        const Vector3 p = Call<Vector3>(gta::GET_ENTITY_COORDS, ped, 1);
++        g.pos[0] = p.x, g.pos[1] = p.y, g.pos[2] = p.z;
++    }
++    const DWORD now = GetTickCount();
++    g.ready = (s.state == LifeState::Ready);
++    g.poseFadingOut = s.poseFadingOut;
++    g.fadingCam = (static_cast<int>(now - s.fadingCamUntil) < 0);
++    g.lifecycleBlocked = (lifecycle::Blocked(ped, true, cfg.life) != nullptr);
++    g.replayActive = replay::Active();
++    g.dropperOpen = objectdropper::IsOpen();
++    g.shopOpen = boardshop::IsOpen();
++    g.frontendActive = gta::FrontendActive();
++    g.onFoot = ped && Call<BOOL>(gta::IS_PED_ON_FOOT, ped) != 0;
++    g.inVehicle = ped && Call<BOOL>(gta::IS_PED_IN_ANY_VEHICLE, ped, 0) != 0;
++    g.ragdoll = ped && Call<BOOL>(gta::IS_PED_RAGDOLL, ped) != 0;
++    g.falling = ped && Call<BOOL>(gta::IS_PED_FALLING, ped) != 0;
++    g.inAir = ped && Call<BOOL>(gta::IS_ENTITY_IN_AIR, ped) != 0;
++    return g;
++}
++
 +// Test marks: travel to the spots Manatros reported and set them fixed
 +// (design 2026-10-31-mark-travel). GTAxSkate\marks.tsv is read lazily and
 +// again only when its time stamp changed; never on every menu draw.
@@ -7977,7 +8487,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..57df26bf665e364434cd73c188b2ed6e
  std::vector<menu::Page> MenuPages(Session& s) {
      using namespace menu;
      const Config D{};
-@@ -2585,6 +3858,21 @@ std::vector<menu::Page> MenuPages(Session& s) {
+@@ -2585,6 +3883,21 @@ std::vector<menu::Page> MenuPages(Session& s) {
                 Bound("TruckTightness", [] { g_runtime.SetEquipment(g_config.truckTightness, g_config.wheelHardness); })),
          Number("Wheel hardness", "WheelHardness", D.wheelHardness, 0, 1, 0.05f, Fixed("%.2f"),
                 Bound("WheelHardness", [] { g_runtime.SetEquipment(g_config.truckTightness, g_config.wheelHardness); })),
@@ -7999,7 +8509,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..57df26bf665e364434cd73c188b2ed6e
          Flag("Ramp lip rule", "LipRule", D.lipRule, Bound("LipRule", [] { g_runtime.SetLipRule(g_config.lipRule); })),
          Number("Air time limit", "AirTimeLimit", D.airTimeLimit, -1, 120, 5, LimitText,
                 Bound("AirTimeLimit", [] { g_runtime.SetAirLimit(g_config.airTimeLimit); })),
-@@ -2597,13 +3885,34 @@ std::vector<menu::Page> MenuPages(Session& s) {
+@@ -2597,13 +3910,34 @@ std::vector<menu::Page> MenuPages(Session& s) {
          Number("Hold Y to put the board away", "PutAwayHoldMs", static_cast<float>(D.putAwayHoldMs), 0, 2000, 100,
                 [](float v) { return v == 0.0f ? std::string("Off") : Fixed("%.0f ms")(v); }, Bound("PutAwayHoldMs")),
          Flag("Shooting on the board", "BoardAim", D.boardAim, Bound("BoardAim")),
@@ -8034,7 +8544,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..57df26bf665e364434cd73c188b2ed6e
          Flag("Hall of Meat", "HallOfMeat", D.hallOfMeat, [&s](const std::string& v) {
              const bool on = std::atof(v.c_str()) != 0.0;
              if (g_runtime.IsLoaded() && g_runtime.SetHallOfMeat(on)) {
-@@ -2621,16 +3930,25 @@ std::vector<menu::Page> MenuPages(Session& s) {
+@@ -2621,16 +3955,25 @@ std::vector<menu::Page> MenuPages(Session& s) {
      }});
  
      pages.push_back({"Peds and vehicles", {
@@ -8062,7 +8572,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..57df26bf665e364434cd73c188b2ed6e
      }});
  
      pages.push_back({"BackwardsMan", {
-@@ -2643,6 +3961,18 @@ std::vector<menu::Page> MenuPages(Session& s) {
+@@ -2643,6 +3986,18 @@ std::vector<menu::Page> MenuPages(Session& s) {
          }),
      }});
  
@@ -8081,7 +8591,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..57df26bf665e364434cd73c188b2ed6e
      pages.push_back({"Audio", {
          Number("Skate volume", "AudioGtaGainDb", 1.4f, -30, 24, 1, Fixed("%+.1f dB"),
                 [](const std::string& v) { gtaaudio::SetGainDb(static_cast<float>(std::atof(v.c_str()))); }),
-@@ -2650,20 +3980,109 @@ std::vector<menu::Page> MenuPages(Session& s) {
+@@ -2650,20 +4005,109 @@ std::vector<menu::Page> MenuPages(Session& s) {
          Choice("Output", "AudioOutput", {"Gta", "Off"}, {"GTA mixer", "Off"}, {}, true),
      }});
  
@@ -8193,7 +8703,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..57df26bf665e364434cd73c188b2ed6e
          Action("Play showcase line", [] { g_lineRequested.store(true); }),
          Action("Next showcase line", [] { g_lineNext.store(true); }),
          Action("Sound list overlay", [] { g_soundListToggle.store(true); }),
-@@ -2671,8 +4090,138 @@ std::vector<menu::Page> MenuPages(Session& s) {
+@@ -2671,8 +4115,138 @@ std::vector<menu::Page> MenuPages(Session& s) {
          Number("Aim twist limit", "AimTwist", D.aimTwist, 20, 180, 10, Fixed("%.0f deg"), Bound("AimTwist")),
          Flag("Log GTA's gun state", "GunProbe", D.gunProbe, Bound("GunProbe")),
          Flag("Skate with GTA's camera (frame cost A/B)", "GtaCamera", D.gtaCamera, Bound("GtaCamera")),
@@ -8332,7 +8842,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..57df26bf665e364434cd73c188b2ed6e
          Number("Ped Z offset", "PedZOffset", D.pedZOffset, 0, 2, 0.05f, Fixed("%.2f m"), Bound("PedZOffset")),
          Number("Track width", "TrackWidth", D.trackWidth, 0.02f, 0.5f, 0.02f, Fixed("%.2f m"), Bound("TrackWidth")),
          Number("Bail hit speed", "BailHitSpeed", D.bailHitSpeed, 0, 20, 0.5f, Fixed("%.1f m/s"), Bound("BailHitSpeed")),
-@@ -2690,8 +4239,373 @@ std::vector<menu::Page> MenuPages(Session& s) {
+@@ -2690,8 +4264,367 @@ std::vector<menu::Page> MenuPages(Session& s) {
          Choice("Audio placement", "AudioGtaPlacement", {"Position", "Tracker"}, {"Emitter positions", "Player ped"}, {}, true),
          Flag("Editor audio tone", "AudioEditorTone", false, {}, true),
          Flag("Stall sampler", "StallSampler", D.stallSampler, {}, true),
@@ -8357,15 +8867,9 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..57df26bf665e364434cd73c188b2ed6e
 +            return item;
 +        }(),
 +        Action("Go to this collectible", [&s] {
-+            float p[3];
-+            if (!collectibles::SelectedPlace(p)) { Notify(s, "Collectibles: none selected"); return; }
-+            const Ped ped = Call<Ped>(gta::PLAYER_PED_ID);
-+            Call<void>(gta::REQUEST_COLLISION_AT_COORD, p[0], p[1], p[2]);
-+            const Entity who = Call<BOOL>(gta::IS_PED_IN_ANY_VEHICLE, ped, 0)
-+                ? static_cast<Entity>(Call<Vehicle>(gta::GET_VEHICLE_PED_IS_IN, ped, 0)) : static_cast<Entity>(ped);
-+            // 4 m beside it, on the rail's level, so arriving does not collect it.
-+            Call<void>(gta::SET_ENTITY_COORDS_NO_OFFSET, who, p[0] + 4.0f, p[1], p[2] + 0.5f, 0, 0, 0);
-+            Notify(s, collectibles::SelectedLabel(), 6000);
++            const std::string msg = collectibles::RequestTravel(CurrentTravelGuard(s, g_config));
++            if (!msg.empty()) Notify(s, msg, 5000);
++            else Notify(s, "Checking safe floor for collectible...", 2000);
 +        }),
 +        Helped(Action("Reset collectibles and unlocks (press twice)", [&s] {
 +                   // Two presses within 5 s (design 2026-11-02-collectibles-v2).
@@ -8707,7 +9211,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..57df26bf665e364434cd73c188b2ed6e
  }
  
  void ScriptMain() {
-@@ -2728,29 +4642,50 @@ void ScriptMain() {
+@@ -2728,29 +4661,50 @@ void ScriptMain() {
      }
  
      g_config = LoadConfig();
@@ -8765,7 +9269,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..57df26bf665e364434cd73c188b2ed6e
          boardstencil::Start(Log);
          recordsui::Start(g_runtime.Handle(), Log);
          Logf("SkateV Legacy: Hall of Meat %s (%s)", cfg.hallOfMeat ? "on" : "off",
-@@ -2778,16 +4713,44 @@ void ScriptMain() {
+@@ -2778,16 +4732,44 @@ void ScriptMain() {
               g_runtime.SetPosture(cfg.posture) && g_runtime.SetRidingStyle(cfg.ridingStyle) &&
                       g_runtime.SetEquipment(cfg.truckTightness, cfg.wheelHardness)
                   ? "runtime option present" : "runtime option absent");
@@ -8811,7 +9315,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..57df26bf665e364434cd73c188b2ed6e
      FrameMonitor monitor;
      stall::SetLog(Log);
      // Line= may list several files separated by ';': the Dev menu replays the
-@@ -2808,7 +4771,8 @@ void ScriptMain() {
+@@ -2808,7 +4790,8 @@ void ScriptMain() {
              static DWORD nextFetch = 0;
              static std::string list;
              if (g_soundListToggle.exchange(false)) showList = !showList;
@@ -8821,7 +9325,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..57df26bf665e364434cd73c188b2ed6e
                  if (GetTickCount() >= nextFetch) {
                      nextFetch = GetTickCount() + 250;
                      list = g_runtime.AudioDebugText();
-@@ -2850,38 +4814,136 @@ void ScriptMain() {
+@@ -2850,38 +4833,137 @@ void ScriptMain() {
                  Call<void>(gta::HUD_FORCE_WEAPON_WHEEL, 0);
              }
              EnforceHeldPed(s);
@@ -8904,6 +9408,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..57df26bf665e364434cd73c188b2ed6e
 +            const bool popups = g_config.skateHud && s.state == LifeState::Skating && s.action == 0 && !replay::Active();  // not filming
 +            if (!replay::Active()) collectibles::Tick(g_config.collectibles, riding, popups, root, Call<int>(gta::PLAYER_PED_ID),
 +                                                       s.last.state_utf8);
++            collectibles::TickTravel(CurrentTravelGuard(s, g_config));
 +            if (const char* notice = collectibles::TakeNotice()) Notify(s, notice, 6000);
 +        }
 +        // M while skating: GTA's own interaction menu. It did not open because
@@ -8963,7 +9468,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..57df26bf665e364434cd73c188b2ed6e
          Lap(kPartLevel);
          monitor.Work(monitor.Now() - workStart);
          WAIT(0);
-@@ -2903,6 +4965,8 @@ BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID reserved) {
+@@ -2903,6 +4985,8 @@ BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID reserved) {
          packloader::Install(g_gameDir, Log);
          keyboardHandlerRegister(Keyboard);
          scriptRegister(module, ScriptMain);
@@ -10136,7 +10641,7 @@ index 0000000000000000000000000000000000000000..da8cbe96421b823bda8c779323c377b3
 +}
 +} // namespace menu::presets
 diff --git a/host/src/natives.h b/host/src/natives.h
-index 773dc91b91bee351c145195c4de61348557977a3..0ea0f68a3dd0aee30cf4d11933032613f11b94d9 100644
+index 773dc91b91bee351c145195c4de61348557977a3..61c6f4dc8a0d547370043acd9e91f234bcca2800 100644
 --- a/host/src/natives.h
 +++ b/host/src/natives.h
 @@ -43,6 +43,7 @@ SV_NATIVE(SET_ENTITY_HAS_GRAVITY, 0x4A4722448F18EEF5)
@@ -10171,7 +10676,20 @@ index 773dc91b91bee351c145195c4de61348557977a3..0ea0f68a3dd0aee30cf4d11933032613
  SV_NATIVE(DOES_CAM_EXIST, 0xA7A932170592B50E)
  SV_NATIVE(SET_CAM_COORD, 0x4D41783FB745E42E)
  SV_NATIVE(SET_CAM_ROT, 0x85973643155D0B07)
-@@ -111,6 +120,7 @@ SV_NATIVE(PATCH_DECAL_DIFFUSE_MAP, 0x8A35C742130C6080)
+@@ -104,6 +113,12 @@ SV_NATIVE(GET_FINAL_RENDERED_CAM_FOV, 0x80EC114669DAEFF4)
+ // STREAMING
+ SV_NATIVE(IS_IPL_ACTIVE, 0x88A741E44A2B3495)
+ SV_NATIVE(CLEAR_FOCUS, 0x31B73D1EA9F01DA2)
++SV_NATIVE(NEW_LOAD_SCENE_START_SPHERE, 0xACCFB4ACF53551B0)
++SV_NATIVE(IS_NEW_LOAD_SCENE_LOADED, 0x01B8247A7A8B9AD1)
++SV_NATIVE(IS_NEW_LOAD_SCENE_ACTIVE, 0xA41A05B6CB741B85)
++SV_NATIVE(NEW_LOAD_SCENE_STOP, 0xC197616D221FF4A4)
++SV_NATIVE(GET_SAFE_COORD_FOR_PED, 0xB61C8E878A4199CA)
++SV_NATIVE(START_SHAPE_TEST_CAPSULE, 0x28579D1B8F8AAC80)
+ // GRAPHICS / HUD
+ SV_NATIVE(ADD_DECAL, 0xB302244A1839BDAD)
+ SV_NATIVE(IS_DECAL_ALIVE, 0xC694D74949CAFD0C)
+@@ -111,6 +126,7 @@ SV_NATIVE(PATCH_DECAL_DIFFUSE_MAP, 0x8A35C742130C6080)
  SV_NATIVE(REQUEST_STREAMED_TEXTURE_DICT, 0xDFA2EF8E04127DD5)
  SV_NATIVE(HAS_STREAMED_TEXTURE_DICT_LOADED, 0x0145F696AAAAD2E4)
  SV_NATIVE(DRAW_POLY, 0xAC26716048436851)
@@ -10179,7 +10697,7 @@ index 773dc91b91bee351c145195c4de61348557977a3..0ea0f68a3dd0aee30cf4d11933032613
  SV_NATIVE(GET_ASPECT_RATIO, 0xF1307EF624A80D87)
  SV_NATIVE(SET_SCRIPT_GFX_ALIGN, 0xB8A850F20A067EB6)
  SV_NATIVE(SET_SCRIPT_GFX_ALIGN_PARAMS, 0xF5A2C681787E579D)
-@@ -132,6 +142,7 @@ SV_NATIVE(DOOR_SYSTEM_FIND_EXISTING_DOOR, 0x589F80B325CC82C5)
+@@ -132,6 +148,7 @@ SV_NATIVE(DOOR_SYSTEM_FIND_EXISTING_DOOR, 0x589F80B325CC82C5)
  SV_NATIVE(DOOR_SYSTEM_GET_DOOR_STATE, 0x160AA1B32F6139B8)
  SV_NATIVE(DOOR_SYSTEM_SET_DOOR_STATE, 0x6BAB9442830C7F53)
  SV_NATIVE(DOOR_SYSTEM_SET_OPEN_RATIO, 0xB6E6FBA95C7324AC)
@@ -10187,7 +10705,7 @@ index 773dc91b91bee351c145195c4de61348557977a3..0ea0f68a3dd0aee30cf4d11933032613
  // MISC / NETWORK
  SV_NATIVE(GET_SNOW_LEVEL, 0xC5868A966E5BE3AE)
  SV_NATIVE(GET_PREV_WEATHER_TYPE_HASH_NAME, 0x564B884A05EC45A3)
-@@ -145,6 +156,10 @@ SV_NATIVE(GET_SAFE_ZONE_SIZE, 0xBAF107B6BB2C97F0)
+@@ -145,6 +162,10 @@ SV_NATIVE(GET_SAFE_ZONE_SIZE, 0xBAF107B6BB2C97F0)
  SV_NATIVE(GET_IS_LOADING_SCREEN_ACTIVE, 0x10D0A8F259E93EC9)
  // Lifecycle (lifecycle.cpp): board-action guards, leaving skate mode
  SV_NATIVE(IS_PED_ON_FOOT, 0x01FEE67DB37F59B2)
@@ -10198,7 +10716,7 @@ index 773dc91b91bee351c145195c4de61348557977a3..0ea0f68a3dd0aee30cf4d11933032613
  SV_NATIVE(IS_PED_GETTING_INTO_A_VEHICLE, 0xBB062B2B5722478E)
  SV_NATIVE(GET_VEHICLE_PED_IS_TRYING_TO_ENTER, 0x814FA8BE5449445D)
  SV_NATIVE(IS_PED_HANGING_ON_TO_VEHICLE, 0x1C86D8AEF8254B78)
-@@ -175,6 +190,7 @@ SV_NATIVE(GET_WORLD_POSITION_OF_ENTITY_BONE, 0x44A8FCB8ED227738)
+@@ -175,6 +196,7 @@ SV_NATIVE(GET_WORLD_POSITION_OF_ENTITY_BONE, 0x44A8FCB8ED227738)
  SV_NATIVE(GET_NUMBER_OF_THREADS_RUNNING_THE_SCRIPT_WITH_THIS_HASH, 0x2C83A9DA6BFFC4F9)
  SV_NATIVE(NETWORK_IS_GAME_IN_PROGRESS, 0x10FAB35428CCC9D7)
  SV_NATIVE(DISABLE_CONTROL_ACTION, 0xFE99B66D079CF6BC)
@@ -10206,7 +10724,7 @@ index 773dc91b91bee351c145195c4de61348557977a3..0ea0f68a3dd0aee30cf4d11933032613
  SV_NATIVE(CAN_PED_RAGDOLL, 0x128F79EDCECE4FD5)
  SV_NATIVE(SET_GAMEPLAY_CAM_RELATIVE_HEADING, 0xB4EC2312F4E5B1F1)
  SV_NATIVE(SET_GAMEPLAY_CAM_RELATIVE_PITCH, 0x6D0858B8EDFD2B7D)
-@@ -205,6 +221,19 @@ SV_NATIVE(HUD_GET_WEAPON_WHEEL_CURRENTLY_HIGHLIGHTED, 0xA48931185F0536FE)
+@@ -205,6 +227,19 @@ SV_NATIVE(HUD_GET_WEAPON_WHEEL_CURRENTLY_HIGHLIGHTED, 0xA48931185F0536FE)
  SV_NATIVE(HUD_GET_WEAPON_WHEEL_TOP_SLOT, 0xA13E93403F26C812)
  SV_NATIVE(GET_CONTROL_NORMAL, 0xEC3C9B8D5327B563)
  SV_NATIVE(GET_DISABLED_CONTROL_NORMAL, 0x11E65974A982637C)
@@ -10226,7 +10744,7 @@ index 773dc91b91bee351c145195c4de61348557977a3..0ea0f68a3dd0aee30cf4d11933032613
  SV_NATIVE(GET_GAME_TIMER, 0x9CD27B0045628463)
  SV_NATIVE(GET_IS_TASK_ACTIVE, 0xB0760331C7AA4155)
  SV_NATIVE(CLEAR_PED_TASKS, 0xE1EF3C1216AFF2CD)
-@@ -224,6 +253,8 @@ SV_NATIVE(GET_PED_TYPE, 0xFF059E1E4C01E63C)
+@@ -224,6 +259,8 @@ SV_NATIVE(GET_PED_TYPE, 0xFF059E1E4C01E63C)
  SV_NATIVE(IS_COP_PED_IN_AREA_3D, 0x16EC4839969F9F5E)
  SV_NATIVE(GET_PED_NEARBY_PEDS, 0x23F8F5FC7E8C4A6B)
  SV_NATIVE(HAS_ENTITY_BEEN_DAMAGED_BY_ENTITY, 0xC86D67D52A707CF8)
@@ -10235,7 +10753,7 @@ index 773dc91b91bee351c145195c4de61348557977a3..0ea0f68a3dd0aee30cf4d11933032613
  SV_NATIVE(GET_PLAYER_WANTED_LEVEL, 0xE28E54788CE8F12D)
  SV_NATIVE(SET_CONTROL_VALUE_NEXT_FRAME, 0xE8A25867FBA3B05E)
  SV_NATIVE(GET_GAMEPLAY_CAM_ROT, 0x837765A25378F0BB)
-@@ -238,7 +269,12 @@ SV_NATIVE(GET_WEAPON_TIME_BETWEEN_SHOTS, 0x065D2AACAD8CF7A4)
+@@ -238,7 +275,12 @@ SV_NATIVE(GET_WEAPON_TIME_BETWEEN_SHOTS, 0x065D2AACAD8CF7A4)
  SV_NATIVE(IS_CONTROL_PRESSED, 0xF3A21BCD95725A4A)
  SV_NATIVE(IS_DISABLED_CONTROL_JUST_PRESSED, 0x91AEF906BCA88877)
  SV_NATIVE(IS_DISABLED_CONTROL_PRESSED, 0xE2587F8CBBD87B1D)
@@ -10248,7 +10766,7 @@ index 773dc91b91bee351c145195c4de61348557977a3..0ea0f68a3dd0aee30cf4d11933032613
  SV_NATIVE(GET_GAMEPLAY_CAM_COORD, 0x14D6F5678D8F1B37)
  // Radio while skating
  SV_NATIVE(SET_MOBILE_RADIO_ENABLED_DURING_GAMEPLAY, 0x1098355A16064BB3)
-@@ -248,6 +284,7 @@ SV_NATIVE(GET_AUDIBLE_MUSIC_TRACK_TEXT_ID, 0x50B196FC9ED6545B)
+@@ -248,6 +290,7 @@ SV_NATIVE(GET_AUDIBLE_MUSIC_TRACK_TEXT_ID, 0x50B196FC9ED6545B)
  SV_NATIVE(GET_PLAYER_RADIO_STATION_NAME, 0xF6D733C32076AD03)
  SV_NATIVE(DOES_TEXT_LABEL_EXIST, 0xAC09CA973C564252)
  SV_NATIVE(SET_RADIO_TO_STATION_INDEX, 0xA619B168B8A8570F)
@@ -10256,7 +10774,7 @@ index 773dc91b91bee351c145195c4de61348557977a3..0ea0f68a3dd0aee30cf4d11933032613
  SV_NATIVE(GET_PLAYER_RADIO_STATION_INDEX, 0xE8AF77C4C06ADC93)
  SV_NATIVE(GET_NUM_UNLOCKED_RADIO_STATIONS, 0xF1620ECB50E01DE7)
  SV_NATIVE(GET_RADIO_STATION_NAME, 0xB28ECA15046CA8B9)
-@@ -264,6 +301,69 @@ SV_NATIVE(IS_MODEL_IN_CDIMAGE, 0x35B9E0803292B641)
+@@ -264,6 +307,69 @@ SV_NATIVE(IS_MODEL_IN_CDIMAGE, 0x35B9E0803292B641)
  SV_NATIVE(SET_ENTITY_DYNAMIC, 0x1718DE8E3F2823CA)
  SV_NATIVE(SET_ENTITY_AS_MISSION_ENTITY, 0xAD738C3085FE7E11)
  SV_NATIVE(SET_ENTITY_QUATERNION, 0x77B21BE7AC540F07)
@@ -10895,14 +11413,29 @@ index f977e09a1f8645d430ade22af3565d8e22342f97..8686c6860cb430e571342a2760f04aa6
 +    return Route::None;
  }
 diff --git a/host/src/records_ui.cpp b/host/src/records_ui.cpp
-index 3db9d7ab5fbd4b40e3059af85b0d8e557d288dfe..5ca9d831a4ab8787b6bcce218305332a32085733 100644
+index 3db9d7ab5fbd4b40e3059af85b0d8e557d288dfe..6b07fa0cee120ac10f661d9da9eb057441d425b6 100644
 --- a/host/src/records_ui.cpp
 +++ b/host/src/records_ui.cpp
-@@ -202,8 +202,17 @@ void NextPage() {
+@@ -202,8 +202,32 @@ void NextPage() {
  
  bool Showing() { return g.page != 0; }
  
 -void Tick(bool skating, bool homBail) {
++ScoreSnapshot PollScores() {
++    ScoreSnapshot out{};
++    if (!g.ready || !g.getState || !g.rt) return out;
++    SvRecordState s{};
++    s.size = sizeof(s);
++    if (!g.getState(g.rt, &s)) return out;
++    out.ready = true;
++    out.sequence = s.sequence;
++    out.category = s.category;
++    out.score = s.score;
++    out.homBest = s.hom_best;
++    out.lineBest = s.line_best;
++    return out;
++}
++
 +void Tick(bool skating, bool homBail, bool visible) {
      if (!g.ready) return;
 +    if (!visible) {
@@ -10917,7 +11450,7 @@ index 3db9d7ab5fbd4b40e3059af85b0d8e557d288dfe..5ca9d831a4ab8787b6bcce218305332a
      const bool paused = gta::FrontendActive();
      if (skating) UpdateContext();
      SvRecordState s{};
-@@ -214,8 +223,9 @@ void Tick(bool skating, bool homBail) {
+@@ -214,8 +238,9 @@ void Tick(bool skating, bool homBail) {
          g.seeded = true;
      } else if (s.sequence != g.seen) {
          g.seen = s.sequence;
@@ -10929,12 +11462,36 @@ index 3db9d7ab5fbd4b40e3059af85b0d8e557d288dfe..5ca9d831a4ab8787b6bcce218305332a
      if (paused) return;
      if (skating && homBail) DrawBailRecord(s);
 diff --git a/host/src/records_ui.h b/host/src/records_ui.h
-index b28d6b6657056377b66c44645bc784284b59674d..991729a6f686150f8052ecc41028f3c547ce1bd9 100644
+index b28d6b6657056377b66c44645bc784284b59674d..417106ef47031a21535399aac931625f8b2bd1a6 100644
 --- a/host/src/records_ui.h
 +++ b/host/src/records_ui.h
-@@ -18,6 +18,7 @@ void Start(void* runtime, LogFn log);
+@@ -6,18 +6,31 @@
+ // own text and shard (MIDSIZED_MESSAGE); the book and Skate 3's labels come
+ // from the runtime (rust/skatev-runtime/src/records.rs).
+ //
++#include <cstdint>
+ #include <string>
+ 
+ namespace recordsui {
+ using LogFn = void (*)(const char*);
+ 
++struct ScoreSnapshot {
++    bool ready = false;
++    std::uint32_t sequence = 0;
++    std::uint32_t category = 0;  // 1 Hall of Meat bail, 2 banked line
++    std::uint32_t score = 0;
++    std::uint32_t homBest = 0;
++    std::uint32_t lineBest = 0;
++};
++
+ // After the runtime loaded: looks up the optional record exports and opens
+ // the book at %LOCALAPPDATA%\SkateV\records.json (runtime nullptr: inert).
+ void Start(void* runtime, LogFn log);
+ // Opens or closes the top-ten board (menu item; '/' closes it while shown).
  void NextPage();
  bool Showing();
++// Latest record state from the runtime (for score-milestone unlocks).
++ScoreSnapshot PollScores();
  // Script thread, once per frame. `skating`: Skate is active; `homBail`: a
 -// Hall of Meat bail is on screen.
 -void Tick(bool skating, bool homBail);
@@ -12500,10 +13057,10 @@ index 0000000000000000000000000000000000000000..349576bca3753368bf4d92aeaae2b346
 +}
 diff --git a/host/tests/collectibles_tests.cpp b/host/tests/collectibles_tests.cpp
 new file mode 100644
-index 0000000000000000000000000000000000000000..ca43a5f49c91a7eb547191afcb26fc84eafd9c73
+index 0000000000000000000000000000000000000000..193850081d67f1e92b4528fbb43d47609f52c814
 --- /dev/null
 +++ b/host/tests/collectibles_tests.cpp
-@@ -0,0 +1,201 @@
+@@ -0,0 +1,472 @@
 +#include "../src/collectibles_logic.cpp"
 +#include <algorithm>
 +#include <cassert>
@@ -12701,6 +13258,277 @@ index 0000000000000000000000000000000000000000..ca43a5f49c91a7eb547191afcb26fc84
 +    assert(LineUpdate(bail, "", 0, 3, 10, true) == LineEvent::Failed);
 +    // A board earned unlocks only its deck (rev 4): the reward names the deck.
 +    assert(PopupEarned("board:deck:a:1", "Deck A") == "Board unlocked: Deck A");
++
++    // Safe developer collectible travel (design 2026-11-05-safe-collectible-travel).
++    {
++        float z1 = 0.0f, z2 = 0.0f;
++        TravelCapsuleSpheres(10.0f, z1, z2);
++        assert(std::abs(z1 - 10.45f) < 1e-5f);
++        assert(std::abs(z2 - 11.55f) < 1e-5f);
++
++        float foot = 0.0f;
++        TravelBounds goodBounds{true, {-0.30f, -0.30f, -1.00f}, {0.30f, 0.30f, 0.85f}};
++        assert(TravelCheckBounds(goodBounds, foot) && std::abs(foot - 1.00f) < 1e-5f);
++        TravelBounds wideBounds{true, {-0.50f, -0.30f, -1.00f}, {0.30f, 0.30f, 0.85f}};
++        assert(!TravelCheckBounds(wideBounds, foot));
++        TravelBounds tallBounds{true, {-0.30f, -0.30f, -1.20f}, {0.30f, 0.30f, 0.95f}};
++        assert(!TravelCheckBounds(tallBounds, foot));
++
++        const float marker[3] = {100.0f, 200.0f, 15.0f};
++        const float req[2] = {104.0f, 200.0f};
++        const float navOk[3] = {104.2f, 199.8f, 13.8f};
++        assert(TravelCheckSafeCoord(marker, req, navOk));
++        const float navTooClose[3] = {102.0f, 200.0f, 13.8f};  // 2.0 m < 2.5 m from marker
++        assert(!TravelCheckSafeCoord(marker, req, navTooClose));
++        const float navWrongLevel[3] = {104.0f, 200.0f, 11.5f};  // 3.5 m below marker
++        assert(!TravelCheckSafeCoord(marker, req, navWrongLevel));
++        const float navTooHigh[3] = {104.0f, 200.0f, 14.8f};  // only 0.2 m below marker
++        assert(!TravelCheckSafeCoord(marker, req, navTooHigh));
++
++        struct MockEnv {
++            bool hasSelection = true;
++            std::string id = "D001";
++            std::string label = "Collectible: D001 board [hidden] Vespucci";
++            float marker[3] = {100.0f, 200.0f, 15.0f};
++            bool sceneActive = false;
++            bool sceneLoaded = false;
++            bool startSceneOk = true;
++            int startCount = 0;
++            int stopCount = 0;
++            int reqCollisionCount = 0;
++            int teleportCount = 0;
++            int lastPed = 0;
++            float teleportPos[3] = {0, 0, 0};
++            int waypointCount = 0;
++            float waypointPos[2] = {0, 0};
++            TravelBounds bounds{true, {-0.30f, -0.30f, -0.98f}, {0.30f, 0.30f, 0.82f}};
++            bool safeCoordOk = true;
++            float navOffset[3] = {0.0f, 0.0f, -1.2f};  // relative to (req.x, req.y, marker.z)
++            int probeIdx = 0;
++            TravelLosSample floorSample{2, true, true, 13.82f, 0.99f};
++            float sampleSpread = 0.0f;
++            TravelCapsuleResult capsule{2, false};
++        };
++
++        auto makeAdapter = [](MockEnv& env) {
++            TravelAdapter api{};
++            api.ctx = &env;
++            api.selectedItem = [](std::string& id, std::string& label, float (&xyz)[3], void* ctx) {
++                auto& e = *static_cast<MockEnv*>(ctx);
++                if (!e.hasSelection) return false;
++                id = e.id;
++                label = e.label;
++                for (int i = 0; i < 3; ++i) xyz[i] = e.marker[i];
++                return true;
++            };
++            api.isLoadSceneActive = [](void* ctx) { return static_cast<MockEnv*>(ctx)->sceneActive; };
++            api.isLoadSceneLoaded = [](void* ctx) { return static_cast<MockEnv*>(ctx)->sceneLoaded; };
++            api.requestCollision = [](float, float, float, void* ctx) { ++static_cast<MockEnv*>(ctx)->reqCollisionCount; };
++            api.startLoadSceneSphere = [](float, float, float, float, void* ctx) {
++                auto& e = *static_cast<MockEnv*>(ctx);
++                ++e.startCount;
++                if (!e.startSceneOk) return false;
++                e.sceneActive = true;
++                return true;
++            };
++            api.stopLoadScene = [](void* ctx) {
++                auto& e = *static_cast<MockEnv*>(ctx);
++                ++e.stopCount;
++                e.sceneActive = false;
++            };
++            api.getPedBounds = [](int, void* ctx) { return static_cast<MockEnv*>(ctx)->bounds; };
++            api.getSafeCoord = [](float x, float y, float z, float (&out)[3], void* ctx) {
++                auto& e = *static_cast<MockEnv*>(ctx);
++                if (!e.safeCoordOk) return false;
++                out[0] = x + e.navOffset[0];
++                out[1] = y + e.navOffset[1];
++                out[2] = z + e.navOffset[2];
++                return true;
++            };
++            api.probeFloor = [](float, float, float, float, int, void* ctx) {
++                auto& e = *static_cast<MockEnv*>(ctx);
++                TravelLosSample s = e.floorSample;
++                if (e.sampleSpread != 0.0f && (e.probeIdx++ % 5) == 1) s.z += e.sampleSpread;
++                return s;
++            };
++            api.probeCapsule = [](float, float, float, float, float, int, void* ctx) {
++                return static_cast<MockEnv*>(ctx)->capsule;
++            };
++            api.teleportPed = [](int ped, float x, float y, float z, void* ctx) {
++                auto& e = *static_cast<MockEnv*>(ctx);
++                ++e.teleportCount;
++                e.lastPed = ped;
++                e.teleportPos[0] = x, e.teleportPos[1] = y, e.teleportPos[2] = z;
++            };
++            api.setWaypoint = [](float x, float y, void* ctx) {
++                auto& e = *static_cast<MockEnv*>(ctx);
++                ++e.waypointCount;
++                e.waypointPos[0] = x, e.waypointPos[1] = y;
++            };
++            return api;
++        };
++
++        auto readyGuard = [] {
++            TravelGuard g{};
++            g.ready = true;
++            g.onFoot = true;
++            g.ped = 42;
++            g.pos[0] = 10.0f, g.pos[1] = 20.0f, g.pos[2] = 5.0f;
++            return g;
++        };
++
++        // 1. Valid standing arrival: streams, verifies floor & capsule, teleports to supportZ + footOffset.
++        {
++            MockEnv env;
++            TravelAdapter api = makeAdapter(env);
++            TravelSession s;
++            const TravelGuard g = readyGuard();
++            assert(TravelRequest(s, g, 1000, api).empty());
++            assert(s.active && s.ownsScene && env.startCount == 1);
++            // Not loaded yet on frame 1: stays active, no teleport.
++            assert(TravelTick(s, g, 1050, api).empty());
++            assert(s.active && env.teleportCount == 0);
++            // Scene loaded on frame 2: teleports to first candidate (104, 200, 13.82 + 0.98 = 14.80).
++            env.sceneLoaded = true;
++            const std::string msg = TravelTick(s, g, 1100, api);
++            assert(msg == env.label);
++            assert(!s.active && env.stopCount == 1 && env.teleportCount == 1 && env.waypointCount == 0);
++            assert(env.lastPed == 42);
++            assert(std::abs(env.teleportPos[0] - 104.0f) < 1e-4f);
++            assert(std::abs(env.teleportPos[1] - 200.0f) < 1e-4f);
++            assert(std::abs(env.teleportPos[2] - (13.82f + 0.98f)) < 1e-4f);
++        }
++
++        // 2. Floor missing / steep slope / uneven spread / dynamic entity -> zero movement, GPS set.
++        for (int badCase = 0; badCase < 4; ++badCase) {
++            MockEnv env;
++            env.sceneLoaded = true;
++            if (badCase == 0) env.floorSample.hit = false;
++            if (badCase == 1) env.floorSample.normalZ = 0.85f;      // too steep (< 0.94)
++            if (badCase == 2) env.sampleSpread = 0.15f;             // uneven (> 0.10 m)
++            if (badCase == 3) env.floorSample.worldEntity = false;  // dynamic prop/vehicle
++            TravelAdapter api = makeAdapter(env);
++            TravelSession s;
++            const TravelGuard g = readyGuard();
++            assert(TravelRequest(s, g, 1000, api).empty());
++            const std::string msg = TravelTick(s, g, 1050, api);
++            assert(msg.find("no safe floor verified") != std::string::npos);
++            assert(!s.active && env.teleportCount == 0 && env.stopCount == 1 && env.waypointCount == 1);
++        }
++
++        // 3. Wall / headroom hit or incomplete capsule probe -> zero movement, GPS set.
++        for (int capCase = 0; capCase < 2; ++capCase) {
++            MockEnv env;
++            env.sceneLoaded = true;
++            if (capCase == 0) env.capsule = {2, true};   // blocked headroom/wall
++            if (capCase == 1) env.capsule = {1, false};  // incomplete shape test
++            TravelAdapter api = makeAdapter(env);
++            TravelSession s;
++            const TravelGuard g = readyGuard();
++            assert(TravelRequest(s, g, 1000, api).empty());
++            const std::string msg = TravelTick(s, g, 1050, api);
++            assert(msg.find("no safe floor verified") != std::string::npos);
++            assert(!s.active && env.teleportCount == 0 && env.stopCount == 1 && env.waypointCount == 1);
++        }
++
++        // 4. Preexisting load scene is never hijacked or stopped.
++        {
++            MockEnv env;
++            env.sceneActive = true;  // GTA already owns a load scene
++            TravelAdapter api = makeAdapter(env);
++            TravelSession s;
++            const std::string msg = TravelRequest(s, readyGuard(), 1000, api);
++            assert(msg.find("load scene already active") != std::string::npos);
++            assert(!s.active && env.startCount == 0 && env.stopCount == 0 && env.teleportCount == 0 && env.waypointCount == 1);
++        }
++
++        // 5. Mode & state refusals: in vehicle, skating, lingering pose/cam handoff, replay.
++        for (int modeCase = 0; modeCase < 5; ++modeCase) {
++            MockEnv env;
++            TravelAdapter api = makeAdapter(env);
++            TravelSession s;
++            TravelGuard g = readyGuard();
++            if (modeCase == 0) g.inVehicle = true;
++            if (modeCase == 1) g.ready = false;
++            if (modeCase == 2) g.poseFadingOut = true;
++            if (modeCase == 3) g.fadingCam = true;
++            if (modeCase == 4) g.replayActive = true;
++            const std::string msg = TravelRequest(s, g, 1000, api);
++            assert(msg.find("refused") != std::string::npos);
++            assert(!s.active && env.startCount == 0 && env.teleportCount == 0 && env.waypointCount == 1);
++        }
++
++        // 6. Cancellation during streaming when player moves, selection changes, ped changes, or timeout.
++        {
++            MockEnv env;
++            TravelAdapter api = makeAdapter(env);
++            TravelSession s;
++            TravelGuard g = readyGuard();
++            assert(TravelRequest(s, g, 1000, api).empty());
++            g.pos[0] += 0.50f;  // moved > 0.30 m
++            const std::string msg = TravelTick(s, g, 1100, api);
++            assert(msg.find("player moved") != std::string::npos);
++            assert(!s.active && env.stopCount == 1 && env.teleportCount == 0);
++        }
++        {
++            MockEnv env;
++            TravelAdapter api = makeAdapter(env);
++            TravelSession s;
++            const TravelGuard g = readyGuard();
++            assert(TravelRequest(s, g, 1000, api).empty());
++            const std::string msg = TravelTick(s, g, 1000 + kTravelTimeoutMs + 1, api);
++            assert(msg.find("timed out") != std::string::npos);
++            assert(!s.active && env.stopCount == 1 && env.teleportCount == 0 && env.waypointCount == 1);
++        }
++    }
++
++    // Hall of Meat and banked trick-line high-score milestones: 20 tiers (R01..R20),
++    // sorting after D151 and L06 so existing assignments never shift.
++    {
++        const auto milestones = ScoreMilestones();
++        assert(milestones.size() == 20);
++        assert(milestones.front().id == "R01" && milestones.back().id == "R20");
++        for (const Item& m : milestones) {
++            assert(m.kind == Kind::Part);
++            assert(m.id > "D151" && m.id > "L06");
++        }
++
++        // Assign stability: D001 (board), L01 (board), D082 (part) keep identical
++        // secrets when R01..R20 are appended.
++        const std::vector<Item> base = {
++            {"D001", Kind::Board, 0, 0, 0, "Park"},
++            {"L01", Kind::Board, 0, 0, 0, "Line"},
++            {"D082", Kind::Part, 0, 0, 0, "Scattered"},
++        };
++        std::string list;
++        for (int i = 1; i <= 25; ++i)
++            list += "deck:m:d" + std::to_string(i) + "\tDeck " + std::to_string(i) + "\tskatev_d_d" + std::to_string(i) +
++                    "\tskatev_d_d" + std::to_string(i) + ",skatev_t_default,skatev_w_default\n";
++        const auto a1 = Assign(base, list);
++        std::vector<Item> withScores = base;
++        withScores.insert(withScores.end(), milestones.begin(), milestones.end());
++        const auto a2 = Assign(withScores, list);
++        assert(a1.at("D001").key == a2.at("D001").key);
++        assert(a1.at("L01").key == a2.at("L01").key);
++        assert(a1.at("D082").key == a2.at("D082").key);
++        assert(a2.at("R01").key == "deck:m:d4");
++        assert(a2.at("R20").key == "deck:m:d23");
++
++        Progress p;
++        assert(ScoreEarned(milestones, p, 1, 0).empty());
++        assert(ScoreEarned(milestones, p, 1, 4999).empty());
++        // Hall of Meat 61,531 pts earns R01..R09 (5,000..60,000), leaving R10 (75,000).
++        const auto hom = ScoreEarned(milestones, p, 1, 61531);
++        assert(hom.size() == 9 && hom.front().id == "R01" && hom.back().id == "R09");
++        for (const Item& it : hom) assert(RecordReward(p, it.id, "part:" + a2.at(it.id).key));
++        assert(ScoreEarned(milestones, p, 1, 61531).empty());
++        const auto homTop = ScoreEarned(milestones, p, 1, 75000);
++        assert(homTop.size() == 1 && homTop[0].id == "R10");
++
++        // Trick line 8,605 pts earns R11..R18 (500..8,000), leaving R19 (10,000) and R20 (12,500).
++        const auto line = ScoreEarned(milestones, p, 2, 8605);
++        assert(line.size() == 8 && line.front().id == "R11" && line.back().id == "R18");
++    }
 +
 +    std::cout << "collectibles tests passed\n";
 +    return 0;
@@ -20238,10 +21066,10 @@ index 0ca30e12ec12666c6b357797a8537c3201463d19..0e650982b97c3ebe611effd50df6662e
  }
 diff --git a/rust/skatev-runtime/src/board_shop.rs b/rust/skatev-runtime/src/board_shop.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..d76d07993166c4bf9198527edc43bd20435f899a
+index 0000000000000000000000000000000000000000..c9fa42bbf244de637786f595167ec3e669c53888
 --- /dev/null
 +++ b/rust/skatev-runtime/src/board_shop.rs
-@@ -0,0 +1,1659 @@
+@@ -0,0 +1,1672 @@
 +//! The board shop (contributed by GTAxSkate): Skate 3's complete boards and
 +//! every deck, truck, wheel, griptape and paint for sale in GTA's street
 +//! clothing stores (`shop`), a garage per character, and the part models
@@ -20510,34 +21338,47 @@ index 0000000000000000000000000000000000000000..d76d07993166c4bf9198527edc43bd20
 +    /// As `set_secrets`, with `boards` decks chosen first (collectibles v3).
 +    pub fn set_secrets_with_boards(&mut self, count: usize, boards: usize) -> usize {
 +        let path = self.garages.join(crate::secrets::FILE);
++        let choose = || {
++            let offers: Vec<crate::shop::Offer> = crate::shop::stock(&self.library, Tier::Skate)
++                .into_iter()
++                .flat_map(|section| section.offers)
++                .filter(|offer| self.sells(&offer.goods))
++                .collect();
++            // Trucks and wheels on the shop's complete boards never become
++            // secret: a locked one would hide every board using it
++            // (collectibles v3 peer review).
++            let on_boards: std::collections::HashSet<String> = offers.iter()
++                .filter_map(|o| match &o.goods { Goods::Complete(b) => Some(b.clone()), _ => None })
++                .flat_map(|b| [Part::Trucks, Part::Wheels].into_iter()
++                    .filter_map(move |p| b.get(p).and_then(|r| crate::secrets::key(&Goods::Part(p, r.clone())))))
++                .collect();
++            let keys: Vec<String> = offers.iter()
++                .filter_map(|offer| crate::secrets::key(&offer.goods))
++                .filter(|k| !on_boards.contains(k))
++                .collect();
++            crate::secrets::Secrets::choose_with_decks(keys, count, boards)
++        };
++        let log_counts = |s: &crate::secrets::Secrets| {
++            for kind in ["deck", "grip", "trucks", "wheels"] {
++                let n = s.order().iter().filter(|k| k.split(':').next() == Some(kind)).count();
++                if let Some(log) = crate::RUNTIME_LOG.get() { log(&format!("board shop secrets: {n} {kind} secret")); }
++            }
++        };
 +        self.secrets = match std::fs::read_to_string(&path) {
-+            Ok(text) => crate::secrets::Secrets::from_text(&text),
++            Ok(text) => {
++                let mut kept = crate::secrets::Secrets::from_text(&text);
++                if boards > 0 && kept.order().len() < count && kept.extend_from(&choose(), count) {
++                    log_counts(&kept);
++                    let _ = std::fs::write(&path, kept.to_text());
++                }
++                kept
++            }
 +            // Unreadable (locked, damaged): lock nothing and never write over it.
 +            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Default::default(),
 +            Err(_) if count == 0 => Default::default(),
 +            Err(_) => {
-+                let offers: Vec<crate::shop::Offer> = crate::shop::stock(&self.library, Tier::Skate)
-+                    .into_iter()
-+                    .flat_map(|section| section.offers)
-+                    .filter(|offer| self.sells(&offer.goods))
-+                    .collect();
-+                // Trucks and wheels on the shop's complete boards never become
-+                // secret: a locked one would hide every board using it
-+                // (collectibles v3 peer review).
-+                let on_boards: std::collections::HashSet<String> = offers.iter()
-+                    .filter_map(|o| match &o.goods { Goods::Complete(b) => Some(b.clone()), _ => None })
-+                    .flat_map(|b| [Part::Trucks, Part::Wheels].into_iter()
-+                        .filter_map(move |p| b.get(p).and_then(|r| crate::secrets::key(&Goods::Part(p, r.clone())))))
-+                    .collect();
-+                let keys: Vec<String> = offers.iter()
-+                    .filter_map(|offer| crate::secrets::key(&offer.goods))
-+                    .filter(|k| !on_boards.contains(k))
-+                    .collect();
-+                let chosen = crate::secrets::Secrets::choose_with_decks(keys, count, boards);
-+                for kind in ["deck", "grip", "trucks", "wheels"] {
-+                    let n = chosen.order().iter().filter(|k| k.split(':').next() == Some(kind)).count();
-+                    if let Some(log) = crate::RUNTIME_LOG.get() { log(&format!("board shop secrets: {n} {kind} secret")); }
-+                }
++                let chosen = choose();
++                log_counts(&chosen);
 +                let _ = std::fs::write(&path, chosen.to_text());
 +                chosen
 +            }
@@ -26530,6 +27371,40 @@ index 8584beb989fadea52a3f3e5af8fc7ea690d74cb0..e3cad47f07d93fb16e4da8f562e5e674
 +    }
 +
  }
+diff --git a/rust/skatev-runtime/src/records.rs b/rust/skatev-runtime/src/records.rs
+index 934f363dca5426497b8a1a32e29e0cbd9ad86f7e..370e901afb8f180caab2d230a3fbacf0bbdd0e79 100644
+--- a/rust/skatev-runtime/src/records.rs
++++ b/rust/skatev-runtime/src/records.rs
+@@ -226,6 +226,9 @@ impl Records {
+ 
+     /// Places a finished score; returns where it landed.
+     pub fn add(&mut self, c: Category, score: u32, time: u64, log: &crate::worker::Log) -> Placement {
++        if score == 0 {
++            return Placement::default();
++        }
+         let entry = Entry {
+             score,
+             character: self.context.character.clone(),
+@@ -234,13 +237,13 @@ impl Records {
+             time,
+         };
+         let placement = self.book.add(c, entry);
++        self.last = Event {
++            sequence: self.last.sequence.wrapping_add(1).max(1),
++            category: c as u32,
++            score,
++            placement,
++        };
+         if placement.rank > 0 || placement.spot_rank > 0 {
+-            self.last = Event {
+-                sequence: self.last.sequence.wrapping_add(1).max(1),
+-                category: c as u32,
+-                score,
+-                placement,
+-            };
+             log(&format!(
+                 "records: {c:?} {score} by {} at {} -> rank {} overall, {} at the spot",
+                 self.context.character, self.context.spot, placement.rank, placement.spot_rank
 diff --git a/rust/skatev-runtime/src/reuse.rs b/rust/skatev-runtime/src/reuse.rs
 index 9c5174fb219e4e0883d4ed9ca90952d15eebd576..a5344f8426edc70f928c0b2ac2a2d0ed9955a3e5 100644
 --- a/rust/skatev-runtime/src/reuse.rs
@@ -26633,10 +27508,10 @@ index 9c5174fb219e4e0883d4ed9ca90952d15eebd576..a5344f8426edc70f928c0b2ac2a2d0ed
          let mut cache = AreaCache::default();
 diff --git a/rust/skatev-runtime/src/secrets.rs b/rust/skatev-runtime/src/secrets.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..bfb787eeddbfe43ce972a20cd9d01eb2b25fc84a
+index 0000000000000000000000000000000000000000..757bfa35dc015d3fdd98a8b5336ee8788ff4bf2d
 --- /dev/null
 +++ b/rust/skatev-runtime/src/secrets.rs
-@@ -0,0 +1,315 @@
+@@ -0,0 +1,373 @@
 +//! Secret shop items (contributed by GTAxSkate, design
 +//! 2026-11-01-collectibles): some decks, griptapes, trucks and wheels stay
 +//! out of the shop until a collectible in the world unlocks them. The choice
@@ -26698,28 +27573,59 @@ index 0000000000000000000000000000000000000000..bfb787eeddbfe43ce972a20cd9d01eb2
 +
 +    /// As `choose`, with the first `decks` secrets decks (one per board
 +    /// collectible, collectibles v3 re-review), then the kinds in turn.
++    /// When `decks > 0` and the first `1 / KIND_SHARE` share of each kind is
++    /// not enough to fill `count`, the remaining keys of each kind are taken
++    /// in turn so every collectible and score milestone gets a secret item.
 +    pub fn choose_with_decks(keys: impl IntoIterator<Item = String>, count: usize, decks: usize) -> Self {
 +        let all: BTreeSet<String> = keys.into_iter().collect();
-+        let mut kinds: Vec<Vec<String>> = KINDS.iter().map(|kind| {
++        let mut primary: Vec<Vec<String>> = Vec::with_capacity(KINDS.len());
++        let mut extra: Vec<Vec<String>> = Vec::with_capacity(KINDS.len());
++        for kind in &KINDS {
 +            let mut of: Vec<String> = all.iter().filter(|k| k.split(':').next() == Some(*kind)).cloned().collect();
 +            of.sort_by(|a, b| fnv(a).cmp(&fnv(b)).then_with(|| a.cmp(b)));
-+            of.truncate(of.len().div_ceil(KIND_SHARE));
++            let mut rest = of.split_off(of.len().div_ceil(KIND_SHARE));
 +            of.reverse();
-+            of
-+        }).collect();
++            rest.reverse();
++            primary.push(of);
++            extra.push(rest);
++        }
 +        let mut order = Vec::new();
 +        while order.len() < decks.min(count) {
-+            let Some(k) = kinds[0].pop() else { break };
++            let Some(k) = primary[0].pop().or_else(|| (decks > 0).then(|| extra[0].pop()).flatten()) else { break };
 +            order.push(k);
 +        }
-+        while order.len() < count && kinds.iter().any(|k| !k.is_empty()) {
-+            for kind in &mut kinds {
++        while order.len() < count && primary.iter().any(|k| !k.is_empty()) {
++            for kind in &mut primary {
 +                if order.len() < count {
 +                    if let Some(k) = kind.pop() { order.push(k); }
 +                }
 +            }
 +        }
++        if decks > 0 {
++            while order.len() < count && extra.iter().any(|k| !k.is_empty()) {
++                for kind in &mut extra {
++                    if order.len() < count {
++                        if let Some(k) = kind.pop() { order.push(k); }
++                    }
++                }
++            }
++        }
 +        Self::from_parts(order, BTreeSet::new())
++    }
++
++    /// Appends unseen keys from `more` until `self.order.len()` reaches `count`,
++    /// preserving the existing prefix order and unlocked set. Returns true if extended.
++    pub fn extend_from(&mut self, more: &Self, count: usize) -> bool {
++        let before = self.order.len();
++        for k in &more.order {
++            if self.order.len() >= count {
++                break;
++            }
++            if self.secret.insert(k.clone()) {
++                self.order.push(k.clone());
++            }
++        }
++        self.order.len() > before
 +    }
 +
 +    fn from_parts(order: Vec<String>, unlocked: BTreeSet<String>) -> Self {
@@ -26950,6 +27856,33 @@ index 0000000000000000000000000000000000000000..bfb787eeddbfe43ce972a20cd9d01eb2
 +        assert_eq!(wall(&[]), vec![1, 2, 3]);
 +        // Too few spares: a locked slot without one stays empty.
 +        assert_eq!(substitute(&order, 6, |_| true, |&t| t > 1), vec![1]);
++    }
++
++    #[test]
++    fn choose_with_decks_expands_past_one_third_and_preserves_prefix() {
++        // Real catalog proportions after complete-board truck/wheel filtering:
++        // 150 decks, 21 grips, 3 trucks, 9 wheels = 183 eligible keys.
++        let keys = || {
++            (0..150).map(|i| format!("deck:m:{i}"))
++                .chain((0..21).map(|i| format!("grip:{i}")))
++                .chain((0..3).map(|i| format!("trucks:t:{i}")))
++                .chain((0..9).map(|i| format!("wheels:w:{i}")))
++        };
++        let prefix61 = Secrets::choose_with_decks(keys(), 61, 46);
++        assert_eq!(prefix61.order().len(), 61);
++        let full136 = Secrets::choose_with_decks(keys(), 136, 46);
++        assert_eq!(full136.order().len(), 136);
++        assert_eq!(&full136.order()[..61], prefix61.order(), "first 61 secrets stay bit-for-bit identical");
++
++        // Topping up an existing 61-secret file with an unlocked deck preserves prefix and unlock.
++        let mut kept = prefix61.clone();
++        let unlocked_key = kept.order()[3].clone();
++        assert_eq!(kept.unlock(&unlocked_key), 1);
++        assert!(kept.extend_from(&full136, 136));
++        assert_eq!(kept.order(), full136.order());
++        assert!(kept.is_unlocked(&unlocked_key));
++        assert_eq!(kept.remaining(), 135);
++        assert!(!kept.extend_from(&full136, 136), "already at target count");
 +    }
 +}
 diff --git a/rust/skatev-runtime/src/shop.rs b/rust/skatev-runtime/src/shop.rs
