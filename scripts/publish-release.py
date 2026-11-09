@@ -141,7 +141,12 @@ def publication_blocks(manifest, now):
     return blocks
 
 
-def check_weekly_gate(latest, now):
+def check_weekly_gate(latest, now, tag=''):
+    # A46 (amended 2026-11-09): patch releases (vX.Y.Z, Z > 0) may ship between
+    # the weekly minor releases; the seven days hold for vX.Y.0.
+    patch = re.fullmatch(r'v\d+\.\d+\.(\d+)', tag)
+    if patch and int(patch.group(1)) > 0:
+        return
     published = datetime.datetime.fromisoformat(latest['published_at'].replace('Z', '+00:00'))
     if published.tzinfo is None or now < published + datetime.timedelta(days=7):
         raise ValueError('Weekly release gate: seven days since the latest publication have not elapsed')
@@ -185,7 +190,7 @@ def main():
         with urllib.request.urlopen(req, timeout=600) as response:
             return json.load(response)
 
-    check_weekly_gate(api('/releases/latest'), now)
+    check_weekly_gate(api('/releases/latest'), now, args.tag)
     main_sha = api('/git/ref/heads/main')['object']['sha']
     ref = api(f'/git/ref/tags/{args.tag}')['object']
     tag_sha = api('/git/tags/' + ref['sha'])['object']['sha'] if ref['type'] == 'tag' else ref['sha']
@@ -227,7 +232,7 @@ def main():
     for name in names:
         if remote[name].get('digest') != 'sha256:' + expected_hashes[name]:
             sys.exit(f'{name}: server digest differs')
-    check_weekly_gate(api('/releases/latest'), datetime.datetime.now(datetime.timezone.utc))
+    check_weekly_gate(api('/releases/latest'), datetime.datetime.now(datetime.timezone.utc), args.tag)
     release = api(f"/releases/{release['id']}", {'name': args.title, 'body': body, 'draft': False,
                                                   'prerelease': False, 'make_latest': 'true'}, 'PATCH')
     latest = api('/releases/latest')

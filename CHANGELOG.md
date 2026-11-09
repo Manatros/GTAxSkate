@@ -3,6 +3,20 @@
 All notable changes, newest first. Versions follow [semantic versioning](https://semver.org/):
 minor versions collect features; patch versions collect fixes. Each release records its validation limits.
 
+## v0.8.1 — 9 November 2026
+
+Source SK8V `dev` `02b9842` (= v0.8.0 `1b9f00f` plus three host/hint commits), world rules unchanged
+(`8a1fe36e1275922c`): no world rebuild after updating. Host and runtime exactly `test-20261109-184224-02b9842`,
+tested by the maintainer. Known: the replay is silent (sound comes in a later build).
+
+- Replay on keyboard and mouse: Space play/pause, A/D or arrows scrub, Up/Down or the mouse wheel
+  change speed, hold R plays backwards, C changes the camera; the free camera moves with W A S D,
+  E/Q and the mouse. Tab (which opens it) or Backspace returns to skating. Before, the replay read
+  the skating keys (Q changed the camera, Ctrl left it) and the mouse did nothing.
+- Keys held while leaving the replay no longer reach skating (no stepping off, grab or push).
+- The help line names the keys of the device in use; key hints and menu help name the replay.
+- The "no controller" message names the keyboard setting; the put-away help names the keyboard key.
+
 ## v0.8.0 — 9 November 2026
 
 Source `1b9f00f`, SK8V 1.1.10, world rules `8a1fe36e1275922c` (host and runtime exactly `test-20261109-135502-1b9f00f`).

@@ -76,6 +76,11 @@ class ReleaseTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Weekly release gate'):
             publisher.check_weekly_gate(latest, datetime.datetime(2026,10,24,13,29,tzinfo=datetime.timezone.utc))
         publisher.check_weekly_gate(latest, datetime.datetime(2026,10,24,13,30,tzinfo=datetime.timezone.utc))
+        # A46 amended: a patch release may ship inside the week, a minor one may not.
+        early = datetime.datetime(2026,10,18,9,0,tzinfo=datetime.timezone.utc)
+        publisher.check_weekly_gate(latest, early, 'v0.6.1')
+        with self.assertRaises(ValueError):
+            publisher.check_weekly_gate(latest, early, 'v0.7.0')
 
     def authorized_manifest(self):
         self.manifest.update(extensionSourceCommit='c'*40, acceptedTestId='candidate-123',

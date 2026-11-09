@@ -6712,7 +6712,7 @@ index 8883ed238c5aeee9b93b4c86df47b6324d2169d2..1dd7bc9fdd86d50241952118cb8ff033
  class BoardAction {
  public:
 diff --git a/host/src/main.cpp b/host/src/main.cpp
-index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa917868247ef1 100644
+index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..d28bd9c89ec799ac15445a7e9ef7bf73caa0231e 100644
 --- a/host/src/main.cpp
 +++ b/host/src/main.cpp
 @@ -2,13 +2,18 @@
@@ -7162,7 +7162,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
 +void DrawKeyboardHints(bool onFoot) {
 +    std::string& text = g_keyHints[onFoot ? 1 : 0];
 +    if (text.empty()) {
-+        text = g_runtime.KeyboardHints(onFoot) + "Tab\tGun out / away (hold: weapon wheel)\nMouse buttons\tAim / shoot (gun out)\nF10\tSK8V menu (all settings)\nV\tCamera view\n";
++        text = g_runtime.KeyboardHints(onFoot) + "Tab\tTap: replay; hold: gun out and weapon wheel\nMouse buttons\tAim / shoot (gun out)\nF10\tSK8V menu (all settings)\nV\tCamera view\n";
 +        if (g_runtime.HasActionCam()) text += "R\tCinematic camera\n";
 +    }
 +    float y = 0.25f;
@@ -7186,7 +7186,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
  SvPad ReadPadRaw() {
      // Polled every frame in and out of skate mode (board action). XInput is
      // slow on empty slots, so connected slots are read each frame and the
-@@ -490,23 +766,106 @@ SvPad ReadPadRaw() {
+@@ -490,23 +766,171 @@ SvPad ReadPadRaw() {
          else Logf("SkateV Legacy: no controller connected");
          s_active = active, s_ps = havePs ? ps : nullptr;
      }
@@ -7290,6 +7290,67 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
 +    Text(line, 0.5f, 0.955f, 0.32f, 255, 255, 255, true);
 +}
 +
++// ---- replay input (design 2026-11-09-replay-input) --------------------------
++// The replay reads the controller as it is and the keyboard and mouse by its
++// own fixed keys, never through the skating key translation (there Q is Y,
++// the camera, and LCtrl is B, leave).
++bool ReplayOnKeyboard() { return g_keyboard && !g_controller; }
++
++// Buttons held as the replay closed stay out of skating until let go.
++replay::ExitMask g_replayExitMask;
++
++replay::PadIn ToPadIn(const SvPad& pad) {
++    replay::PadIn in;
++    in.buttons = pad.buttons;
++    in.leftTrigger = pad.left_trigger, in.rightTrigger = pad.right_trigger;
++    in.leftX = pad.left_x, in.leftY = pad.left_y, in.rightX = pad.right_x, in.rightY = pad.right_y;
++    return in;
++}
++
++void ApplyReplayExitMask(SvPad& pad) {
++    if (!g_replayExitMask.Active()) return;
++    replay::PadIn in = ToPadIn(pad);
++    g_replayExitMask.Apply(in);
++    pad.buttons = in.buttons, pad.left_trigger = in.leftTrigger, pad.right_trigger = in.rightTrigger;
++}
++
++replay::PadIn ReplayPad(const SvPad& pad) {
++    if (!g_controller) return {};  // the pad frame is the keyboard's translation
++    return ToPadIn(pad);
++}
++
++replay::KeysIn ReplayKeys() {
++    replay::KeysIn k;
++    if (!g_keyboard) return k;
++    if (!GameFocused() || KeysTaken()) {
++        k.read = false;  // held keys keep their state: no false release
++        return k;
++    }
++    const auto held = [](int vk) { return (GetAsyncKeyState(vk) & 0x8000) != 0; };
++    k.play = held(VK_SPACE);
++    k.leave = held(VK_TAB) || held(VK_BACK);  // Tab (the gun key, Skate's Back) opened it
++    k.camera = held('C');
++    k.reverse = held('R');
++    k.left = held('A') || held(VK_LEFT);
++    k.right = held('D') || held(VK_RIGHT);
++    k.forward = held('W');
++    k.back = held('S');
++    k.up = held('E');
++    k.down = held('Q');
++    k.faster = held(VK_UP);
++    k.slower = held(VK_DOWN);
++    // The mouse: GTA's look normals and wheel, only while GTA says the mouse
++    // is in use (on a controller the look controls are the right stick).
++    if (Call<BOOL>(gta::IS_USING_KEYBOARD_AND_MOUSE, 2)) {
++        k.mouseX = Call<float>(gta::GET_DISABLED_CONTROL_NORMAL, 0, 1);  // INPUT_LOOK_LR
++        k.mouseY = Call<float>(gta::GET_DISABLED_CONTROL_NORMAL, 0, 2);  // INPUT_LOOK_UD
++        // Each wheel notch is one speed step (two notches on two frames: two steps).
++        k.wheelUp = Call<BOOL>(gta::IS_DISABLED_CONTROL_JUST_PRESSED, 0, 241) != 0;    // INPUT_CURSOR_SCROLL_UP
++        k.wheelDown = Call<BOOL>(gta::IS_DISABLED_CONTROL_JUST_PRESSED, 0, 242) != 0;  // INPUT_CURSOR_SCROLL_DOWN
++    }
++    return k;
++}
++
  // Skate and the lifecycle see a neutral pad while the settings menu is open.
  SvPad ReadPad() {
 -    if (!menu::IsOpen()) return ReadPadRaw();
@@ -7301,11 +7362,15 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
 +        return idle;
 +    }
 +    // GTA's pause menu and map (setting a marker) take the pad: nothing reaches skating.
-+    if (!menu::IsOpen() && !boardshop::IsOpen() && !gta::FrontendActive()) return ReadPadRaw();
++    if (!menu::IsOpen() && !boardshop::IsOpen() && !gta::FrontendActive()) {
++        SvPad pad = ReadPadRaw();
++        ApplyReplayExitMask(pad);
++        return pad;
++    }
      SvPad idle{};
      idle.connected = 1;
      return idle;
-@@ -521,7 +880,7 @@ enum FramePart { kPartLifecycle, kPartControlsRead, kPartControls, kPartInput, k
+@@ -521,7 +945,7 @@ enum FramePart { kPartLifecycle, kPartControlsRead, kPartControls, kPartInput, k
  const char* const kPartNames[kPartCount] = {"lifecycle", "controls read", "controls", "input", "world", "step", "pose", "camera",
                                              "board", "after", "hud", "menu", "records", "audio", "level"};
  double g_partMs[kPartCount]{};
@@ -7314,7 +7379,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
  double g_frameMs[kPartCount]{};
  double g_lapAt = 0.0;
  double QpcMs() {
-@@ -564,8 +923,9 @@ public:
+@@ -564,8 +988,9 @@ public:
          if (ms > maxFrame_) maxFrame_ = ms;
          if (ms > 50.0) {
              ++hitches_;
@@ -7325,7 +7390,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
          activeFrames_ += active ? 1 : 0;
          for (int i = 0; i < kPartCount; ++i) {
              if (active) g_partMs[i] += g_frameMs[i];
-@@ -573,10 +933,16 @@ public:
+@@ -573,10 +998,16 @@ public:
          }
          const double windowMs = static_cast<double>(now.QuadPart - window_.QuadPart) * 1000.0 / static_cast<double>(freq_.QuadPart);
          if (windowMs >= 10000.0) {
@@ -7343,7 +7408,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
                   frames_ ? double(draws) / frames_ : 0.0);
              if (util::g_verbose && activeFrames_) {
                  // Per skating frame, the skating path's parts; then the HUD draw on the render thread.
-@@ -586,19 +952,22 @@ public:
+@@ -586,19 +1017,22 @@ public:
                      sprintf_s(item, "%s%s %.3f", i ? ", " : "", kPartNames[i], g_partMs[i] / activeFrames_);
                      parts += item;
                  }
@@ -7369,7 +7434,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
          }
      }
      void Work(double ms) {
-@@ -611,6 +980,7 @@ private:
+@@ -611,6 +1045,7 @@ private:
      LARGE_INTEGER freq_{}, last_{}, window_{};
      unsigned frames_ = 0, hitches_ = 0, activeFrames_ = 0;
      double maxFrame_ = 0.0, workTotal_ = 0.0, workMax_ = 0.0, lastWork_ = 0.0;
@@ -7377,7 +7442,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
  };
  
  // ---- session ---------------------------------------------------------------
-@@ -656,8 +1026,8 @@ struct Session {
+@@ -656,8 +1091,8 @@ struct Session {
      bool wheelOpen = false;          // GTA's weapon wheel held open from GunButton
      DWORD wheelClosedAt = 0;
      bool aiming = false;
@@ -7388,7 +7453,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
      DWORD nextShot = 0;
      DWORD reloadDone = 0; // board reload in progress until (0 none, direct fire only)
      // GTA's own fire: 0 not seen yet, 1 GTA's shots (INPUT_ATTACK), -1 GTA did
-@@ -694,11 +1064,20 @@ struct Session {
+@@ -694,11 +1129,20 @@ struct Session {
      int radioTrack = 0;
      DWORD backBlockUntil = 0;  // GTA's interaction menu blocked until (main loop)
      DWORD radioDue = 0;
@@ -7409,7 +7474,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
      bool wipingOut = false; // last output was a Wipeout state (bail voice)
      // Bail impacts: the skater's velocity from Skate's positions (60 Hz ticks).
      SvVec3 bailPos{}, bailVel{};
-@@ -712,9 +1091,13 @@ struct Session {
+@@ -712,9 +1156,13 @@ struct Session {
      SvVec3 hitPos[3][3]{};
      std::uint64_t hitTick[3]{};
      int hitSamples = 0;
@@ -7423,7 +7488,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
      DWORD lastTrack = 0;       // last sv_lifecycle_track
      DWORD stateSince = 0;      // entered the current state (script-frame time: gaps without frames are skipped)
      DWORD lastLifecycleFrame = 0;
-@@ -722,7 +1105,9 @@ struct Session {
+@@ -722,7 +1170,9 @@ struct Session {
      std::uint64_t watchTick = 0;  // Skate output tick last seen while skating
      DWORD watchSince = 0;         // ... since (wall time)
      int watchFrames = 0;          // ... script frames since (a pause stops these)
@@ -7433,7 +7498,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
      bool yWasDown = true;
      bool trackingStarted = false; // preserves opt-out until the first board action
      // GTA ped state saved on entry and restored on leaving.
-@@ -735,6 +1120,8 @@ struct Session {
+@@ -735,6 +1185,8 @@ struct Session {
      // else (Menyoo, a teleport mod), and Skate must follow it, not put it back.
      float placed[3]{};
      bool placedValid = false;
@@ -7442,7 +7507,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
      bool keepPlace = false;     // Leave: the ped stays where it is
      bool teleportWait = false;  // waiting for the collision at a teleport target
      // GTA delegation (swim / climb): which action, since when, settled since.
-@@ -800,6 +1187,19 @@ bool PoseFacing(const float* pose, const int feet[4], float& out) {
+@@ -800,6 +1252,19 @@ bool PoseFacing(const float* pose, const int feet[4], float& out) {
      return true;
  }
  
@@ -7462,7 +7527,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
  // Turns `current` toward `target` by at most `maxStep` degrees.
  float TurnToward(float current, float target, float maxStep) {
      float d = std::fmod(target - current + 540.0f, 360.0f) - 180.0f;
-@@ -820,12 +1220,31 @@ bool SkateOwnsPlayer(const Session& s) {
+@@ -820,12 +1285,31 @@ bool SkateOwnsPlayer(const Session& s) {
      return s.state == LifeState::Entering || s.state == LifeState::Skating || s.state == LifeState::Leaving;
  }
  
@@ -7494,7 +7559,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
  // While Skate poses the real ped, GTA's IK (feet to ground, arm/head/torso
  // look-at) and gesture/ambient animation would rewrite limbs after our pose.
  void SetGtaPosing(Ped ped, bool enabled) {
-@@ -920,6 +1339,8 @@ void ImpactGrunts(Session& s, const Config& cfg, const float* pose, const int bo
+@@ -920,6 +1404,8 @@ void ImpactGrunts(Session& s, const Config& cfg, const float* pose, const int bo
          worst = std::max(worst, std::sqrt(x * x + y * y + z * z));
      }
      const DWORD now = GetTickCount();
@@ -7503,7 +7568,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
      // A new grunt more often than this cut the last one off before it played.
      if (!s.wipingOut || worst <= cfg.bailHitSpeed || now - s.lastGrunt <= 700) return;
      s.lastGrunt = now;
-@@ -970,11 +1391,53 @@ void NearMiss(Session& s, const Config& cfg, const std::vector<SvDynamicBody>& b
+@@ -970,11 +1456,53 @@ void NearMiss(Session& s, const Config& cfg, const std::vector<SvDynamicBody>& b
      }
  }
  
@@ -7557,7 +7622,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
      if (!SkateOwnsPlayer(s)) return;
      const bool wasSkating = s.state == LifeState::Skating;
      SetState(s, LifeState::Leaving, why);
-@@ -986,6 +1449,7 @@ void Leave(Session& s, const Config& cfg, const char* why, bool voluntary) {
+@@ -986,6 +1514,7 @@ void Leave(Session& s, const Config& cfg, const char* why, bool voluntary) {
      s.poseFadingOut = true;
      s.poseFadeOutSince = GetTickCount();
      boardnative::Stop(); // remove the instance; keep loaded model/type resident
@@ -7565,7 +7630,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
      pedcollision::Stop();
      if (s.ped && Call<BOOL>(gta::DOES_ENTITY_EXIST, s.ped)) SetGtaPosing(s.ped, true);
      // Final Skate pose before Skate stops stepping.
-@@ -1004,7 +1468,6 @@ void Leave(Session& s, const Config& cfg, const char* why, bool voluntary) {
+@@ -1004,7 +1533,6 @@ void Leave(Session& s, const Config& cfg, const char* why, bool voluntary) {
          s.fadingCamUntil = GetTickCount() + kHandOffMs;
      }
      s.cam = 0;
@@ -7573,7 +7638,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
      if (s.ped && Call<BOOL>(gta::DOES_ENTITY_EXIST, s.ped)) {
          const SvVec3 p = s.last.skater_position;
          const bool finite = std::isfinite(p.x) && std::isfinite(p.y) && std::isfinite(p.z);
-@@ -1155,6 +1618,12 @@ std::string g_slowCompatLayer;
+@@ -1155,6 +1683,12 @@ std::string g_slowCompatLayer;
  
  // The Skate session exists and the collision working set covers the player.
  bool AreaReady(const char*& why) {
@@ -7586,7 +7651,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
      SvLifecycleState l{};
      if (!g_runtime.LifecycleState(l)) {
          why = "no lifecycle state";
-@@ -1187,9 +1656,9 @@ void TryEnter(Session& s, const Config& cfg, bool strict) {
+@@ -1187,9 +1721,9 @@ void TryEnter(Session& s, const Config& cfg, bool strict) {
              return;
          }
      }
@@ -7599,7 +7664,16 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
          static bool logged = false;
          if (!logged) {
              logged = true;
-@@ -1258,6 +1727,7 @@ void TryEnter(Session& s, const Config& cfg, bool strict) {
+@@ -1199,7 +1733,7 @@ void TryEnter(Session& s, const Config& cfg, bool strict) {
+             Logf("SkateV Legacy: no controller: XInputGetState slots 0-3 return %lu %lu %lu %lu (this ASI's import %lu %lu %lu %lu)",
+                  codes[0][0], codes[0][1], codes[0][2], codes[0][3], codes[1][0], codes[1][1], codes[1][2], codes[1][3]);
+         }
+-        Notify(s, "SK8V needs a controller (Xbox or PlayStation); none is connected", 5000);
++        Notify(s, "No controller connected and the keyboard is off: connect a controller or set Keyboard=1 in SkateVLegacy.ini", 6000);
+         SetState(s, LifeState::Ready, "no controller");
+         return;
+     }
+@@ -1258,6 +1792,7 @@ void TryEnter(Session& s, const Config& cfg, bool strict) {
      SendCharacter(s, g_config);
      SetState(s, LifeState::Entering, strict ? "board action" : "menu");
      Logf("SkateV Legacy: entering off the board at %.2f %.2f %.2f heading %.1f", spawn.position.x, spawn.position.y, spawn.position.z, spawn.heading_degrees);
@@ -7607,7 +7681,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
  }
  
  // Tells the runtime which GTA character wears Skate's pose: the player's own
-@@ -1301,15 +1771,33 @@ void SendCharacter(const Session& s, const Config& cfg) {
+@@ -1301,15 +1836,33 @@ void SendCharacter(const Session& s, const Config& cfg) {
  }
  
  void BeginActive(Session& s, const Config& cfg) {
@@ -7642,7 +7716,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
      s.dynamicDue = 1.0f; // gather on the first skating frame
      {
          const Vector3 at = Call<Vector3>(gta::GET_FINAL_RENDERED_CAM_COORD);
-@@ -1317,11 +1805,16 @@ void BeginActive(Session& s, const Config& cfg) {
+@@ -1317,11 +1870,16 @@ void BeginActive(Session& s, const Config& cfg) {
          Call<void>(gta::SET_CAM_COORD, s.cam, at.x, at.y, at.z);
          Call<void>(gta::SET_CAM_ROT, s.cam, rot.x, rot.y, rot.z, 2);
      }
@@ -7661,7 +7735,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
      s.armed = s.aiming = false;
      s.nativeFire = 0, s.fireWas = false, s.wheelOpen = false;
      liveclip::Suspend(s.ped, false);
-@@ -1374,7 +1867,7 @@ void StopAim(Session& s, bool restoreCam) {
+@@ -1374,7 +1932,7 @@ void StopAim(Session& s, bool restoreCam) {
      s.aiming = false;
      s.aimCycle = 0;
      s.fireWas = false;
@@ -7670,7 +7744,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
      Log("SkateV Legacy: board aim off");
  }
  
-@@ -1392,7 +1885,7 @@ void StopAim(Session& s, bool restoreCam) {
+@@ -1392,7 +1950,7 @@ void StopAim(Session& s, bool restoreCam) {
  // Each control is named, so GTA's related actions (disableRelatedActions) are
  // not walked: that walk cost a player 2.4 ms a frame for the ~310 calls
  // (8 us each against 0.08 on the owner's PC).
@@ -7679,7 +7753,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
  
  // Script frames since each control last read non-zero. Only controls in use (or released within
  // the last frames, for GTA's just-released checks) are disabled: DISABLE_CONTROL_ACTION took
-@@ -1400,8 +1893,26 @@ bool g_weaponWheel = false;
+@@ -1400,8 +1958,26 @@ bool g_weaponWheel = false;
  std::uint8_t g_controlIdle[360]{};
  constexpr std::uint8_t kControlHoldFrames = 10;
  
@@ -7706,7 +7780,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
      bool skip[360]{};
      for (int c = 0; c < 360; ++c) {
          // INPUT_WEAPON_WHEEL_UD/LR/NEXT/PREV, SELECT_NEXT/PREV_WEAPON, SELECT_WEAPON
-@@ -1409,6 +1920,8 @@ void DisableSkateControls(std::uint16_t buttons, bool aiming) {
+@@ -1409,6 +1985,8 @@ void DisableSkateControls(std::uint16_t buttons, bool aiming) {
          skip[c] = (g_weaponWheel && ((c >= 12 && c <= 17) || c == 37 || c == 1 || c == 2)) ||
                    c == 199 || c == 200 || c == 170 || c == 288 || c == 289 || (c >= 296 && c <= 328) || c == 349 ||
                    (c == 19 && !(buttons & 0x0100)) ||
@@ -7715,7 +7789,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
                    (aiming && (c == 1 || c == 2 || c == 24 || c == 25 || c == 45 || (c >= 270 && c <= 273) || (c >= 290 && c <= 295)));
          if (skip[c]) continue;
          // GTA's value this frame whether or not it is disabled (scripts run after the input update).
-@@ -1418,10 +1931,41 @@ void DisableSkateControls(std::uint16_t buttons, bool aiming) {
+@@ -1418,10 +1996,41 @@ void DisableSkateControls(std::uint16_t buttons, bool aiming) {
      Lap(kPartControlsRead);
      for (int c = 0; c < 360; ++c)
          if (!skip[c] && g_controlIdle[c] <= kControlHoldFrames) Call<void>(gta::DISABLE_CONTROL_ACTION, 0, c, 0);
@@ -7757,7 +7831,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
  void StepRadio(Session& s, int dir) {
      const int n = Call<int>(gta::GET_NUM_UNLOCKED_RADIO_STATIONS);
      if (n <= 0) return;
-@@ -1433,7 +1977,7 @@ void StepRadio(Session& s, int dir) {
+@@ -1433,7 +2042,7 @@ void StepRadio(Session& s, int dir) {
          Call<void>(gta::SET_MOBILE_RADIO_ENABLED_DURING_GAMEPLAY, 0);
          Call<void>(gta::SET_AUDIO_FLAG, "MobileRadioInGame", 0);
          s.radioDue = 0;
@@ -7766,7 +7840,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
          return;
      }
      Call<void>(gta::SET_AUDIO_FLAG, "MobileRadioInGame", 1);
-@@ -1499,6 +2043,7 @@ void RadioTick(Session& s) {
+@@ -1499,6 +2108,7 @@ void RadioTick(Session& s) {
      std::string station = GameText(id);
      if (station.empty()) station = id ? id : "Radio";
      // Station as the heading, then song, then artist.
@@ -7774,7 +7848,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
      const bool shown = known ? hudoverlay::ShowRadio(station.c_str(), song.c_str(), artist.c_str(), id ? id : "")
                               : hudoverlay::ShowRadio(station.c_str(), "", "", id ? id : "");
      if (!shown) Notify(s, known ? song + " - " + artist : station, 2500);
-@@ -1581,7 +2126,7 @@ void GunProbe(Session& s, const char* state) {
+@@ -1581,7 +2191,7 @@ void GunProbe(Session& s, const char* state) {
  
  // GTA's camera takes over looking from where Skate's camera was (aim, wheel).
  void GameplayCam(Session& s) {
@@ -7783,7 +7857,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
          const Vector3 rot = Call<Vector3>(gta::GET_CAM_ROT, s.cam, 2);
          Call<void>(gta::SET_GAMEPLAY_CAM_RELATIVE_HEADING, rot.z - Call<float>(gta::GET_ENTITY_HEADING, s.ped));
          Call<void>(gta::SET_GAMEPLAY_CAM_RELATIVE_PITCH, rot.x, 1.0f);
-@@ -1604,10 +2149,19 @@ void BoardControls(Session& s, const Config& cfg, SvPad& pad) {
+@@ -1604,10 +2214,19 @@ void BoardControls(Session& s, const Config& cfg, SvPad& pad) {
      // Gun away, LB + d-pad left/right steps the radio (Skate 3's TRAX layout; LB + up/down is
      // Skate's session marker). The plain d-pad is Skate's gestures; a direction set to None
      // does not reach Skate.
@@ -7804,7 +7878,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
      if (!(buttons & 0x0100))
          for (int d = 0; d < 4; ++d)
              if (cfg.gestures[d] < 0) pad.buttons &= static_cast<std::uint16_t>(~(1u << d));
-@@ -1646,7 +2200,7 @@ void BoardControls(Session& s, const Config& cfg, SvPad& pad) {
+@@ -1646,7 +2265,7 @@ void BoardControls(Session& s, const Config& cfg, SvPad& pad) {
          s.wheelOpen = false;
          s.wheelClosedAt = tick;
          Call<void>(gta::HUD_FORCE_WEAPON_WHEEL, 0);
@@ -7813,7 +7887,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
          // GTA's own highlight is what the wheel picks; where it never moved
          // (no GTA task running on the ped), the stick's slice below.
          if (s.wheelLitMoved && s.wheelLastLit) s.wheelPick = s.wheelLastLit;
-@@ -1736,10 +2290,15 @@ void BoardControls(Session& s, const Config& cfg, SvPad& pad) {
+@@ -1736,10 +2355,15 @@ void BoardControls(Session& s, const Config& cfg, SvPad& pad) {
          }
      }
  
@@ -7830,7 +7904,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
              if (s.armed) {
                  Holster(s);
                  Log("SkateV Legacy: gun away");
-@@ -1750,6 +2309,7 @@ void BoardControls(Session& s, const Config& cfg, SvPad& pad) {
+@@ -1750,6 +2374,7 @@ void BoardControls(Session& s, const Config& cfg, SvPad& pad) {
          s.gunChordUsed = false;
      }
  
@@ -7838,7 +7912,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
      if (!s.armed) return;
  
      const std::string_view state(s.last.state_utf8);
-@@ -2017,7 +2577,251 @@ void BoardWeather(Session& s, const Config& cfg, const SvBoardPose* pose) {
+@@ -2017,7 +2642,251 @@ void BoardWeather(Session& s, const Config& cfg, const SvBoardPose* pose) {
      }
  }
  
@@ -8090,7 +8164,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
      Lap(kPartLifecycle);
      DisableSkateControls(pad.buttons, s.aiming);
      Lap(kPartControls);
-@@ -2063,20 +2867,36 @@ void UpdateActive(Session& s, const Config& cfg, const SvPad& pad) {
+@@ -2063,20 +2932,36 @@ void UpdateActive(Session& s, const Config& cfg, const SvPad& pad) {
      // gathered on the frames a step falls due, as fresh as before, not on
      // every rendered frame (at 185 fps the pool scan, its natives and the
      // runtime's prop triangles ran three times per step).
@@ -8129,7 +8203,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
          if (cfg.pedHitboxes) {
              const auto& parts = s.world.PedParts();
              g_runtime.SetPedParts(parts.data(), static_cast<std::uint32_t>(parts.size()));
-@@ -2117,6 +2937,7 @@ void UpdateActive(Session& s, const Config& cfg, const SvPad& pad) {
+@@ -2117,6 +3002,7 @@ void UpdateActive(Session& s, const Config& cfg, const SvPad& pad) {
              s.bailVel = v, s.bailVelValid = dt < 0.1f;
              s.bailPos = o.skater_position, s.bailTick = o.tick;
          } else if (!wipeout && s.wipingOut) {
@@ -8137,7 +8211,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
              s.lineAt = cfg.getUpSpeech.empty() ? 0 : now + 1200;
          }
          if (s.lineAt && now >= s.lineAt) {
-@@ -2128,6 +2949,57 @@ void UpdateActive(Session& s, const Config& cfg, const SvPad& pad) {
+@@ -2128,6 +3014,57 @@ void UpdateActive(Session& s, const Config& cfg, const SvPad& pad) {
      }
  
      const SvVec3 p = o.skater_position;
@@ -8195,7 +8269,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
      // keepTasks, keepIK, doWarp (CitizenFX docs; the pinned native DB calls
      // them axis flags). keepTasks 0 removed every task each tick: the live
      // clip, a vanilla clip and the aim task never ran. As SkateGTA-B4.
-@@ -2213,8 +3085,9 @@ void UpdateActive(Session& s, const Config& cfg, const SvPad& pad) {
+@@ -2213,8 +3150,9 @@ void UpdateActive(Session& s, const Config& cfg, const SvPad& pad) {
              }
          }
          static std::vector<float> s_pose(512 * 16);
@@ -8206,7 +8280,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
          if (posed) {
              posehook::PublishPose(s_pose.data(), static_cast<int>(n));
              ImpactGrunts(s, cfg, s_pose.data(), s_hitBones, o.tick);
-@@ -2226,7 +3099,16 @@ void UpdateActive(Session& s, const Config& cfg, const SvPad& pad) {
+@@ -2226,7 +3164,16 @@ void UpdateActive(Session& s, const Config& cfg, const SvPad& pad) {
      }
  
      Lap(kPartPose);
@@ -8224,7 +8298,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
          Call<void>(gta::SET_CAM_COORD, s.cam, o.camera_position.x, o.camera_position.y, o.camera_position.z);
          Call<void>(gta::SET_CAM_ROT, s.cam, o.camera_rotation.x, o.camera_rotation.y, o.camera_rotation.z, 2);
          float fov = o.camera_fov * cfg.fovScale;
-@@ -2239,16 +3121,15 @@ void UpdateActive(Session& s, const Config& cfg, const SvPad& pad) {
+@@ -2239,16 +3186,15 @@ void UpdateActive(Session& s, const Config& cfg, const SvPad& pad) {
          Call<void>(gta::SET_CAM_ROT, s.cam, -12.0f, 0.0f, o.skater_heading_degrees, 2);
          Call<void>(gta::SET_CAM_FOV, s.cam, 60.0f);
      }
@@ -8249,7 +8323,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
  
      Lap(kPartCamera);
      if (cfg.dynamicWorld) {
-@@ -2279,13 +3160,20 @@ void UpdateActive(Session& s, const Config& cfg, const SvPad& pad) {
+@@ -2279,13 +3225,20 @@ void UpdateActive(Session& s, const Config& cfg, const SvPad& pad) {
  
      Lap(kPartWorld);
      SvBoardPose boardPose{};
@@ -8274,7 +8348,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
          SvScoreState score{};
          g_runtime.Score(score);
          DrawHud(o, score, true);
-@@ -2323,8 +3211,16 @@ void LifecycleFrame(Session& s, const Config& cfg, bool f6) {
+@@ -2323,8 +3276,16 @@ void LifecycleFrame(Session& s, const Config& cfg, bool f6) {
          posehook::Uninstall(Log);
          s.poseFadingOut = false;
      }
@@ -8291,7 +8365,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
          const bool loaded = Call<BOOL>(gta::DOES_ENTITY_EXIST, player) &&
                              Call<BOOL>(gta::IS_PLAYER_PLAYING, Call<Player>(gta::PLAYER_ID)) &&
                              !Call<BOOL>(gta::GET_IS_LOADING_SCREEN_ACTIVE) && Call<BOOL>(gta::IS_SCREEN_FADED_IN) &&
-@@ -2348,10 +3244,17 @@ void LifecycleFrame(Session& s, const Config& cfg, bool f6) {
+@@ -2348,10 +3309,17 @@ void LifecycleFrame(Session& s, const Config& cfg, bool f6) {
      case LifeState::Ready: {
          if (cfg.life.backgroundPrepare || s.trackingStarted) Track(s, false);
          if (s.state == LifeState::Preparing) {
@@ -8313,7 +8387,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
              }
          }
          const SvPad pad = ReadPad();
-@@ -2361,8 +3264,14 @@ void LifecycleFrame(Session& s, const Config& cfg, bool f6) {
+@@ -2361,8 +3329,14 @@ void LifecycleFrame(Session& s, const Config& cfg, bool f6) {
              Call<void>(gta::DISABLE_CONTROL_ACTION, 0, 23, 1); // INPUT_ENTER
              if (pad.buttons & 0x8000) s.suppressEnterUntil = now + 100;
          }
@@ -8329,7 +8403,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
          if (f6 || wheel) TryEnter(s, cfg, !f6);
          // Refused (vehicle, water, ...): no invisible weapon left in hand.
          if (wheel && s.state == LifeState::Ready) Call<void>(gta::SET_CURRENT_PED_WEAPON, player, 0xA2719263, 1);
-@@ -2372,6 +3281,20 @@ void LifecycleFrame(Session& s, const Config& cfg, bool f6) {
+@@ -2372,6 +3346,20 @@ void LifecycleFrame(Session& s, const Config& cfg, bool f6) {
          // Board action accepted but the session / this area is still being
          // built: GTA keeps the player meanwhile; a second press or the menu cancels.
          Track(s, false);
@@ -8350,7 +8424,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
          if (s.teleportWait) {
              // After a teleport: GTA streams collision here; the player stays put until it has.
              const Vector3 here = Call<Vector3>(gta::GET_ENTITY_COORDS, player, 1);
-@@ -2384,6 +3307,10 @@ void LifecycleFrame(Session& s, const Config& cfg, bool f6) {
+@@ -2384,6 +3372,10 @@ void LifecycleFrame(Session& s, const Config& cfg, bool f6) {
              break;
          }
          if (const char* why = lifecycle::Blocked(player, false, cfg.life)) {
@@ -8361,7 +8435,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
              SetState(s, LifeState::Ready, why);
              break;
          }
-@@ -2430,11 +3357,16 @@ void LifecycleFrame(Session& s, const Config& cfg, bool f6) {
+@@ -2430,11 +3422,16 @@ void LifecycleFrame(Session& s, const Config& cfg, bool f6) {
          break;
      }
      case LifeState::Skating: {
@@ -8380,7 +8454,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
          if (yDown && !s.yWasDown) s.yHeldSince = now;
          if (!yDown) s.yHeldSince = 0;
          s.yWasDown = yDown;
-@@ -2447,6 +3379,38 @@ void LifecycleFrame(Session& s, const Config& cfg, bool f6) {
+@@ -2447,6 +3444,42 @@ void LifecycleFrame(Session& s, const Config& cfg, bool f6) {
          // whole pose, and these checks need only its status and tick.
          const SvOutput& o = s.last;
          const bool dead = Call<BOOL>(gta::IS_ENTITY_DEAD, s.ped, 0);
@@ -8405,13 +8479,17 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
 +            Call<void>(gta::ENABLE_CONTROL_ACTION, 0, 199, 1); // INPUT_FRONTEND_PAUSE
 +            Call<void>(gta::ENABLE_CONTROL_ACTION, 0, 200, 1); // INPUT_FRONTEND_PAUSE_ALTERNATE
 +            const bool stop = dead || f6 || !cfg.replay || gta::FrontendActive() || Call<BOOL>(gta::NETWORK_IS_SESSION_STARTED) ||
-+                              !replay::Tick(s.ped, pad, dt);
++                              !replay::Tick(s.ped, ReplayPad(pad), ReplayKeys(), dt);
 +            if (stop) s_replayClock.QuadPart = 0;
 +            if (!stop) {
-+                Text(replay::Status().c_str(), 0.5f, 0.94f, 0.32f, 255, 255, 255, true);
++                Text(replay::Status(ReplayOnKeyboard()).c_str(), 0.5f, 0.94f, 0.32f, 255, 255, 255, true);
 +                s.watchSince = now, s.watchFrames = 0;
 +                break;
 +            }
++            // Held keys and buttons (Q is Y, C is RT, Space is A on the keyboard)
++            // stay out of skating until let go: leaving never steps off or grabs.
++            g_replayExitMask.Start(ToPadIn(pad));
++            ApplyReplayExitMask(pad);
 +            EndReplay(s, cfg, &pad.buttons);
 +            s.yHeldSince = 0, s.yWasDown = true;  // the Y that cycled cameras is no put-away
 +            // Play goes on this very frame: the live pose and board replace the replay's.
@@ -8419,7 +8497,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
          if (o.tick != s.watchTick) s.watchTick = o.tick, s.watchSince = now, s.watchFrames = 0;
          const bool stalled = ++s.watchFrames > 120 && now - s.watchSince > 5000;
          if (o.status == SV_STATUS_ERROR) {
-@@ -2464,6 +3428,7 @@ void LifecycleFrame(Session& s, const Config& cfg, bool f6) {
+@@ -2464,6 +3497,7 @@ void LifecycleFrame(Session& s, const Config& cfg, bool f6) {
              Leave(s, cfg, heldAway ? "board put away (Y held)" : "menu", true);
          } else if (!CheckDelegation(s, cfg, pad)) {
              UpdateActive(s, cfg, pad);
@@ -8427,7 +8505,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
              // Y mounts/dismounts inside Skate. Holding Y or the menu puts the
              // board away and returns input/camera authority to GTA.
          }
-@@ -2526,6 +3491,58 @@ menu::Apply Bound(const char* key, std::function<void()> then = {}) {
+@@ -2526,6 +3560,58 @@ menu::Apply Bound(const char* key, std::function<void()> then = {}) {
      };
  }
  
@@ -8486,7 +8564,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
  void ApplyQuirk() {
      const Config& c = g_config;
      SvQuirkConfig q{};
-@@ -2561,6 +3578,297 @@ menu::Item Emote(const char* label, int direction, const Config& D) {
+@@ -2561,6 +3647,297 @@ menu::Item Emote(const char* label, int direction, const Config& D) {
      return i;
  }
  
@@ -8784,7 +8862,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
  std::vector<menu::Page> MenuPages(Session& s) {
      using namespace menu;
      const Config D{};
-@@ -2585,6 +3893,21 @@ std::vector<menu::Page> MenuPages(Session& s) {
+@@ -2585,6 +3962,21 @@ std::vector<menu::Page> MenuPages(Session& s) {
                 Bound("TruckTightness", [] { g_runtime.SetEquipment(g_config.truckTightness, g_config.wheelHardness); })),
          Number("Wheel hardness", "WheelHardness", D.wheelHardness, 0, 1, 0.05f, Fixed("%.2f"),
                 Bound("WheelHardness", [] { g_runtime.SetEquipment(g_config.truckTightness, g_config.wheelHardness); })),
@@ -8806,7 +8884,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
          Flag("Ramp lip rule", "LipRule", D.lipRule, Bound("LipRule", [] { g_runtime.SetLipRule(g_config.lipRule); })),
          Number("Air time limit", "AirTimeLimit", D.airTimeLimit, -1, 120, 5, LimitText,
                 Bound("AirTimeLimit", [] { g_runtime.SetAirLimit(g_config.airTimeLimit); })),
-@@ -2597,13 +3920,34 @@ std::vector<menu::Page> MenuPages(Session& s) {
+@@ -2597,13 +3989,36 @@ std::vector<menu::Page> MenuPages(Session& s) {
          Number("Hold Y to put the board away", "PutAwayHoldMs", static_cast<float>(D.putAwayHoldMs), 0, 2000, 100,
                 [](float v) { return v == 0.0f ? std::string("Off") : Fixed("%.0f ms")(v); }, Bound("PutAwayHoldMs")),
          Flag("Shooting on the board", "BoardAim", D.boardAim, Bound("BoardAim")),
@@ -8815,8 +8893,10 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
 +        Helped(Flag("Replay (tap Back)", "Replay", D.replay, Bound("Replay", [] {
 +                   replay::Configure(g_config.replay, g_config.replaySeconds, g_config.replayWorldScale, Log);
 +               })),
-+               "Tap Back while skating to watch the last seconds again, as in Skate 3: A play/pause, left stick scrubs, "
-+               "LB/RB speed, LT backwards, Y camera, B or Back returns to play where it stopped."),
++               "Tap Back (keyboard: Tab) while skating to watch the last seconds again, as in Skate 3. "
++               "Controller: A play/pause, left stick scrubs, LB/RB speed, LT backwards, Y camera, B or Back returns. "
++               "Keyboard: Space play/pause, A/D scrub, Up/Down or mouse wheel speed, hold R backwards, C camera, "
++               "free camera W A S D, E/Q up/down, mouse look; Tab or Backspace returns to play where it stopped."),
 +        Number("Replay length", "ReplaySeconds", D.replaySeconds, 10, 60, 5, Fixed("%.0f s"), Bound("ReplaySeconds", [] {
 +                   replay::Configure(g_config.replay, g_config.replaySeconds, g_config.replayWorldScale, Log);
 +               })),
@@ -8841,7 +8921,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
          Flag("Hall of Meat", "HallOfMeat", D.hallOfMeat, [&s](const std::string& v) {
              const bool on = std::atof(v.c_str()) != 0.0;
              if (g_runtime.IsLoaded() && g_runtime.SetHallOfMeat(on)) {
-@@ -2621,16 +3965,25 @@ std::vector<menu::Page> MenuPages(Session& s) {
+@@ -2621,16 +4036,25 @@ std::vector<menu::Page> MenuPages(Session& s) {
      }});
  
      pages.push_back({"Peds and vehicles", {
@@ -8869,7 +8949,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
      }});
  
      pages.push_back({"BackwardsMan", {
-@@ -2643,6 +3996,18 @@ std::vector<menu::Page> MenuPages(Session& s) {
+@@ -2643,6 +4067,18 @@ std::vector<menu::Page> MenuPages(Session& s) {
          }),
      }});
  
@@ -8888,7 +8968,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
      pages.push_back({"Audio", {
          Number("Skate volume", "AudioGtaGainDb", 1.4f, -30, 24, 1, Fixed("%+.1f dB"),
                 [](const std::string& v) { gtaaudio::SetGainDb(static_cast<float>(std::atof(v.c_str()))); }),
-@@ -2650,20 +4015,109 @@ std::vector<menu::Page> MenuPages(Session& s) {
+@@ -2650,20 +4086,109 @@ std::vector<menu::Page> MenuPages(Session& s) {
          Choice("Output", "AudioOutput", {"Gta", "Off"}, {"GTA mixer", "Off"}, {}, true),
      }});
  
@@ -9000,7 +9080,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
          Action("Play showcase line", [] { g_lineRequested.store(true); }),
          Action("Next showcase line", [] { g_lineNext.store(true); }),
          Action("Sound list overlay", [] { g_soundListToggle.store(true); }),
-@@ -2671,8 +4125,138 @@ std::vector<menu::Page> MenuPages(Session& s) {
+@@ -2671,8 +4196,138 @@ std::vector<menu::Page> MenuPages(Session& s) {
          Number("Aim twist limit", "AimTwist", D.aimTwist, 20, 180, 10, Fixed("%.0f deg"), Bound("AimTwist")),
          Flag("Log GTA's gun state", "GunProbe", D.gunProbe, Bound("GunProbe")),
          Flag("Skate with GTA's camera (frame cost A/B)", "GtaCamera", D.gtaCamera, Bound("GtaCamera")),
@@ -9139,7 +9219,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
          Number("Ped Z offset", "PedZOffset", D.pedZOffset, 0, 2, 0.05f, Fixed("%.2f m"), Bound("PedZOffset")),
          Number("Track width", "TrackWidth", D.trackWidth, 0.02f, 0.5f, 0.02f, Fixed("%.2f m"), Bound("TrackWidth")),
          Number("Bail hit speed", "BailHitSpeed", D.bailHitSpeed, 0, 20, 0.5f, Fixed("%.1f m/s"), Bound("BailHitSpeed")),
-@@ -2690,8 +4274,369 @@ std::vector<menu::Page> MenuPages(Session& s) {
+@@ -2690,8 +4345,369 @@ std::vector<menu::Page> MenuPages(Session& s) {
          Choice("Audio placement", "AudioGtaPlacement", {"Position", "Tracker"}, {"Emitter positions", "Player ped"}, {}, true),
          Flag("Editor audio tone", "AudioEditorTone", false, {}, true),
          Flag("Stall sampler", "StallSampler", D.stallSampler, {}, true),
@@ -9297,7 +9377,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
 +        {"BailTimeLimit", "Lie on the ground at most this long after a bail (0 = no limit)."},
 +        {"SkitchStandoff", "Distance kept behind a car while skitching."},
 +        {"SwimDepth", "Water depth where GTA's swimming takes over."},
-+        {"PutAwayHoldMs", "How long Y (E) must be held to put the board away."},
++        {"PutAwayHoldMs", "How long Y (keyboard: the get-off key, Q by default) must be held to put the board away."},
 +        {"BoardTracks", "Marks the board leaves on the ground."},
 +        {"WheelGlow", "Lights the wheels and the ground under them. Off by default; raise it for brighter glow."},
 +        {"CollisionView", "Draws what Skate collides with: green floor, cyan bank, red wall, purple underside, grey no grind (curb bevels, stair steps), orange moving objects, yellow grind rails."},
@@ -9510,7 +9590,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
  }
  
  void ScriptMain() {
-@@ -2728,29 +4673,50 @@ void ScriptMain() {
+@@ -2728,29 +4744,50 @@ void ScriptMain() {
      }
  
      g_config = LoadConfig();
@@ -9568,7 +9648,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
          boardstencil::Start(Log);
          recordsui::Start(g_runtime.Handle(), Log);
          Logf("SkateV Legacy: Hall of Meat %s (%s)", cfg.hallOfMeat ? "on" : "off",
-@@ -2778,16 +4744,44 @@ void ScriptMain() {
+@@ -2778,16 +4815,44 @@ void ScriptMain() {
               g_runtime.SetPosture(cfg.posture) && g_runtime.SetRidingStyle(cfg.ridingStyle) &&
                       g_runtime.SetEquipment(cfg.truckTightness, cfg.wheelHardness)
                   ? "runtime option present" : "runtime option absent");
@@ -9614,7 +9694,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
      FrameMonitor monitor;
      stall::SetLog(Log);
      // Line= may list several files separated by ';': the Dev menu replays the
-@@ -2808,7 +4802,8 @@ void ScriptMain() {
+@@ -2808,7 +4873,8 @@ void ScriptMain() {
              static DWORD nextFetch = 0;
              static std::string list;
              if (g_soundListToggle.exchange(false)) showList = !showList;
@@ -9624,7 +9704,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
                  if (GetTickCount() >= nextFetch) {
                      nextFetch = GetTickCount() + 250;
                      list = g_runtime.AudioDebugText();
-@@ -2850,38 +4845,137 @@ void ScriptMain() {
+@@ -2850,38 +4916,137 @@ void ScriptMain() {
                  Call<void>(gta::HUD_FORCE_WEAPON_WHEEL, 0);
              }
              EnforceHeldPed(s);
@@ -9767,7 +9847,7 @@ index 243abe834302ff6456b90982f3e1cb0caaf2fc2e..c1bd961c5464a8f43b393ecf49fa9178
          Lap(kPartLevel);
          monitor.Work(monitor.Now() - workStart);
          WAIT(0);
-@@ -2903,6 +4997,8 @@ BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID reserved) {
+@@ -2903,6 +5068,8 @@ BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID reserved) {
          packloader::Install(g_gameDir, Log);
          keyboardHandlerRegister(Keyboard);
          scriptRegister(module, ScriptMain);
@@ -11808,10 +11888,10 @@ index b28d6b6657056377b66c44645bc784284b59674d..417106ef47031a21535399aac931625f
  }
 diff --git a/host/src/replay.cpp b/host/src/replay.cpp
 new file mode 100644
-index 0000000000000000000000000000000000000000..187067ce57a07ac6a3ef787d20cebde8522a2296
+index 0000000000000000000000000000000000000000..3426e2f84d220f21ef3217d7503839f7cd9f2c6d
 --- /dev/null
 +++ b/host/src/replay.cpp
-@@ -0,0 +1,319 @@
+@@ -0,0 +1,314 @@
 +#include "replay.h"
 +
 +#include <algorithm>
@@ -11853,8 +11933,7 @@ index 0000000000000000000000000000000000000000..187067ce57a07ac6a3ef787d20cebde8
 +int g_cam = 0;               // the replay's own camera
 +float g_eye[3] = {}, g_look[3] = {};  // follow/free/tripod state
 +float g_yaw = 0.0f, g_pitch = 0.0f;
-+std::uint16_t g_prevButtons = 0;
-+bool g_fresh = false;        // the first replay frame takes the buttons held as they are
++Input g_input;               // both devices; the first frame takes what is held as it is
 +unsigned g_applyCalls = 0;
 +
 +void Log(const char* text) {
@@ -11911,13 +11990,8 @@ index 0000000000000000000000000000000000000000..187067ce57a07ac6a3ef787d20cebde8
 +    }
 +}
 +
-+float Axis(std::int16_t v) {
-+    const float x = v / 32767.0f;
-+    return std::fabs(x) < 0.2f ? 0.0f : x;
-+}
-+
 +// Camera position/rotation/fov for the presented frame.
-+void Aim(const Recording::Sample& s, float dt, const SvPad& pad) {
++void Aim(const Recording::Sample& s, float dt, const Command& in) {
 +    const Frame& a = *s.a;
 +    const Frame& b = *s.b;
 +    float root[3], vel[3];
@@ -11944,11 +12018,11 @@ index 0000000000000000000000000000000000000000..187067ce57a07ac6a3ef787d20cebde8
 +        std::memcpy(eye, g_eye, sizeof(eye));
 +        break;
 +    case Free: {
-+        g_yaw -= Axis(pad.right_x) * 120.0f * dt;
-+        g_pitch = std::clamp(g_pitch + Axis(pad.right_y) * 90.0f * dt, -85.0f, 85.0f);
++        g_yaw += in.lookYaw;
++        g_pitch = std::clamp(g_pitch + in.lookPitch, -85.0f, 85.0f);
 +        const float yaw = g_yaw * 0.01745329f;
-+        const float fwd = Axis(pad.left_y) * 8.0f * dt, side = Axis(pad.left_x) * 8.0f * dt;
-+        const float up = (pad.right_trigger - pad.left_trigger) / 255.0f * 6.0f * dt;
++        const float fwd = in.move[1] * 8.0f * dt, side = in.move[0] * 8.0f * dt;
++        const float up = in.move[2] * 6.0f * dt;
 +        g_eye[0] += -std::sin(yaw) * fwd + std::cos(yaw) * side;
 +        g_eye[1] += std::cos(yaw) * fwd + std::sin(yaw) * side;
 +        g_eye[2] += up;
@@ -12057,7 +12131,7 @@ index 0000000000000000000000000000000000000000..187067ce57a07ac6a3ef787d20cebde8
 +    Call<void>(RENDER_SCRIPT_CAMS, 1, 0, 0, 1, 0, 0);
 +    Call<void>(SET_TIME_SCALE, g_worldScale);
 +    gtaaudio::SetReplayPaused(true);
-+    g_fresh = true;
++    g_input.Reset();
 +    posehook::TakeApplyTime();
 +    g_applyCalls = 0;
 +    (void)ped;
@@ -12067,25 +12141,22 @@ index 0000000000000000000000000000000000000000..187067ce57a07ac6a3ef787d20cebde8
 +    return true;
 +}
 +
-+bool Tick(int ped, const SvPad& pad, float dt) {
++bool Tick(int ped, const PadIn& pad, const KeysIn& keys, float dt) {
 +    if (!g_active) return false;
 +    // GTA's controls are taken by the caller as in skating (DisableSkateControls),
 +    // never all at once: that would stop GTA's own recorder.
 +    Call<void>(HIDE_HUD_AND_RADAR_THIS_FRAME);
-+    if (std::exchange(g_fresh, false)) g_prevButtons = pad.buttons;
-+    const std::uint16_t pressed = pad.buttons & ~g_prevButtons;
-+    const std::uint16_t released = g_prevButtons & ~pad.buttons;
-+    g_prevButtons = pad.buttons;
-+    // B or Back leaves on the release, so the press never reaches skating
-+    // afterwards (a Back release there toggles the gun or opens the replay).
-+    if (released & (0x2000 | 0x0020)) return false;
-+    if (pressed & 0x1000) {                          // A
++    const Command in = g_input.Update(pad, keys, dt);
++    // B, Back, Tab or Backspace leaves on the release, so the press never reaches
++    // skating afterwards (a Back release there toggles the gun or opens the replay).
++    if (in.leave) return false;
++    if (in.playPause) {
 +        if (!g_head.playing && g_head.time >= g_rec.End()) g_head.time = g_rec.Start();
 +        g_head.playing = !g_head.playing;
 +    }
-+    if (pressed & 0x0100) g_head.Slower();  // LB
-+    if (pressed & 0x0200) g_head.Faster();  // RB
-+    if (pressed & 0x8000) {                 // Y
++    if (in.slower) g_head.Slower();
++    if (in.faster) g_head.Faster();
++    if (in.nextCamera) {
 +        g_camera = (g_camera + 1) % kCameras;
 +        if (g_camera == Tripod || g_camera == Free) {
 +            const Vector3 c = Call<Vector3>(GET_CAM_COORD, g_cam);
@@ -12093,14 +12164,14 @@ index 0000000000000000000000000000000000000000..187067ce57a07ac6a3ef787d20cebde8
 +        }
 +    }
 +    if (g_camera != Free) {
-+        g_head.reverse = pad.left_trigger > 128;
-+        if (!g_head.playing) g_head.time += Axis(pad.left_x) * dt * 2.0;  // scrub
++        g_head.reverse = in.reverse;
++        if (!g_head.playing) g_head.time += in.scrub * dt * 2.0;  // scrub
 +    }
 +    g_head.Advance(dt, g_rec.Start(), g_rec.End());
 +    const Recording::Sample s = g_rec.At(g_head.time);
 +    if (s.a) {
 +        Present(ped, s);
-+        Aim(s, dt, pad);
++        Aim(s, dt, in);
 +    }
 +    DrawTimeline();
 +    g_applyCalls += posehook::TakeApplyTime().calls;
@@ -12122,21 +12193,25 @@ index 0000000000000000000000000000000000000000..187067ce57a07ac6a3ef787d20cebde8
 +    Log(text);
 +}
 +
-+std::string Status() {
-+    char text[160];
++std::string Status(bool keyboard) {
++    char text[256];
 +    static const char* speeds[] = {"1/4x", "1/2x", "1x", "2x"};
-+    std::snprintf(text, sizeof(text), "REPLAY  %s%s  %s camera  %.1f / %.1f s   A play/pause  LB/RB speed  LT reverse  Y camera  B back",
-+                  g_head.reverse ? "-" : "", speeds[g_head.speed], kCameraNames[g_camera], g_head.time - g_rec.Start(), g_rec.Length());
++    const char* help = !keyboard ? (g_camera == Free ? "A play/pause  LB/RB speed  Y camera  left stick move  RT/LT up/down  right stick look  B back"
++                                                     : "A play/pause  left stick scrub  LB/RB speed  hold LT reverse  Y camera  B back")
++                       : g_camera == Free ? "Space play/pause  Up/Down or wheel speed  C camera  W A S D move  E/Q up/down  mouse look  Tab back"
++                                          : "Space play/pause  A/D scrub  Up/Down or wheel speed  hold R reverse  C camera  Tab back";
++    std::snprintf(text, sizeof(text), "REPLAY  %s%s  %s camera  %.1f / %.1f s   %s", g_head.reverse ? "-" : "", speeds[g_head.speed],
++                  kCameraNames[g_camera], g_head.time - g_rec.Start(), g_rec.Length(), help);
 +    return text;
 +}
 +
 +}  // namespace replay
 diff --git a/host/src/replay.h b/host/src/replay.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..f449924d1426bd37b47b61bf46a7b4a6db73da15
+index 0000000000000000000000000000000000000000..7a0e8488150bddfdb07c047a2b887dbe4fb06785
 --- /dev/null
 +++ b/host/src/replay.h
-@@ -0,0 +1,41 @@
+@@ -0,0 +1,43 @@
 +#pragma once
 +// Skate 3's replay editor in GTA, phase 1 (design 2026-11-02-replay-editor):
 +// the last seconds of skating (skater, board, camera) recorded once per
@@ -12167,28 +12242,31 @@ index 0000000000000000000000000000000000000000..f449924d1426bd37b47b61bf46a7b4a6
 +// sound paused. False when not ready.
 +bool Enter(int ped);
 +bool Active();
-+// One script frame (`dt` real seconds): input, playhead, presentation and the
-+// on-screen help. False when the player asked to leave (B or Back).
-+bool Tick(int ped, const SvPad& pad, float dt);
++// One script frame (`dt` real seconds): input from the controller and the
++// keyboard and mouse (replay_logic Input), playhead, presentation.
++// False when the player asked to leave (B, Back, Tab or Backspace).
++bool Tick(int ped, const PadIn& pad, const KeysIn& keys, float dt);
 +// Ends a running replay (idempotent): time scale, camera (the caller makes
 +// its own camera render again), controls, Skate's sound. The caller puts the
 +// ped back where play stopped.
 +void Exit();
-+// Status for the help line ("1/2x  Follow  12.3 / 30.0 s").
-+std::string Status();
++// Status and help line ("1/2x  Follow  12.3 / 30.0 s  ..."), naming the
++// keyboard's keys or the controller's buttons.
++std::string Status(bool keyboard);
 +
 +}  // namespace replay
 diff --git a/host/src/replay_logic.cpp b/host/src/replay_logic.cpp
 new file mode 100644
-index 0000000000000000000000000000000000000000..42673eb13d5025a95926a0ff0cffe715c211288f
+index 0000000000000000000000000000000000000000..44490cc458bdc3495158f933155a13c63e60bba5
 --- /dev/null
 +++ b/host/src/replay_logic.cpp
-@@ -0,0 +1,102 @@
+@@ -0,0 +1,151 @@
 +#include "replay_logic.h"
 +
 +#include <algorithm>
 +#include <cmath>
 +#include <iterator>
++#include <utility>
 +
 +namespace replay {
 +
@@ -12285,13 +12363,61 @@ index 0000000000000000000000000000000000000000..42673eb13d5025a95926a0ff0cffe715
 +    return false;
 +}
 +
++float StickAxis(std::int16_t v) {
++    const float x = std::max(-1.0f, v / 32767.0f);
++    return std::fabs(x) < 0.2f ? 0.0f : x;
++}
++
++void ExitMask::Apply(PadIn& pad) {
++    buttons_ &= pad.buttons;
++    lt_ = lt_ && pad.leftTrigger > 30;
++    rt_ = rt_ && pad.rightTrigger > 30;
++    pad.buttons &= static_cast<std::uint16_t>(~buttons_);
++    if (lt_) pad.leftTrigger = 0;
++    if (rt_) pad.rightTrigger = 0;
++}
++
++Command Input::Update(const PadIn& pad, const KeysIn& in, float dt) {
++    // Keys not read this frame (focus lost, a menu has them) keep their last
++    // state: a Backspace held into an alt-tab is no release.
++    KeysIn keys = in.read ? in : prevKeys_;
++    if (!in.read) keys.wheelUp = keys.wheelDown = false, keys.mouseX = keys.mouseY = 0.0f;
++    if (std::exchange(fresh_, false)) prevPad_ = pad.buttons, prevKeys_ = keys;
++    const std::uint16_t pressed = pad.buttons & ~prevPad_;
++    const std::uint16_t released = prevPad_ & ~pad.buttons;
++    const auto down = [&](bool KeysIn::*k) { return keys.*k && !(prevKeys_.*k); };
++    const auto up = [&](bool KeysIn::*k) { return !(keys.*k) && prevKeys_.*k; };
++    const auto clamp1 = [](float v) { return std::clamp(v, -1.0f, 1.0f); };
++    Command c;
++    // B or Back (Backspace) leave on the release, so the press never
++    // reaches skating afterwards.
++    c.leave = (released & (0x2000 | 0x0020)) || up(&KeysIn::leave);
++    c.playPause = (pressed & 0x1000) || down(&KeysIn::play);
++    c.slower = (pressed & 0x0100) || down(&KeysIn::slower) || keys.wheelDown;
++    c.faster = (pressed & 0x0200) || down(&KeysIn::faster) || keys.wheelUp;
++    c.nextCamera = (pressed & 0x8000) || down(&KeysIn::camera);
++    c.reverse = pad.leftTrigger > 128 || keys.reverse;
++    const float side = static_cast<float>(keys.right) - static_cast<float>(keys.left);
++    c.scrub = clamp1(StickAxis(pad.leftX) + side);
++    c.move[0] = clamp1(StickAxis(pad.leftX) + side);
++    c.move[1] = clamp1(StickAxis(pad.leftY) + static_cast<float>(keys.forward) - static_cast<float>(keys.back));
++    c.move[2] = clamp1((pad.rightTrigger - pad.leftTrigger) / 255.0f + static_cast<float>(keys.up) - static_cast<float>(keys.down));
++    // The right stick turns at 120 / 90 degrees a second; the mouse as in the
++    // object dropper (8 / 6 degrees per look normal).
++    c.lookYaw = -StickAxis(pad.rightX) * 120.0f * dt - keys.mouseX * 8.0f;
++    c.lookPitch = StickAxis(pad.rightY) * 90.0f * dt - keys.mouseY * 6.0f;
++    prevPad_ = pad.buttons;
++    prevKeys_ = keys;
++    return c;
++}
++
 +}  // namespace replay
 diff --git a/host/src/replay_logic.h b/host/src/replay_logic.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..8136adb50e22afa06e399587f20497167bc01a44
+index 0000000000000000000000000000000000000000..f4c4d410691844c9539c68ff8143c61c9dca1f2c
 --- /dev/null
 +++ b/host/src/replay_logic.h
-@@ -0,0 +1,93 @@
+@@ -0,0 +1,148 @@
 +#pragma once
 +// Replay (design 2026-11-02-replay-editor): the rolling recording of what
 +// skating showed (skater root, bone matrices, board, camera) and the
@@ -12368,6 +12494,61 @@ index 0000000000000000000000000000000000000000..8136adb50e22afa06e399587f2049716
 +    void Faster() { if (speed + 1 < static_cast<int>(std::size(kSpeeds))) ++speed; }
 +    void Slower() { if (speed > 0) --speed; }
 +};
++
++// The replay's controls from either device, read the same way (design
++// 2026-11-09-replay-input). A controller and the keyboard and mouse work
++// side by side; the keyboard keys are fixed and named in the help line.
++struct PadIn {                     // XInput layout
++    std::uint16_t buttons = 0;
++    std::uint8_t leftTrigger = 0, rightTrigger = 0;
++    std::int16_t leftX = 0, leftY = 0, rightX = 0, rightY = 0;
++};
++struct KeysIn {                    // held this frame
++    bool play = false;             // Space
++    bool read = true;              // false: no focus or a menu has the keys (held state kept, no edges)
++    bool faster = false, slower = false;  // Up / Down arrow (held)
++    bool wheelUp = false, wheelDown = false;  // a mouse wheel notch this frame (one step each, no edge test)
++    bool camera = false;           // C
++    bool leave = false;            // Tab or Backspace
++    bool reverse = false;          // R
++    bool left = false, right = false;     // A / D or Left / Right arrow
++    bool forward = false, back = false;   // W / S
++    bool up = false, down = false;        // E / Q
++    float mouseX = 0.0f, mouseY = 0.0f;   // GTA's look normals this frame (0: mouse not in use)
++};
++struct Command {
++    bool playPause = false, slower = false, faster = false, nextCamera = false, leave = false;
++    bool reverse = false;          // held
++    float scrub = 0.0f;            // -1..1, while paused
++    float move[3] = {};            // free camera: right, forward, up, each -1..1
++    float lookYaw = 0.0f, lookPitch = 0.0f;  // degrees to add this frame
++};
++// Edges come from the previous frame; the first frame after Reset only
++// takes the held state, so keys and buttons held on entry do nothing.
++class Input {
++public:
++    void Reset() { fresh_ = true; }
++    Command Update(const PadIn& pad, const KeysIn& keys, float dt);
++private:
++    bool fresh_ = true;
++    std::uint16_t prevPad_ = 0;
++    KeysIn prevKeys_{};
++};
++// Buttons and triggers held when the replay closes (keyboard: a held Q is Y,
++// C is RT, Space is A) stay out of skating until each is let go, so leaving
++// never steps off the board, grabs or pushes.
++class ExitMask {
++public:
++    void Start(const PadIn& held) { buttons_ = held.buttons, lt_ = held.leftTrigger > 30, rt_ = held.rightTrigger > 30; }
++    // Clears what was let go, then removes what is still masked from `pad`.
++    void Apply(PadIn& pad);
++    bool Active() const { return buttons_ || lt_ || rt_; }
++private:
++    std::uint16_t buttons_ = 0;
++    bool lt_ = false, rt_ = false;
++};
++// A stick axis with the 20 % dead zone, -1..1.
++float StickAxis(std::int16_t v);
 +
 +// Back: a tap (pressed and released within `tapMs`, nothing else pressed
 +// meanwhile) opens the replay; held longer it stays the gun button.
@@ -14699,10 +14880,10 @@ index 0000000000000000000000000000000000000000..6f2784278541c950ce32cb4653485249
 +}
 diff --git a/host/tests/replay_tests.cpp b/host/tests/replay_tests.cpp
 new file mode 100644
-index 0000000000000000000000000000000000000000..749618d449f9c2418d5ab26870d3b41bf9e71ee3
+index 0000000000000000000000000000000000000000..850661b0751e7db616c157250a03a45df9dc7459
 --- /dev/null
 +++ b/host/tests/replay_tests.cpp
-@@ -0,0 +1,97 @@
+@@ -0,0 +1,214 @@
 +#include "../src/replay_logic.cpp"
 +#include <cassert>
 +#include <cmath>
@@ -14796,6 +14977,123 @@ index 0000000000000000000000000000000000000000..749618d449f9c2418d5ab26870d3b41b
 +    assert(!t.Update(false, false, 6000));  // already released: just re-armed
 +    assert(!t.Update(true, false, 6100));
 +    assert(t.Update(false, false, 6200));   // the next tap opens it again
++
++    // Input: the controller and the keyboard and mouse give the same commands.
++    {
++        Input in;
++        PadIn pad;
++        KeysIn keys;
++        pad.buttons = 0x1000;  // A held on entry: no play/pause
++        Command c = in.Update(pad, keys, 0.016f);
++        assert(!c.playPause && !c.leave);
++        pad.buttons = 0;
++        c = in.Update(pad, keys, 0.016f);
++        pad.buttons = 0x1000;
++        assert(in.Update(pad, keys, 0.016f).playPause);
++        assert(!in.Update(pad, keys, 0.016f).playPause);  // held: one edge
++        pad.buttons = 0;
++        in.Update(pad, keys, 0.016f);
++        keys.play = true;
++        assert(in.Update(pad, keys, 0.016f).playPause);   // Space
++        keys.play = false;
++        keys.camera = true;
++        assert(in.Update(pad, keys, 0.016f).nextCamera);  // C
++        keys.camera = false;
++        keys.faster = true;
++        assert(in.Update(pad, keys, 0.016f).faster);      // Up arrow or wheel
++        keys.faster = false;
++        // Backspace leaves on the release, like B and Back.
++        keys.leave = true;
++        assert(!in.Update(pad, keys, 0.016f).leave);
++        keys.leave = false;
++        assert(in.Update(pad, keys, 0.016f).leave);
++        pad.buttons = 0x2000;
++        assert(!in.Update(pad, keys, 0.016f).leave);
++        pad.buttons = 0;
++        assert(in.Update(pad, keys, 0.016f).leave);
++        // Keys held when the replay opens do nothing until let go.
++        in.Reset();
++        keys.leave = true;
++        in.Update(pad, keys, 0.016f);
++        keys.leave = false;
++        assert(in.Update(pad, keys, 0.016f).leave);  // its release still leaves (as before: B held on entry)
++        // Axes: keys reach full throw, the stick's dead zone holds, both clamp.
++        keys = KeysIn{};
++        keys.right = true;
++        keys.forward = true;
++        keys.up = true;
++        c = in.Update(pad, keys, 0.016f);
++        assert(c.scrub == 1.0f && c.move[0] == 1.0f && c.move[1] == 1.0f && c.move[2] == 1.0f);
++        pad.leftX = 32767;
++        assert(in.Update(pad, keys, 0.016f).move[0] == 1.0f);
++        keys = KeysIn{};
++        pad = PadIn{};
++        pad.leftX = 5000;  // inside the dead zone
++        assert(in.Update(pad, keys, 0.016f).scrub == 0.0f);
++        pad.leftX = -32768;
++        assert(in.Update(pad, keys, 0.016f).scrub == -1.0f);
++        pad = PadIn{};
++        pad.leftTrigger = 200;
++        c = in.Update(pad, keys, 0.016f);
++        assert(c.reverse && c.move[2] < -0.7f);
++        pad = PadIn{};
++        keys.reverse = true;
++        assert(in.Update(pad, keys, 0.016f).reverse);    // hold R
++        // Look: mouse right turns right (yaw down), mouse up looks up, as the stick.
++        keys = KeysIn{};
++        keys.mouseX = 0.5f;
++        keys.mouseY = -0.5f;
++        c = in.Update(pad, keys, 0.016f);
++        assert(c.lookYaw < 0.0f && c.lookPitch > 0.0f);
++        keys = KeysIn{};
++        pad.rightX = 32767;
++        pad.rightY = 32767;
++        c = in.Update(pad, keys, 0.5f);
++        assert(std::fabs(c.lookYaw + 60.0f) < 1e-3f && std::fabs(c.lookPitch - 45.0f) < 1e-3f);
++    }
++
++    // Review 2026-11-09: wheel notches on consecutive frames are two steps;
++    // keys not read (focus lost) are no release.
++    {
++        Input in;
++        PadIn pad;
++        KeysIn keys;
++        in.Update(pad, keys, 0.016f);
++        keys.wheelUp = true;
++        assert(in.Update(pad, keys, 0.016f).faster);
++        assert(in.Update(pad, keys, 0.016f).faster);
++        keys = KeysIn{};
++        keys.leave = true;
++        in.Update(pad, keys, 0.016f);
++        KeysIn unread;
++        unread.read = false;
++        assert(!in.Update(pad, unread, 0.016f).leave);  // alt-tab with Backspace held
++        assert(!in.Update(pad, keys, 0.016f).leave);    // back, still held
++        keys.leave = false;
++        assert(in.Update(pad, keys, 0.016f).leave);     // the real release
++    }
++    // Held on leaving: masked until let go, then back to normal.
++    {
++        ExitMask m;
++        PadIn held;
++        held.buttons = 0x8000 | 0x1000;  // Y (Q) and A (Space)
++        held.rightTrigger = 255;         // RT (C)
++        m.Start(held);
++        PadIn p = held;
++        m.Apply(p);
++        assert(p.buttons == 0 && p.rightTrigger == 0 && m.Active());
++        p = PadIn{};
++        p.buttons = 0x1000;              // Q and C let go, Space still held
++        m.Apply(p);
++        assert(p.buttons == 0);
++        p = PadIn{};
++        m.Apply(p);
++        assert(!m.Active());
++        p.buttons = 0x8000;
++        p.rightTrigger = 200;
++        m.Apply(p);
++        assert(p.buttons == 0x8000 && p.rightTrigger == 200);  // a new press goes through
++    }
 +
 +    std::cout << "replay tests passed\n";
 +    return 0;
@@ -20143,10 +20441,10 @@ index 0000000000000000000000000000000000000000..772204eba936715c8b677b332c4034b3
 +}
 diff --git a/rust/skate-input/src/hints.rs b/rust/skate-input/src/hints.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..b56b0e67c0bb65ac1e56012b11343da52a766200
+index 0000000000000000000000000000000000000000..679b54a5890a8d0e77b63563e33ec0fa75cbd721
 --- /dev/null
 +++ b/rust/skate-input/src/hints.rs
-@@ -0,0 +1,159 @@
+@@ -0,0 +1,164 @@
 +//! The controls a HUD shows while skating and in the object dropper, named
 +//! by what the player has them on: the controller's buttons, or the keys
 +//! they bound themselves (`Controls`), never the defaults.
@@ -20219,6 +20517,7 @@ index 0000000000000000000000000000000000000000..b56b0e67c0bb65ac1e56012b11343da5
 +    push(&mut out, c, pad, "LB + Left", &["retry"], "Checkpoint");
 +    push(&mut out, c, pad, "LB + Right", &["object_dropper"], "Object dropper");
 +    push(&mut out, c, pad, "", &["camera"], "First / third person");
++    push(&mut out, c, pad, "Tap Back", &["back"], "Replay");
 +    out
 +}
 +
@@ -20259,6 +20558,7 @@ index 0000000000000000000000000000000000000000..b56b0e67c0bb65ac1e56012b11343da5
 +    push(&mut out, c, false, "", &["retry", "object_dropper"], "Radio: previous, next station");
 +    push(&mut out, c, false, "", &["marker_place"], "Set a marker");
 +    push(&mut out, c, false, "", &["marker_return"], "Hold: back to the marker");
++    push(&mut out, c, false, "", &["back"], "Tap: replay");
 +    out
 +}
 +
@@ -20304,6 +20604,9 @@ index 0000000000000000000000000000000000000000..b56b0e67c0bb65ac1e56012b11343da5
 +        assert!(d.iter().any(|(k, w)| k == "Z, C" && w.starts_with("Lower")));
 +        assert_eq!(one(&c, true, "LB + Down", "marker_place"), "N / LB + Down");
 +        assert_eq!(skating(&c, false, true)[0].1, "Walk");
++        // The replay is named on both devices.
++        assert!(keyboard(&c, false).iter().any(|(k, w)| k == "Backspace" && *w == "Tap: replay"));
++        assert!(skating(&c, true, false).iter().any(|(k, w)| k == "Backspace / Tap Back" && *w == "Replay"));
 +    }
 +}
 diff --git a/rust/skate-input/src/keys.rs b/rust/skate-input/src/keys.rs

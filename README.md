@@ -6,7 +6,7 @@
 Joining players need GTA V Legacy and [FiveM](https://fivem.net/); the server sends the skate resources automatically.
 See the [short joining guide](FIVEM-JOIN.md). The ZIP is for server hosts. The current prototype fails to load its board model; full animations, shops and F10 are not included. Singleplayer validation currently takes priority.
 
-**Current release: [v0.8.0](https://github.com/Manatros/GTAxSkate/releases/tag/v0.8.0)** — published on 9 November 2026 (SK8V 1.1.10). Skatepark collision from the visible park models, collectibles and trick lines, replay, a reworked Skate Shop and grind lines on train rails and ramp rims. See the [known issues](#known-issues). Historical privacy-affected downloads remain withdrawn; see [privacy guidance](PRIVACY.md).
+**Current release: [v0.8.1](https://github.com/Manatros/GTAxSkate/releases/tag/v0.8.1)** — published on 9 November 2026 (SK8V 1.1.10). v0.8.1 adds replay controls on keyboard and mouse; v0.8.0 brought skatepark collision from the visible park models, collectibles and trick lines, replay, a reworked Skate Shop and grind lines on train rails and ramp rims. See the [known issues](#known-issues). Historical privacy-affected downloads remain withdrawn; see [privacy guidance](PRIVACY.md).
 
 **GTAxSkate** adds to **[SK8V](https://github.com/becaring/SK8V)** by becaring, the mod that runs
 the real **Skate 3** engine in **GTA V story mode**. SK8V does the skating (Skate's own physics,
@@ -25,7 +25,7 @@ is made from your own copies of the games.
 
 ## Project status and repository roles
 
-The current stable version **v0.8.0** uses SK8V **1.1.10**. The host/runtime pair is exactly `test-20261109-135502-1b9f00f` (source `1b9f00f`, world rules `8a1fe36e1275922c`). The maintainer tested this build on 9 November 2026 and authorized the release: most reported collision problems are gone; the remaining ones are listed under known issues. Not every feature was retested on this exact build.
+The current stable version **v0.8.1** uses SK8V **1.1.10**. The host/runtime pair is exactly `test-20261109-184224-02b9842` (source `02b9842`, world rules `8a1fe36e1275922c`, unchanged since v0.8.0: no world rebuild needed when updating from v0.8.0). The maintainer tested this build on 9 November 2026; the remaining problems are listed under known issues. Not every feature was retested on this exact build.
 
 
 Complete SK8V, RP, User, Custom and Developer settings profiles cover 120 menu settings. Keyboard presets remain separate, preserving personal bindings. SK8V retains animation and transition ownership.
@@ -38,7 +38,7 @@ The optional Python/RAGE board composition helper prepares exact shop selections
 |---|---|
 | [GTAxSkate](https://github.com/Manatros/GTAxSkate) | Player installer, setup scripts, downloads, issue tracking and package documentation. |
 | [SK8V development fork](https://github.com/Manatros/SK8V/tree/skatemods) | Modified SK8V source, contribution branches and independently adoptable package patches. Upstream attribution remains intact. |
-| `main` / v0.8.0 | Stable release (SK8V 1.1.10); known issues listed below. |
+| `main` / v0.8.1 | Stable release (SK8V 1.1.10); known issues listed below. |
 | Test builds / future work | Pre-releases with their own tests before they reach `main`; experimental multiplayer support remains separate. |
 
 [Report a bug](https://github.com/Manatros/GTAxSkate/issues/new/choose) ·
@@ -47,7 +47,7 @@ The optional Python/RAGE board composition helper prepares exact shop selections
 
 ## Download
 
-Download [v0.8.0](https://github.com/Manatros/GTAxSkate/releases/tag/v0.8.0): **GTAxSkate-Setup.zip** for the full installer, or **GTAxSkate-dropin-for-SK8V-1.1.10.zip** for an existing matching SK8V installation. Always replace both host and runtime together. Release assets include notices and checksums; the full tool bundle includes corresponding source for GPL tools. The Setup ZIP is the complete package; installing from this repository's source downloads the same release programs and checks their SHA-256 digest. The new world collision is built by the installer (step 7, world); the drop-in ZIP alone uses GTA's live collision.
+Download [v0.8.1](https://github.com/Manatros/GTAxSkate/releases/tag/v0.8.1): **GTAxSkate-Setup.zip** for the full installer, or **GTAxSkate-dropin-for-SK8V-1.1.10.zip** for an existing matching SK8V installation. Always replace both host and runtime together. Release assets include notices and checksums; the full tool bundle includes corresponding source for GPL tools. The Setup ZIP is the complete package; installing from this repository's source downloads the same release programs and checks their SHA-256 digest. The new world collision is built by the installer (step 7, world); the drop-in ZIP alone uses GTA's live collision.
 
 The separate [FiveM test release](https://github.com/Manatros/GTAxSkate/releases/tag/fivem-friends-test-20261014) remains a paused historical prototype with a missing-board model.
 
@@ -103,7 +103,8 @@ sets the standard view, what it follows and the cinematic camera's look.
 | **M** | GTA's interaction menu on foot; opening it while skating remains unresolved (B104) |
 | **G**, or **E** looking at the boards on show | board shop (in a clothing store); **Tab** shows the part alone, **W A S D** or the mouse turn it, the wheel zooms |
 | **F10** (or **/** on a US keyboard) | One GTAxSkate settings menu with categories and *Advanced* for uncommon tuning; page *Keyboard keys* selects GTA, Twin Stick, Mouse Flick or Arcade; saves/restores personal bindings and rebinds Skate actions |
-| **Tab** / mouse buttons | gun out or away (hold Tab: GTA's weapon wheel); with a gun out, right mouse aims and left shoots |
+| **Tab** / mouse buttons | tap **Tab**: replay of the last seconds; hold **Tab**: gun out and GTA's weapon wheel; with a gun out, tap puts it away, right mouse aims and left shoots |
+| In the replay | **Space** play/pause, **A/D** or **←/→** scrub, **↑/↓** or mouse wheel speed, hold **R** backwards, **C** camera; free camera **W A S D**, **E/Q** up/down, mouse look; **Tab** or **Backspace** back to skating |
 | **B** (hold, behind a moving car) | skitch |
 | **Insert** | object dropper (rebind in F10 > *World*) |
 
@@ -138,6 +139,7 @@ Controller input follows SK8V; keyboard/mouse support is provided by this fork. 
 
 ## Known issues
 
+- The replay is silent: Skate's sounds pause while it plays (sound in the replay is planned).
 - **M** while skating does not open GTA's interaction menu yet (B104; it works on foot).
 - Printed griptapes still show a seam at the deck's edge; a thin seam between the deck's middle and its nose and tail.
 - Riding sideways along an edge the board does not always stick to it; a board hit while bailing can drag the body.
