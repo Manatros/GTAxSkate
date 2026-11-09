@@ -84,9 +84,9 @@ $VgmstreamZip = 'https://github.com/vgmstream/vgmstream/releases/download/r2117/
 $VgmstreamSha256 = '6c4a8a3813864fefed081bbd337dbc0ad93bf88e0b92f5db98d7ab258b22dc6c'
 # GTAxSkate's own builds for a source checkout without a bin folder: the
 # game-accepted release. Update tag and digest together with each release.
-$GtaxSkateRelease = 'v0.7.0'
+$GtaxSkateRelease = 'v0.8.0'
 $GtaxSkateBinZip = "https://github.com/Manatros/GTAxSkate/releases/download/$GtaxSkateRelease/GTAxSkate-bin.zip"
-$GtaxSkateBinSha256 = '0495d787725a7ca352b922c0223d2fb9d810c9c253594612e665ac8560df3e68'
+$GtaxSkateBinSha256 = 'aa604da24e181d9ac7859b9383a0d72efca954d076a79243babee4b442035a6e'
 $GtaBuild = '1.0.3889.0'
 $Steps = 'tools', 'sk8v', 'bin', 'boards', 'glow', 'music', 'world', 'install'
 . (Join-Path $PSScriptRoot 'install-asset-transaction.ps1')
