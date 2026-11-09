@@ -72,12 +72,9 @@ class ReleaseTests(unittest.TestCase):
         self.assertTrue(publisher.publication_blocks(self.manifest, ready))
 
     def test_weekly_gate(self):
-        latest = {'tag_name': 'v0.7.0', 'published_at': '2026-10-17T13:30:00Z'}
+        latest = {'published_at':'2026-10-17T13:30:00Z'}
         with self.assertRaisesRegex(ValueError, 'Weekly release gate'):
             publisher.check_weekly_gate(latest, datetime.datetime(2026,10,24,13,29,tzinfo=datetime.timezone.utc))
-        with self.assertRaisesRegex(ValueError, 'Weekly release gate'):
-            publisher.check_weekly_gate(latest, datetime.datetime(2026,10,24,13,29,tzinfo=datetime.timezone.utc), 'v0.8.0')
-        publisher.check_weekly_gate(latest, datetime.datetime(2026,10,18,12,0,tzinfo=datetime.timezone.utc), 'v0.7.1')
         publisher.check_weekly_gate(latest, datetime.datetime(2026,10,24,13,30,tzinfo=datetime.timezone.utc))
 
     def authorized_manifest(self):

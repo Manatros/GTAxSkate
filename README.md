@@ -6,7 +6,7 @@
 Joining players need GTA V Legacy and [FiveM](https://fivem.net/); the server sends the skate resources automatically.
 See the [short joining guide](FIVEM-JOIN.md). The ZIP is for server hosts. The current prototype fails to load its board model; full animations, shops and F10 are not included. Singleplayer validation currently takes priority.
 
-**Current release: [v0.7.1](https://github.com/Manatros/GTAxSkate/releases/tag/v0.7.1)** — installer and setup fix release (29 October 2026) on the v0.7.0 build (authorized by Manatros on 26 October 2026, using SK8V 1.1.10). Baked world collision for the whole map, high-res skateparks, the object dropper and better grind rails. See the [known issues](#known-issues). Historical privacy-affected downloads remain withdrawn; see [privacy guidance](PRIVACY.md).
+**Current release: [v0.8.0](https://github.com/Manatros/GTAxSkate/releases/tag/v0.8.0)** — published on 9 November 2026 (SK8V 1.1.10). Skatepark collision from the visible park models, collectibles and trick lines, replay, a reworked Skate Shop and grind lines on train rails and ramp rims. See the [known issues](#known-issues). Historical privacy-affected downloads remain withdrawn; see [privacy guidance](PRIVACY.md).
 
 **GTAxSkate** adds to **[SK8V](https://github.com/becaring/SK8V)** by becaring, the mod that runs
 the real **Skate 3** engine in **GTA V story mode**. SK8V does the skating (Skate's own physics,
@@ -25,9 +25,10 @@ is made from your own copies of the games.
 
 ## Project status and repository roles
 
-The current main version (v0.7.1) uses SK8V **1.1.10**. Manatros authorized the v0.7.0 runtime release on 26 October 2026 and the v0.7.1 installer fix release on 29 October 2026. The host/runtime pair preserves `test-20261026l-rc-b27eec6` exactly (world rules `4217eedcd28b7deb`). The object dropper worked in earlier gameplay tests; this final candidate's bowl, rail and shop changes remain untested in game.
+The current stable version **v0.8.0** uses SK8V **1.1.10**. The host/runtime pair is exactly `test-20261109-135502-1b9f00f` (source `1b9f00f`, world rules `8a1fe36e1275922c`). The maintainer tested this build on 9 November 2026 and authorized the release: most reported collision problems are gone; the remaining ones are listed under known issues. Not every feature was retested on this exact build.
 
-Complete SK8V, RP, User, Custom and Developer settings profiles cover 120 menu settings. Keyboard presets remain separate, preserving personal bindings. LS Skate is explicitly unavailable until its own verified adapter exists. SK8V retains animation and transition ownership.
+
+Complete SK8V, RP, User, Custom and Developer settings profiles cover 120 menu settings. Keyboard presets remain separate, preserving personal bindings. SK8V retains animation and transition ownership.
 
 **Known issues:** see [Known issues](#known-issues).
 
@@ -37,7 +38,7 @@ The optional Python/RAGE board composition helper prepares exact shop selections
 |---|---|
 | [GTAxSkate](https://github.com/Manatros/GTAxSkate) | Player installer, setup scripts, downloads, issue tracking and package documentation. |
 | [SK8V development fork](https://github.com/Manatros/SK8V/tree/skatemods) | Modified SK8V source, contribution branches and independently adoptable package patches. Upstream attribution remains intact. |
-| `main` / v0.7.1 | Authorized Story release on SK8V 1.1.10; exact installed candidate pair and world rules hash; known issues listed below. |
+| `main` / v0.8.0 | Stable release (SK8V 1.1.10); known issues listed below. |
 | Test builds / future work | Pre-releases with their own tests before they reach `main`; experimental multiplayer support remains separate. |
 
 [Report a bug](https://github.com/Manatros/GTAxSkate/issues/new/choose) ·
@@ -46,7 +47,7 @@ The optional Python/RAGE board composition helper prepares exact shop selections
 
 ## Download
 
-Download [v0.7.1](https://github.com/Manatros/GTAxSkate/releases/tag/v0.7.1): **GTAxSkate-Setup.zip** for the full installer, or **GTAxSkate-dropin-for-SK8V-1.1.10.zip** for an existing matching SK8V installation. Always replace both host and runtime together. Release assets include notices and checksums; the full tool bundle includes corresponding source for GPL tools. The Setup ZIP is the complete package; installing from this repository's source downloads the same release programs and checks their SHA-256 digest. The new world collision is built by the installer (step 7, world); the drop-in ZIP alone uses GTA's live collision.
+Download [v0.8.0](https://github.com/Manatros/GTAxSkate/releases/tag/v0.8.0): **GTAxSkate-Setup.zip** for the full installer, or **GTAxSkate-dropin-for-SK8V-1.1.10.zip** for an existing matching SK8V installation. Always replace both host and runtime together. Release assets include notices and checksums; the full tool bundle includes corresponding source for GPL tools. The Setup ZIP is the complete package; installing from this repository's source downloads the same release programs and checks their SHA-256 digest. The new world collision is built by the installer (step 7, world); the drop-in ZIP alone uses GTA's live collision.
 
 The separate [FiveM test release](https://github.com/Manatros/GTAxSkate/releases/tag/fivem-friends-test-20261014) remains a paused historical prototype with a missing-board model.
 
@@ -141,11 +142,11 @@ Controller input follows SK8V; keyboard/mouse support is provided by this fork. 
 - Printed griptapes still show a seam at the deck's edge; a thin seam between the deck's middle and its nose and tail.
 - Riding sideways along an edge the board does not always stick to it; a board hit while bailing can drag the body.
 - The board shop registers at most 240 new part models a session (GTA's limit); restart GTA to see more.
-- Some railings and bowl-edge fences collide as one solid wall instead of only their bars.
+- Railings outside the skateparks can still collide as one solid wall instead of only their bars.
 - Some metro station handrails zigzag instead of running as one straight line.
-- Train track grind lines can sit slightly low or inside the steel and can drop you midway.
-- A few kerbs/pillars have missing or mismatched collision; mark affected spots for reports.
-- Final bowl curves, continuous rail fixes and shop displays/stock remain untested in game.
+- A few rail-yard strips that are not real tracks have grind lines (Richman, Kortz, near 1528/-1754).
+- A few kerbs/pillars have missing or mismatched collision; mark affected spots for reports. Some metro station barriers and corners too (Pillbox area, Little Seoul).
+- A few spots in the Vespucci and La Mesa bowls still have small mismatched pieces or missing grind edges (the Vespucci bowl connector, the La Mesa centre ledge).
 - Some scaffolding and power-pole structures have no collision.
 - A small invisible step in GTA's road collision (Clinton Ave area) can catch the board.
 - Board lighting indoors and in tunnels still needs work.
@@ -158,7 +159,7 @@ Skate's own postures and riding styles are on F10 > *Skating*. Problems: open an
 ## What you need
 
 - **GTA V Legacy** 1.0.3889.0 (story mode, BattlEye off)
-- **Skate 3** (Xbox 360): your `.iso` disc image (pick the `.iso` file itself; do not mount or double-click it in Windows) or its extracted folder (with `default.xex` and `data\`)
+- **Skate 3** (Xbox 360): your disc image (ISO) or its extracted folder
 - **[Script Hook V](http://www.dev-c.com/gtav/scripthookv/)**: copy `ScriptHookV.dll` and `dinput8.dll`
   from its `bin` folder into the GTA V folder before you run the installer
 
@@ -288,7 +289,6 @@ mod does not change GTA V's own archives and works in **story mode only**: do no
 ### Play presets (F10 > Presets)
 
 - **SK8V:** restores every exposed setting to the current base defaults (Easy difficulty, original High Skate camera, standard multipliers), with documented package defaults for extension features.
-- **LS Skate:** unavailable until a verified adapter exists. Displays a notice and changes nothing; it cannot supply LS Skate animations in this package.
 - **RP:** resets all exposed settings, then uses Hardcore difficulty, lower pop/jump/push values, stamina/injuries, no glitch assist, artificial pedestrian launch, vehicle dents/push or shooting while riding. All Skate overlays are hidden immediately, including trick/x-ray, records, debug/input displays, hints and radio banners. F10 remains usable. These are conservative gameplay values, not a calibrated physical simulation.
 - **User:** restores your last manually configured settings. Selecting another profile does not overwrite this snapshot; later manual edits update their corresponding saved User values.
 - **Custom:** explicitly save your current settings, then restore that snapshot whenever wanted. Saving again replaces the slot.
@@ -296,7 +296,7 @@ mod does not change GTA V's own archives and works in **story mode only**: do no
 
 Profiles cover every keyed F10 setting, including audio and advanced tuning. They apply only on Enter. Changes marked for restart require a full GTA restart; the master HUD toggle applies live. Settings are validated and saved together before live callbacks. Missing or invalid snapshots leave settings unchanged. User and Custom snapshots persist in `SkateVLegacy.ini`.
 
-Personal keyboard bindings remain independent (F10 > Keyboard keys has its own save/restore). Boards, purchases, wear, records, saves, installation paths and game assets are never replaced by a play profile. Existing settings are untouched until you explicitly apply one. This is a Story Mode profile system, not FiveM/Coop or LS Skate runtime support.
+Personal keyboard bindings remain independent (F10 > Keyboard keys has its own save/restore). Boards, purchases, wear, records, saves, installation paths and game assets are never replaced by a play profile. Existing settings are untouched until you explicitly apply one. This is a Story Mode profile system, not FiveM/Coop runtime support.
 
 ### Save-reload test fix (2026-10-14)
 
@@ -308,8 +308,8 @@ The host reuses its process runtime after a save load and resends the
 HUD viewport. This keeps the persistent sound feeder attached to the same runtime.
 Scripted follow/cinematic cameras now respect nearby obstacle hits immediately;
 normal GTA camera behavior is unchanged. F10 > Developer shows the SK8V source
-basis, compiled host build, optional test receipt metadata and LS integration status.
-Receipt metadata does not verify installed binaries; LS Skate remains unintegrated.
+basis, compiled host build and optional test receipt metadata.
+Receipt metadata does not verify installed binaries.
 See [runtime lifecycle adoption](SK8V-RELOAD-LIFECYCLE.md) and
 [camera/version adoption](SK8V-CAMERA-VERSIONS.md). The cumulative Story build was accepted on 17 October 2026; individual checklist coverage was not exhaustively recorded.
 

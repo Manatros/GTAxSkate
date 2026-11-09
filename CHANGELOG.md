@@ -3,32 +3,59 @@
 All notable changes, newest first. Versions follow [semantic versioning](https://semver.org/):
 minor versions collect features; patch versions collect fixes. Each release records its validation limits.
 
+## v0.8.0 — 9 November 2026
+
+Source `1b9f00f`, SK8V 1.1.10, world rules `8a1fe36e1275922c` (host and runtime exactly `test-20261109-135502-1b9f00f`).
+The maintainer tested this build and authorized the release: most reported collision problems are gone; 27 marked spots stay open, listed as known issues in the README. Replay, rewards, shop purchases and the wider regression list were not all rerun on this exact build. Rebuild the world collision after updating (installer step 7).
+
+- Skateparks: see-through fences lose GTA's solid box and collide on their visible bars; leftover
+  fragments around bowl rims are gone; ramp and bank side rims get grind lines.
+
+- Skateparks: the park's visible model now owns the whole surface it covers, removing double
+  floors, offset ledges and holes at all five parks.
+
+- Train tracks: grind lines follow the visible rails through switch curves, and
+  rails without train paths (switch legs, sidings, rail yards) get grind lines
+  and collision.
+
+- Collectibles v3: find parts and songs, unlock boards for purchase, and earn
+  board unlocks by completing park trick lines.
+- Replay phase 1: replay the last 30 seconds with camera and speed choices.
+- World candidates: collision from visible railing bars, bowl connector ownership
+  changes, and metro rail alignment and solid-body changes.
+- Finite rewards: hide pickups and trick lines without an assigned unlock, remove
+  the cash fallback, and preserve existing progress. Source `e520f35`; automated
+  checks pass, gameplay validation pending.
+- Placement generator: prevent separate trick lines from reusing a reserved start.
+  Existing placed data has not been regenerated.
+- Packaging preparation: include collectible places and the song-restoration helper.
+
+- Expanded finite secret pool from 61 to 136 unlocks while preserving existing
+  saved assignment order and unlocked items.
+- Added 20 Hall of Meat and banked trick-line score milestones, including
+  historical record reconciliation. Gameplay validation remains pending.
+- Developer collectible travel attempts a streamed, verified nearby arrival;
+  refused travel sets GPS. Collision probes are now read when the game answers
+  them, and the clearance check matches the player model's size.
+- Skatepark collision: fewer detached cut pieces in bowls, flat walls and decks
+  no longer split by small trim, no false stair pieces inside the La Mesa bowl,
+  and no second, synthetic staircase over stairs that already have real steps.
+- "Grind every stair step" is now on by default; a saved "off" is kept.
+- Skatepark collision: where GTA's flat collision cut across a round bowl wall and
+  stood in front of it, the visible wall is now the collision.
+- Skate Shop: boards on the stall's racks, the shop's own seller and an inspect view. The seller stands behind
+  the register in opening hours, and the menu works anywhere inside the stall.
+- Collectibles and trick lines: 45 places moved out of walls, off the seabed and onto reachable
+  floors; trick lines at Hawick and Little Seoul redrawn so they can be ridden. Found items are kept.
+- Cameras: entering skate mode no longer jumps to the SK8V camera by itself; on the
+  keyboard C no longer flips GTA's view during a grab; V and the mouse no longer change
+  the camera during replay, while filming, or behind the open shop.
+
 ## v0.7.1 — 29 October 2026
 
-Installer and setup fix release on the unchanged v0.7.0 host/runtime pair
-(`test-20261026l-rc-b27eec6`, SK8V 1.1.10, world rules `4217eedcd28b7deb`).
-No runtime or world-baker binaries changed.
-
-### Installer and setup
-
-- **Upfront Skate 3 source checks:** checks extracted Skate 3 folders for `default.xex`,
-  `data\big\db.big` and `data\content\createacharacter.big` before setup begins. Mounted
-  Xbox 360 ISOs in Windows Explorer (which only expose the outer video partition) are
-  caught immediately with a prompt to pick the `.iso` file directly or a complete
-  extracted folder.
-- **Xbox 360 ISO and archive validation:** checks `.iso` files for an XDVDFS partition
-  (`MICROSOFT*XBOX*MEDIA`), catches unextracted `.zip`, `.7z` and `.rar` archives (or
-  folders containing them) with instructions to unzip first, and auto-resolves when
-  `default.xex`, a `data` subfolder, a single nested `Skate 3` folder or a folder holding
-  a single `.iso` file is picked.
-- **Upfront GTA V and environment checks:** checks for running GTA V / OpenIV / CodeWalker
-  processes, GTA V Legacy (`1.0.3889.0`) vs. Enhanced (`GTA5_Enhanced.exe`),
-  `update\update.rpf`, `ScriptHookV.dll`, ASI loader presence and free disk space before
-  asking component or feature prompts. Added Steam `InstallLocation` registry detection
-  and fixed trailing-backslash quoting when restarting elevated as administrator.
-- **Step 4 (`boards`) ISO extraction:** extracts both `data/big/db.big` and
-  `data/content/createacharacter.big` via `Disc-With` so resumed installs or `-Redo boards`
-  with an ISO do not fail with a missing `db.big` after `SK8V\disc` cleanup.
+Installer-only update. The host/runtime pair remains the v0.7.0 build below
+(`b27eec6`, world rules `4217eedcd28b7deb`); this update does not establish new
+gameplay acceptance.
 
 ## v0.7.0 — 26 October 2026
 

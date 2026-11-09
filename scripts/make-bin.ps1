@@ -16,6 +16,10 @@ if (-not (Test-Path -LiteralPath $PrivacyPatternsFile -PathType Leaf)) { throw '
 $sk8v = if ($ForkPath) { [IO.Path]::GetFullPath($ForkPath) } else { Join-Path $root 'external\sk8v' }
 $out = if ($Output) { [IO.Path]::GetFullPath($Output) } else { Join-Path $root 'build\release' }
 $stage = Join-Path $out 'bin'
+$collectibles = Join-Path $sk8v 'data\collectibles.tsv'
+if (-not (Test-Path -LiteralPath $collectibles -PathType Leaf)) { throw 'Missing collectibles places: data\collectibles.tsv (required for the release).' }
+$songsBack = Join-Path $root 'scripts\collectibles\songs-back.ps1'
+if (-not (Test-Path -LiteralPath $songsBack -PathType Leaf)) { throw 'Missing song-restoration helper: scripts\collectibles\songs-back.ps1 (required for Setup).' }
 if (-not $GplSourceReceipt) { $GplSourceReceipt = Join-Path $root 'build\compliance-audit\GPL-SOURCE-RECEIPT.json' }
 if (-not (Test-Path -LiteralPath $GplSourceReceipt -PathType Leaf)) { throw 'Missing GPL corresponding-source receipt; prepare exact source and rebuilt tool hashes before packaging.' }
 $gplReceipt = Get-Content -LiteralPath $GplSourceReceipt -Raw | ConvertFrom-Json
@@ -58,6 +62,7 @@ $branch = git -C $sk8v rev-parse --abbrev-ref HEAD
 $files = @(
     (Join-Path $sk8v 'build\package\SkateVLegacy.asi'),
     (Join-Path $sk8v 'build\package\SkateVRuntime.dll'),
+    $collectibles,
     (Join-Path $sk8v 'tools\prepare-board-parts.py'),
     (Join-Path $sk8v 'tools\_common.py'),
     (Join-Path $sk8v 'tools\make-glow-wheels.ps1'),
@@ -83,7 +88,7 @@ Copy-Item (Join-Path $root 'public\LICENSE') (Join-Path $stage 'LICENSE.txt')
 Copy-Item (Join-Path $root 'public\NOTICE') (Join-Path $stage 'NOTICE.txt')
 Copy-Item (Join-Path $sk8v 'build\package\GTAxSkate-build.json') $stage
 $commit = git -C $sk8v rev-parse --short HEAD
-Set-Content (Join-Path $stage 'VERSION.txt') "SK8V build: Manatros/SK8V skatemods $commit (SK8V $($basis.tag) + GTAxSkate's additions)`r`nPackaged: $(Get-Date -Format s)`r`nHost/runtime build receipt: GTAxSkate-build.json"
+Set-Content (Join-Path $stage 'VERSION.txt') "SK8V build: Manatros/SK8V $branch $commit (SK8V $($basis.tag) + GTAxSkate's additions)`r`nPackaged: $(Get-Date -Format s)`r`nHost/runtime build receipt: GTAxSkate-build.json"
 $composer = Join-Path $stage 'composer'
 New-Item -ItemType Directory -Force $composer | Out-Null
 foreach ($name in 'board-composition-worker.py','prepare-native-custom-board.py','setup-board-composer.ps1','restore-board-composer.ps1') {
@@ -103,6 +108,8 @@ AssertStage $drop
 Remove-Item -LiteralPath $drop -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force $drop | Out-Null
 Copy-Item (Join-Path $sk8v 'build\package\SkateVLegacy.asi'), (Join-Path $sk8v 'build\package\SkateVRuntime.dll') $drop
+New-Item -ItemType Directory -Force (Join-Path $drop 'GTAxSkate') | Out-Null
+Copy-Item -LiteralPath $collectibles -Destination (Join-Path $drop 'GTAxSkate\collectibles.tsv')
 Copy-Item (Join-Path $root 'public\dropin\README.txt') $drop
 Copy-Item (Join-Path $stage 'LICENSE-SK8V.txt'), (Join-Path $stage 'NOTICE-SK8V.txt'), (Join-Path $stage 'NOTICE.txt'), (Join-Path $stage 'VERSION.txt'), (Join-Path $stage 'THIRD-PARTY-NOTICES.txt'), (Join-Path $stage 'COMPONENT-LICENSES.md') $drop
 Copy-Item (Join-Path $stage 'licenses') $drop -Recurse
@@ -127,6 +134,8 @@ Copy-Item (Join-Path $root 'scripts\install.ps1'), (Join-Path $root 'scripts\get
 Copy-Item (Join-Path $root 'scripts\build-world-collision.ps1') (Join-Path $setup 'scripts')
 New-Item -ItemType Directory -Force (Join-Path $setup 'scripts\world-inspect') | Out-Null
 Copy-Item (Join-Path $root 'scripts\world-inspect\segcheck.py') (Join-Path $setup 'scripts\world-inspect')
+New-Item -ItemType Directory -Force (Join-Path $setup 'scripts\collectibles') | Out-Null
+Copy-Item -LiteralPath $songsBack -Destination (Join-Path $setup 'scripts\collectibles\songs-back.ps1')
 # The setup's installer pins this exact bin zip (a source checkout downloads it from the release).
 $binSha = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
 $setupInstaller = Join-Path $setup 'scripts\install.ps1'

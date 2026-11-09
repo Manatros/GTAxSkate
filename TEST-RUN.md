@@ -1,4 +1,41 @@
-# v0.7.0 gameplay checklist — 26 October 2026
+# Gameplay validation
+
+## v0.8.0 — 9 November 2026
+
+**Released:** `test-20261109-135502-1b9f00f`, source `1b9f00f`, SK8V 1.1.10, world rules `8a1fe36e1275922c`.
+The maintainer stepped through the marked spots on this build and authorized the release; 27 marks stay open (known issues in the README). Checks not rerun on this exact build stay listed here.
+
+Checks for this version:
+
+1. Bowls and parks (Vespucci, La Mesa, Hawick, Strawberry, Little Seoul): ride floors, transitions, decks and copings;
+   look for doubled floors, hovering triangles, catching edges and small steps on decks.
+   Fences at La Mesa (west wall) and Strawberry: you pass between the bars, no solid box. Ramps: grind the curved side rims.
+2. Skate Shop: seller behind the register in opening hours; boards on the racks; E anywhere in the stall;
+   highlighting a rack board lifts it toward the camera and back.
+3. Trick lines L03, L04 and L05 complete; moved collectibles can be reached; earlier finds stay found.
+4. Cameras: entering skate mode keeps the chosen view; on the keyboard C does not flip the view during a grab;
+   V and the mouse do not change the camera during replay, while filming or behind the shop.
+5. Train rails: grind lines on the visible rails (Known: a few false tracks in Richman, Kortz and near 1528/-1754).
+
+| Area | Current result / next check |
+|---|---|
+| Park and railing collision | Problems reported; reproduce marked joins, edges and invisible obstructions, then retest any correction |
+| Metro rails | Verify alignment, continuity and solid contact on both edges of each steel rail |
+| Trick lines | Problems reported; verify ordered waypoints, grinding/air requirements, timeout, bail reset and exactly one board unlock |
+| Collectibles v3 | Verify parts and songs, saved progress, reset, and boards unlocked for purchase rather than given free |
+| Shops | Verify opening prompts, displays, unlocked stock, purchases and save/reload; unresolved shop work remains open |
+| Replay phase 1 | Verify the last 30 seconds, camera/speed choices and return to gameplay |
+| Regression | Repeat W01–W12 below on the candidate, recording results separately from historical results |
+
+Keep host/runtime and world rules matched. Record the build ID, relevant marks
+and PASS / FAIL / NOT RUN for each check. Automated checks do not establish a
+gameplay pass.
+
+## Stable v0.7.1 / historical v0.7.0 checklist — 26 October 2026
+
+v0.7.1 (29 October) changes the installer only and retains the v0.7.0 game binaries.
+The following identity and NOT RUN results describe the original v0.7.0 candidate;
+they are not results for the current development build.
 
 Manatros authorized release on 26 October 2026. The final candidate below is
 installed but gameplay untested. Earlier tests confirmed the object dropper
