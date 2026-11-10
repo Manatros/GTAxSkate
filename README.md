@@ -6,7 +6,7 @@
 Joining players need GTA V Legacy and [FiveM](https://fivem.net/); the server sends the skate resources automatically.
 See the [short joining guide](FIVEM-JOIN.md). The ZIP is for server hosts. The current prototype fails to load its board model; full animations, shops and F10 are not included. Singleplayer validation currently takes priority.
 
-**Current release: [v0.8.1](https://github.com/Manatros/GTAxSkate/releases/tag/v0.8.1)** — published on 9 November 2026 (SK8V 1.1.10). v0.8.1 adds replay controls on keyboard and mouse; v0.8.0 brought skatepark collision from the visible park models, collectibles and trick lines, replay, a reworked Skate Shop and grind lines on train rails and ramp rims. See the [known issues](#known-issues). Historical privacy-affected downloads remain withdrawn; see [privacy guidance](PRIVACY.md).
+**Current release: [v0.8.2](https://github.com/Manatros/GTAxSkate/releases/tag/v0.8.2)** — published on 10 November 2026 (SK8V 1.1.10). v0.8.2 fixes GTA asset streaming thread crashes and memory churn, continuous grind rails across joints, geometry polish, and replay sound/filters; v0.8.1 added replay controls on keyboard and mouse; v0.8.0 brought skatepark collision from the visible park models, collectibles and trick lines, replay, a reworked Skate Shop and grind lines on train rails and ramp rims. See the [known issues](#known-issues). Historical privacy-affected downloads remain withdrawn; see [privacy guidance](PRIVACY.md).
 
 **GTAxSkate** adds to **[SK8V](https://github.com/becaring/SK8V)** by becaring, the mod that runs
 the real **Skate 3** engine in **GTA V story mode**. SK8V does the skating (Skate's own physics,
@@ -25,7 +25,7 @@ is made from your own copies of the games.
 
 ## Project status and repository roles
 
-The current stable version **v0.8.1** uses SK8V **1.1.10**. The host/runtime pair is exactly `test-20261109-184224-02b9842` (source `02b9842`, world rules `8a1fe36e1275922c`, unchanged since v0.8.0: no world rebuild needed when updating from v0.8.0). The maintainer tested this build on 9 November 2026; the remaining problems are listed under known issues. Not every feature was retested on this exact build.
+The current stable version **v0.8.2** uses SK8V **1.1.10**. The host/runtime pair is exactly `test-20261110-214041-707bc1e` (source `707bc1e`, world rules `8a1fe36e1275922c`, compatible with v0.8.0: no world rebuild needed when updating from v0.8.0/v0.8.1). The maintainer tested this build on 10 November 2026; the remaining problems are listed under known issues. Not every feature was retested on this exact build.
 
 
 Complete SK8V, RP, User, Custom and Developer settings profiles cover 120 menu settings. Keyboard presets remain separate, preserving personal bindings. SK8V retains animation and transition ownership.
@@ -38,7 +38,7 @@ The optional Python/RAGE board composition helper prepares exact shop selections
 |---|---|
 | [GTAxSkate](https://github.com/Manatros/GTAxSkate) | Player installer, setup scripts, downloads, issue tracking and package documentation. |
 | [SK8V development fork](https://github.com/Manatros/SK8V/tree/skatemods) | Modified SK8V source, contribution branches and independently adoptable package patches. Upstream attribution remains intact. |
-| `main` / v0.8.1 | Stable release (SK8V 1.1.10); known issues listed below. |
+| `main` / v0.8.2 | Stable release (SK8V 1.1.10); known issues listed below. |
 | Test builds / future work | Pre-releases with their own tests before they reach `main`; experimental multiplayer support remains separate. |
 
 [Report a bug](https://github.com/Manatros/GTAxSkate/issues/new/choose) ·
@@ -47,7 +47,7 @@ The optional Python/RAGE board composition helper prepares exact shop selections
 
 ## Download
 
-Download [v0.8.1](https://github.com/Manatros/GTAxSkate/releases/tag/v0.8.1): **GTAxSkate-Setup.zip** for the full installer, or **GTAxSkate-dropin-for-SK8V-1.1.10.zip** for an existing matching SK8V installation. Always replace both host and runtime together. Release assets include notices and checksums; the full tool bundle includes corresponding source for GPL tools. The Setup ZIP is the complete package; installing from this repository's source downloads the same release programs and checks their SHA-256 digest. The new world collision is built by the installer (step 7, world); the drop-in ZIP alone uses GTA's live collision.
+Download [v0.8.2](https://github.com/Manatros/GTAxSkate/releases/tag/v0.8.2): **GTAxSkate-Setup.zip** for the full installer, or **GTAxSkate-dropin-for-SK8V-1.1.10.zip** for an existing matching SK8V installation. Always replace both host and runtime together. Release assets include notices and checksums; the full tool bundle includes corresponding source for GPL tools. The Setup ZIP is the complete package; installing from this repository's source downloads the same release programs and checks their SHA-256 digest. The new world collision is built by the installer (step 7, world); the drop-in ZIP alone uses GTA's live collision.
 
 The separate [FiveM test release](https://github.com/Manatros/GTAxSkate/releases/tag/fivem-friends-test-20261014) remains a paused historical prototype with a missing-board model.
 

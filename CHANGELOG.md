@@ -3,6 +3,17 @@
 All notable changes, newest first. Versions follow [semantic versioning](https://semver.org/):
 minor versions collect features; patch versions collect fixes. Each release records its validation limits.
 
+## v0.8.2 — 10 November 2026
+
+Source SK8V `dev` `707bc1e` (= v0.8.1 `02b9842` plus replay sound and editor, fisheye detail pass, rail continuity, Vespucci/Rockford geometry polish, and GTA streaming crash/heap memory fixes), world rules compatible with installed v0.8.0 tiles (`8a1fe36e1275922c`): no world rebuild required for v0.8.0/v0.8.1 players. Host and runtime exactly `test-20261110-214041-707bc1e`, tested by the maintainer.
+
+- Streaming thread crash & memory resolution: resolves the GTA asset streaming thread crash (0xc0000005 at `GTA5.exe+0x1418fba`) and excessive heap churn during driving/skating by suppressing inactive background collision rebuilds while driving (`in_vehicle`), gating inactive on-foot rebuilds to the 60m host `AreaReady` threshold without lead offset, and interning triangle origin strings via `Arc<Vec<String>>` in `spot.rs` (~292k heap String allocations eliminated per build).
+- Grind rail continuity across joints: grind rails now bridge continuously across physical rail, curb, and ledge joints, preventing dropped grinds across segment boundaries, curves, and slope transitions.
+- Vespucci and Rockford Dr geometry polish: cleaned up steep quarterpipe rims (`1110-1`), south curved ledges (`1110-2, 3`), underground wall skirts (`1110-3..6`), chamfer overhangs (`1110-7, 8`), curved guardrail boundaries (`1110-9`), tapered curb pinch detection & sloped walkable curbs (`1110-11..13`), and planter cap merging (`1110-14`).
+- Replay audio, filters, and editor enhancements: Skate sounds now play in sync with replay footage (pitched with speed, muted while scrubbing); added film filters (B&W, Film 1-25) and lenses (Auto, Fisheye, 14-135mm), Orbit and Static camera modes, arrow key camera height and movement, unbent sharp fisheye HUD, HUD hide toggle (H / R3), frame step (, . / paused LB/RB), and zoom ([ ]).
+- Mod key blocking: other ASI and script mods see no conflicting keys while inside the replay editor or F10 menu (`BlockModKeys`), preventing accidental vehicle spawns and actions.
+- Backward compatibility: accepts active installed v0.8.0 world tiles (`rules 8a1fe36e1275922c`) in `tiles.rs:rules_compatible`.
+
 ## v0.8.1 — 9 November 2026
 
 Source SK8V `dev` `02b9842` (= v0.8.0 `1b9f00f` plus three host/hint commits), world rules unchanged
