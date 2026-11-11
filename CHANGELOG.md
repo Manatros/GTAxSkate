@@ -3,6 +3,20 @@
 All notable changes, newest first. Versions follow [semantic versioning](https://semver.org/):
 minor versions collect features; patch versions collect fixes. Each release records its validation limits.
 
+## v0.8.3 — 11 November 2026
+
+Source SK8V `dev` `583be93` (= v0.8.2 `707bc1e` plus complete replay keyboard & mouse shortcuts, edge-detected inputs, camera edit hotkeys, and 3-band fisheye HUD text composite pass), world rules compatible with installed v0.8.0 tiles (`8a1fe36e1275922c`): no world rebuild required for v0.8.0/v0.8.1/v0.8.2 players. Host and runtime exactly `test-replay-workflow-583be93`, tested and authorized by the maintainer.
+
+- Direct speed presets: press `1` (10%), `2` (25%), `3` (50%), or `4` (100% normal) anytime across Timeline, Instant replay, and Effects to jump straight to standard speeds without stepping through increments.
+- Camera cycling and editing shortcuts: `C` / `Shift+C` cycles camera modes directly; `E` / `Shift+Enter` enters camera edit immediately from Timeline without menu diving; `Enter` / `Tab` commits camera edits; `Escape` / `mouseRight` cancels and restores the original camera pose without modifying keyframes.
+- Real-time zoom notifications: `Shift+Wheel` and `[` / `]` zoom the camera in real time, displaying the focal length in millimeters (e.g., `50mm`).
+- Quick lens, filter, and shake cycling: `Shift+L` cycles lens presets; `F` / `Shift+F` cycles color filters; `+` / `-` adjusts filter strength in 10% steps; `V` cycles camera shake levels.
+- File and project shortcuts: `Ctrl+S` / `F2` directly saves replay clips; `R` / `Ctrl+O` / `F3` opens the Saved Replays Reel; `Ctrl+R` / `Ctrl+Delete` resets the timeline to defaults with confirmation.
+- Unified mouse shortcuts: `mouseLeft` functions everywhere as accept/confirm/select; `mouseRight` functions everywhere as cancel/back.
+- Keyboard Free Camera rotation: `I` / `K` pitches up/down, `J` / `L` yaws left/right, `U` / `O` rolls counter-clockwise/clockwise, and Arrow keys adjust elevation and position.
+- Fisheye HUD clarity: 3-band composite pass renders replay HUD elements with crystal clarity over post-processed fisheye views.
+- Backward compatibility: fully compatible with active installed v0.8.0 world collision tiles (`rules 8a1fe36e1275922c`).
+
 ## v0.8.2 — 10 November 2026
 
 Source SK8V `dev` `707bc1e` (= v0.8.1 `02b9842` plus replay sound and editor, fisheye detail pass, rail continuity, Vespucci/Rockford geometry polish, and GTA streaming crash/heap memory fixes), world rules compatible with installed v0.8.0 tiles (`8a1fe36e1275922c`): no world rebuild required for v0.8.0/v0.8.1 players. Host and runtime exactly `test-20261110-214041-707bc1e`, tested by the maintainer.

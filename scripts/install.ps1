@@ -84,7 +84,7 @@ $VgmstreamZip = 'https://github.com/vgmstream/vgmstream/releases/download/r2117/
 $VgmstreamSha256 = '6c4a8a3813864fefed081bbd337dbc0ad93bf88e0b92f5db98d7ab258b22dc6c'
 # GTAxSkate's own builds for a source checkout without a bin folder: the
 # game-accepted release. Update tag and digest together with each release.
-$GtaxSkateRelease = 'v0.8.2'
+$GtaxSkateRelease = 'v0.8.3'
 $GtaxSkateBinZip = "https://github.com/Manatros/GTAxSkate/releases/download/$GtaxSkateRelease/GTAxSkate-bin.zip"
 $GtaxSkateBinSha256 = '96cd2169fc0bb1c8b1778b064d0e3565862a06b5878ed288dd46a52e990d3396'
 $GtaBuild = '1.0.3889.0'
