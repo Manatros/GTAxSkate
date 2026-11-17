@@ -3,6 +3,31 @@
 All notable changes, newest first. Versions follow [semantic versioning](https://semver.org/):
 minor versions collect features; patch versions collect fixes. Each release records its validation limits.
 
+## v0.9.0 — 18 November 2026 (last release for now)
+
+Source SK8V `release/v0.9.0` `c958dce`, world rules `213170a43c53a499` (also reads v0.8.x-era tiles `d8f4ecbeaba164d5`/`8a1fe36e1275922c`).
+**The project is on hold after this release**: see [STATUS.md](STATUS.md) for what works, what is untested and what is broken.
+Tested in game by the maintainer on 17 November 2026 (skating, menus, NPC traffic, Live collision switch, local coop host);
+items marked *untested* below passed the automated tests only.
+
+- **Collision and grind rails: your choice.** F10 > World > "Collision and grind rails": *Baked map (GTAxSkate)*
+  uses the baked whole-map collision and grind lines from your own GTA files; *Live (SK8V style)* uses GTA's own
+  collision the way SK8V does, with no bake needed. The installer picks Baked when the world bake is installed, else Live.
+- **Skatepark cleanup (rules R1-R6):** railing-only fence boxes become their visible bars, floating tubes and
+  duplicate or orphan grind lines go, crest lines extend along ridges, and **holes in visible park walls are open**
+  (Vespucci arches: you can hippie jump through them). Drawn-ground alignment (A60) matches road surfaces to the
+  drawn ground. Needs the v0.9.0 world bake (install step 7, 1-2 h).
+- **Replay:** moving world actors (cars and peds) in the replay, Skate 3 style replay HUD with a Skate/GTA style
+  toggle (F4), Wide lens and lens strength, crash fixes on replay enter/exit.
+- **F10 menu:** player pages, "Reset this page", Delete resets a setting to its default, beginner controls guide,
+  help text for every setting.
+- **Boards:** 12 GTA brand equipment lines (48 parts), collectible fixes, unlock-all for developers.
+- **Faster world bake:** parks and marked spots bake first and install as soon as they are ready; the rest follows.
+- *Untested:* Tutorial Island with Coach Frank (optional `-WithTutorial`), friends coop over the internet
+  (optional `-WithCoop`; localhost works, internet hosting did not work on the maintainer's DS-Lite connection).
+- Known incompatibility: **Realism Enhanced Traffic and Driver A.I** (it replaces `pedpersonality.ymt`) froze every
+  NPC in place; leave it off.
+
 ## v0.8.3 — 11 November 2026
 
 Source SK8V `dev` `583be93` (= v0.8.2 `707bc1e` plus complete replay keyboard & mouse shortcuts, edge-detected inputs, camera edit hotkeys, and 3-band fisheye HUD text composite pass), world rules compatible with installed v0.8.0 tiles (`8a1fe36e1275922c`): no world rebuild required for v0.8.0/v0.8.1/v0.8.2 players. Host and runtime exactly `test-replay-workflow-583be93`, tested and authorized by the maintainer.

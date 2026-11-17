@@ -35,13 +35,26 @@ pub fn custom_dir(assets: &Path) -> PathBuf {
     assets.join(CUSTOM_DIR)
 }
 
-/// `custom.json`: new finishes of one of Skate's models.
-#[derive(Deserialize)]
+/// `custom.json`: new finishes of Skate's models.
+#[derive(Deserialize, Default)]
 struct RawCustom {
+    #[serde(default)]
     model: String,
+    #[serde(default)]
     materials: BTreeMap<String, RawMaterial>,
     #[serde(default)]
     decks: Vec<String>,
+    #[serde(default)]
+    parts: Vec<RawCustomModel>,
+}
+
+#[derive(Deserialize, Default)]
+struct RawCustomModel {
+    model: String,
+    #[serde(default)]
+    materials: BTreeMap<String, RawMaterial>,
+    #[serde(default)]
+    items: Vec<String>,
 }
 
 /// A part of the board, as Skate 3's catalog sorts them.
@@ -203,7 +216,7 @@ struct RawMaterial {
 /// A brand's name as a shop shows it, from Skate 3's `ManufacturerID`
 /// (lower case, spelt in a few ways: "zoo_york", "zooyork", "zoo york").
 pub fn brand_name(id: &str) -> String {
-    let key: String = id.chars().filter(|c| c.is_ascii_alphanumeric()).collect::<String>().to_ascii_lowercase();
+    let key: String = id.replace(['ß', 'ẞ'], "ss").chars().filter(|c| c.is_ascii_alphanumeric()).collect::<String>().to_ascii_lowercase();
     let known = [
         ("alien", "Alien Workshop"),
         ("alienworkshop", "Alien Workshop"),
@@ -218,6 +231,18 @@ pub fn brand_name(id: &str) -> String {
         ("skate", "skate."),
         ("skatemental", "Skate Mental"),
         ("zooyork", "Zoo York"),
+        ("sprunk", "Sprunk"),
+        ("redwood", "Redwood"),
+        ("ecola", "eCola"),
+        ("pisswasser", "Pißwasser"),
+        ("lscustoms", "Los Santos Customs"),
+        ("prolaps", "ProLaps"),
+        ("bravado", "Bravado"),
+        ("pegassi", "Pegassi"),
+        ("gruppesechs", "Gruppe Sechs"),
+        ("flyus", "FlyUS"),
+        ("burgershot", "Burger Shot"),
+        ("cluckinbell", "Cluckin' Bell"),
     ];
     if key.is_empty() {
         return "Unbranded".into();
@@ -300,16 +325,32 @@ impl Library {
         // The player's own decks, added to the model they are finishes of.
         if let Ok(text) = std::fs::read_to_string(custom_dir(assets).join("custom.json"))
             && let Ok(custom) = serde_json::from_str::<RawCustom>(&text)
-            && raw.models.contains_key(&custom.model)
         {
-            let order = if custom.decks.is_empty() { custom.materials.keys().cloned().collect() } else { custom.decks.clone() };
-            for (id, material) in custom.materials {
-                raw.materials.entry(id).or_insert(material);
+            if !custom.model.is_empty() && raw.models.contains_key(&custom.model) {
+                let order = if custom.decks.is_empty() { custom.materials.keys().cloned().collect() } else { custom.decks.clone() };
+                for (id, material) in custom.materials {
+                    raw.materials.entry(id).or_insert(material);
+                }
+                if let Some(model) = raw.models.get_mut(&custom.model) {
+                    for id in order {
+                        if !model.materials.contains(&id) {
+                            model.materials.push(id);
+                        }
+                    }
+                }
             }
-            if let Some(model) = raw.models.get_mut(&custom.model) {
-                for id in order {
-                    if !model.materials.contains(&id) {
-                        model.materials.push(id);
+            for part in custom.parts {
+                if !part.model.is_empty() && raw.models.contains_key(&part.model) {
+                    let order = if part.items.is_empty() { part.materials.keys().cloned().collect() } else { part.items };
+                    for (id, material) in part.materials {
+                        raw.materials.entry(id).or_insert(material);
+                    }
+                    if let Some(model) = raw.models.get_mut(&part.model) {
+                        for id in order {
+                            if !model.materials.contains(&id) {
+                                model.materials.push(id);
+                            }
+                        }
                     }
                 }
             }

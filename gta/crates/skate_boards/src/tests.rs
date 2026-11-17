@@ -289,6 +289,85 @@ fn imported_decks_join_the_catalog_with_their_maker() {
 }
 
 #[test]
+fn brand_name_maps_gta_lore_corporations() {
+    assert_eq!(brand_name("sprunk"), "Sprunk");
+    assert_eq!(brand_name("redwood"), "Redwood");
+    assert_eq!(brand_name("ecola"), "eCola");
+    assert_eq!(brand_name("pisswasser"), "Pißwasser");
+    assert_eq!(brand_name("lscustoms"), "Los Santos Customs");
+    assert_eq!(brand_name("prolaps"), "ProLaps");
+    assert_eq!(brand_name("bravado"), "Bravado");
+    assert_eq!(brand_name("pegassi"), "Pegassi");
+    assert_eq!(brand_name("gruppesechs"), "Gruppe Sechs");
+    assert_eq!(brand_name("flyus"), "FlyUS");
+    assert_eq!(brand_name("burgershot"), "Burger Shot");
+    assert_eq!(brand_name("cluckinbell"), "Cluckin' Bell");
+}
+
+#[test]
+fn custom_json_supports_multi_part_without_top_level_model() {
+    let assets = temp("multipart");
+    let custom_dir = crate::custom_dir(&assets);
+    std::fs::create_dir_all(&custom_dir).unwrap();
+    let custom_json = r#"{
+        "parts": [
+            {
+                "model": "f2c517ee8b8359da",
+                "slot": "SkateBoard",
+                "materials": {
+                    "c057_sprunk_d": {
+                        "name": "Sprunk Deck",
+                        "diffuse": "private/boards/custom/c057_sprunk_d.png",
+                        "flags": {"ManufacturerID": "sprunk"}
+                    }
+                },
+                "items": ["c057_sprunk_d"]
+            },
+            {
+                "model": "c6f01c93097b7fb5",
+                "slot": "SkateTruck",
+                "materials": {
+                    "c057_sprunk_t": {
+                        "name": "Sprunk Trucks",
+                        "diffuse": "private/boards/custom/c057_sprunk_t.png",
+                        "flags": {"ManufacturerID": "sprunk"}
+                    }
+                },
+                "items": ["c057_sprunk_t"]
+            },
+            {
+                "model": "87d0fa0ea0366b23",
+                "slot": "SkateWheel",
+                "materials": {
+                    "c057_sprunk_w": {
+                        "name": "Sprunk Wheels",
+                        "diffuse": "private/boards/custom/c057_sprunk_w.png",
+                        "flags": {"ManufacturerID": "sprunk"}
+                    }
+                },
+                "items": ["c057_sprunk_w"]
+            }
+        ]
+    }"#;
+    std::fs::write(custom_dir.join("custom.json"), custom_json).unwrap();
+    let library_json = r#"{
+        "models": {
+            "f2c517ee8b8359da": {"slot": "SkateBoard", "name": "Skateboard", "materials": [], "scene": ""},
+            "c6f01c93097b7fb5": {"slot": "SkateTruck", "name": "Skatetruck", "materials": [], "scene": ""},
+            "87d0fa0ea0366b23": {"slot": "SkateWheel", "name": "Skatewheel", "materials": [], "scene": ""}
+        },
+        "materials": {}
+    }"#;
+    let library = Library::from_json(&assets, library_json).unwrap();
+    let decks = library.items(Part::Deck);
+    let trucks = library.items(Part::Trucks);
+    let wheels = library.items(Part::Wheels);
+    assert!(decks.iter().any(|d| d.material == "c057_sprunk_d" && d.brand == "Sprunk"));
+    assert!(trucks.iter().any(|t| t.material == "c057_sprunk_t" && t.brand == "Sprunk"));
+    assert!(wheels.iter().any(|w| w.material == "c057_sprunk_w" && w.brand == "Sprunk"));
+}
+
+#[test]
 fn skates_three_normal_map_layouts_come_out_in_gtas() {
     use crate::{Texture, normal_from_skate};
     // Red/green with blue: kept (z rebuilt from x and y).

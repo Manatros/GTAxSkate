@@ -1,0 +1,53 @@
+{
+  "format": "reviewed-upstream-paths",
+  "version": 1,
+  "exceptions": [
+    {
+      "path": "coop/gtaxskate/shared/ModCompatibilityChecker.cs",
+      "sha256": "29c221621ca509ec350cb42ff920a9f77169e7d8a37fdf2ca4a4a18530d69039",
+      "classes": [
+        "profile_path"
+      ],
+      "reason": "Own code: synthetic path fixtures (PrivateName, John Smith, RoboStreamer) and the sanitizer's own path patterns that test SafeText/mod-path redaction; no real user or install path. Reviewed 2026-11-18.",
+      "upstream": "https://github.com/Manatros/GTAxSkate/blob/main/coop/gtaxskate/shared/ModCompatibilityChecker.cs"
+    },
+    {
+      "path": "coop/gtaxskate/tests/RageCoopAdapterTests.cs",
+      "sha256": "e9494557b627651c9b5646f98479a4bea064924446e0ead50fdcff6cdfecb024",
+      "classes": [
+        "profile_path"
+      ],
+      "reason": "Own code: synthetic path fixtures (PrivateName, John Smith, RoboStreamer) and the sanitizer's own path patterns that test SafeText/mod-path redaction; no real user or install path. Reviewed 2026-11-18.",
+      "upstream": "https://github.com/Manatros/GTAxSkate/blob/main/coop/gtaxskate/tests/RageCoopAdapterTests.cs"
+    },
+    {
+      "path": "coop/gtaxskate/tests/SkateSessionTests.cs",
+      "sha256": "503ef8603dcae35f3ec4a4184f72414c3173807a023df75d82a013a0ca43fe36",
+      "classes": [
+        "profile_path"
+      ],
+      "reason": "Own code: synthetic path fixtures (PrivateName, John Smith, RoboStreamer) and the sanitizer's own path patterns that test SafeText/mod-path redaction; no real user or install path. Reviewed 2026-11-18.",
+      "upstream": "https://github.com/Manatros/GTAxSkate/blob/main/coop/gtaxskate/tests/SkateSessionTests.cs"
+    },
+    {
+      "path": "coop/gtaxskate/tests/StreamerSafeRound2Tests.cs",
+      "sha256": "b2548432e212d27041a922ef6b52ca15353ee18fabf67c319e90f2c22afbedc4",
+      "classes": [
+        "profile_path",
+        "game_install_path"
+      ],
+      "reason": "Own code: synthetic path fixtures (PrivateName, John Smith, RoboStreamer) and the sanitizer's own path patterns that test SafeText/mod-path redaction; no real user or install path. Reviewed 2026-11-18.",
+      "upstream": "https://github.com/Manatros/GTAxSkate/blob/main/coop/gtaxskate/tests/StreamerSafeRound2Tests.cs"
+    },
+    {
+      "path": "coop/gtaxskate/tests/StreamerSafeTests.cs",
+      "sha256": "dec800d08988573b66d96ee9ff00108f121cb80d385e0d56e6f8e2be2f10796e",
+      "classes": [
+        "profile_path",
+        "game_install_path"
+      ],
+      "reason": "Own code: synthetic path fixtures (PrivateName, John Smith, RoboStreamer) and the sanitizer's own path patterns that test SafeText/mod-path redaction; no real user or install path. Reviewed 2026-11-18.",
+      "upstream": "https://github.com/Manatros/GTAxSkate/blob/main/coop/gtaxskate/tests/StreamerSafeTests.cs"
+    }
+  ]
+}

@@ -4,7 +4,7 @@
 # skating), all made from your own Skate 3 and GTA V. Started by
 # "Install GTAxSkate.cmd" in the repo folder.
 #
-#   powershell -ExecutionPolicy Bypass -File scripts\install.ps1 [-Gta <folder>] [-Skate3 <ISO or folder>] [-Redo <step>] [-Until <step>] [-Components boards,music|none] [-NoMusic] [-Remove <component>]
+#   powershell -ExecutionPolicy Bypass -File scripts\install.ps1 [-Gta <folder>] [-Skate3 <ISO or folder>] [-Redo <step>] [-Until <step>] [-Components boards,music|none] [-WithTutorial] [-WithCoop] [-NoMusic] [-Remove <component>]
 #
 # It finds what it can by itself and asks only for the rest (a folder or file
 # picker). Every step leaves a receipt in build\install\, so running it again
@@ -15,6 +15,10 @@
 # Interactive sessions offer a numbered list; GTAXSKATE_NONINTERACTIVE=1 uses
 # defaults. Deselection keeps installed data. -Remove hides options only and
 # retains files; explicit -Components selection restores their flags.
+# Opt-in extras, never part of the defaults or of 'all': tutorial (the Skate
+# School pack) and coop (Friends-Only Coop). Choose them with -WithTutorial,
+# -WithCoop or by name in -Components. They copy only what is staged locally
+# and are skipped with a note when nothing is staged.
 #
 # Steps:
 #   1 tools    the SK8V release (its Python and rage tool), vgmstream
@@ -25,9 +29,11 @@
 #   5 glow     glowing wheel models (only when CodeWalker is found; -CodeWalker)
 #   6 music    Skate 3's soundtrack (the iPod's 46 songs) on GTA's Self Radio
 #              (-NoMusic skips it)
-#   7 world    the prebaked map: GTA's map collision baked once, the fallback
-#              where GTA's live collision has holes (about 10 minutes, 2.5 GB
-#              while it runs, 0.6 GB kept)
+#   7 world    the baked map: GTA's map collision and GTAxSkate's grind-line
+#              rules baked once from your own archives (1-2 hours on a fast PC,
+#              about 6 GB free while it runs). Not chosen: skating uses GTA's live
+#              collision as SK8V does (CollisionSource=Live; switchable in F10 >
+#              World > Collision and grind rails)
 #   8 install  our SK8V build over SK8V's (recorded in SK8V's install record,
 #              so SK8V's own uninstall and updates treat it as theirs), the
 #              settings; then what only the setup needed is removed
@@ -45,6 +51,9 @@ param(
     [switch] $NoMusic,
     [string] $Components = '',
     [string] $Remove = '',
+    # Opt-in extras (see above); the same as naming them in -Components.
+    [switch] $WithTutorial,
+    [switch] $WithCoop,
     # CodeWalker's folder (it holds CodeWalker.Core.dll), for the glowing wheel
     # models; CodeWalker is not bundled. Without it glowing wheels use the light only.
     [string] $CodeWalker = '',
@@ -84,9 +93,9 @@ $VgmstreamZip = 'https://github.com/vgmstream/vgmstream/releases/download/r2117/
 $VgmstreamSha256 = '6c4a8a3813864fefed081bbd337dbc0ad93bf88e0b92f5db98d7ab258b22dc6c'
 # GTAxSkate's own builds for a source checkout without a bin folder: the
 # game-accepted release. Update tag and digest together with each release.
-$GtaxSkateRelease = 'v0.8.3'
+$GtaxSkateRelease = 'v0.9.0'
 $GtaxSkateBinZip = "https://github.com/Manatros/GTAxSkate/releases/download/$GtaxSkateRelease/GTAxSkate-bin.zip"
-$GtaxSkateBinSha256 = '96cd2169fc0bb1c8b1778b064d0e3565862a06b5878ed288dd46a52e990d3396'
+$GtaxSkateBinSha256 = 'b689602a6267a6e092d9ddf4f318f1b40c5c44f9e2d5241cbbacf6159d160b74'
 $GtaBuild = '1.0.3889.0'
 $Steps = 'tools', 'sk8v', 'bin', 'boards', 'glow', 'music', 'world', 'install'
 . (Join-Path $PSScriptRoot 'install-asset-transaction.ps1')
@@ -196,6 +205,8 @@ function Restart-Elevated {
     if ($NoMusic) { $argsList += ' -NoMusic' }
     $componentArg = if ($selectedComponents.Count) { $selectedComponents -join ',' } else { 'none' }
     $argsList += " -Components $componentArg"
+    if ($WithTutorial) { $argsList += ' -WithTutorial' }
+    if ($WithCoop) { $argsList += ' -WithCoop' }
     if ($Remove) { $argsList += " -Remove $Remove" }
     if ($Parts) { $argsList += " -Parts $Parts" }
     if ($Choose) { $argsList += ' -Choose' }
@@ -236,15 +247,21 @@ if (-not $CodeWalker) {
         if (Test-Path -LiteralPath (Join-Path $c 'CodeWalker.Core.dll')) { $CodeWalker = $c; break }
     }
 }
-$componentNames = @('boards', 'glow', 'music', 'world')
+$componentNames = @('boards', 'glow', 'music', 'world', 'tutorial', 'coop')
+# Opt-in only: never a default and not part of 'all'.
+$optInComponents = @('tutorial', 'coop')
 $interactive = [Environment]::UserInteractive -and $env:GTAXSKATE_NONINTERACTIVE -ne '1'
 try { $interactive = $interactive -and -not [Console]::IsInputRedirected -and [Console]::WindowHeight -gt 0 } catch { $interactive = $false }
 function Parse-Components([string]$value) {
     if ($value -eq 'none' -or [string]::IsNullOrWhiteSpace($value)) { return }
-    if ($value -eq 'all') { return $componentNames }
     foreach ($name in ($value -split ',')) {
         $name = $name.Trim().ToLowerInvariant()
-        if ($componentNames -notcontains $name) { Fail "Unknown component '$name'. Use boards, glow, music, world, all or none." }
+        if ($name -eq 'all') {
+            $componentNames | Where-Object { $optInComponents -notcontains $_ }
+            continue
+        }
+        if ($name -eq 'none' -or [string]::IsNullOrWhiteSpace($name)) { continue }
+        if ($componentNames -notcontains $name) { Fail "Unknown component '$name'. Use $($componentNames -join ', '), all or none." }
         $name
     }
 }
@@ -264,15 +281,22 @@ elseif ($interactive) {
         if ($answer.Trim() -eq 'none') { $selectedComponents = @() }
         else {
             $selectedComponents = @(foreach ($number in ($answer -split ',')) {
-                if ($number.Trim() -notmatch '^[1-4]$') { Fail 'Choose component numbers 1-4, or none.' }
-                $componentNames[[int]$number.Trim() - 1]
+                $number = $number.Trim()
+                if ($number -notmatch '^[0-9]{1,3}$' -or [int]$number -lt 1 -or [int]$number -gt $componentNames.Count) { Fail "Choose component numbers 1-$($componentNames.Count), or none." }
+                $componentNames[[int]$number - 1]
             })
         }
     }
 }
 if ($NoMusic) { $selectedComponents = @($selectedComponents | Where-Object { $_ -ne 'music' }) }
+$withComponents = @()
+if ($WithTutorial) { $withComponents += 'tutorial' }
+if ($WithCoop) { $withComponents += 'coop' }
+foreach ($name in $withComponents) { if ($selectedComponents -notcontains $name) { $selectedComponents = @($selectedComponents) + $name } }
 $removedComponents = @(Parse-Components (Known 'RemovedComponents'))
 if ($componentsExplicit) { $removedComponents = @($removedComponents | Where-Object { $selectedComponents -notcontains $_ }) }
+# A -With switch is an explicit choice too: it restores a hidden extra.
+$removedComponents = @($removedComponents | Where-Object { $withComponents -notcontains $_ })
 $removedComponents = @($removedComponents) + @(Parse-Components $Remove)
 $selectedComponents = @($selectedComponents | Where-Object { $removedComponents -notcontains $_ })
 Remember 'RemovedComponents' ($removedComponents -join ',')
@@ -867,6 +891,10 @@ foreach ($c in $catalog) {
 # With the soundtrack on Self Radio, skating plays it.
 if ((Component-On 'music') -and (Test-Path -LiteralPath (Join-Path $receipts 'music.done'))) { Add-Key 'SkateRadio' 'RADIO_19_USER' }
 foreach ($key in 'DrawBoard', 'DrawSkater') { $text = $text -replace "(?m)^$key=0", "$key=1" }
+# Collision source: the baked map when it was prepared, else live as SK8V does it.
+$bakedReady = (Component-On 'world') -and (Test-Path -LiteralPath (Join-Path $receipts 'world.done'))
+Set-Key 'CollisionSource' $(if ($bakedReady) { 'Baked' } else { 'Live' })
+Say "  collision: $(if ($bakedReady) { 'baked map (GTAxSkate)' } else { 'live, SK8V style (no baked map)' })" 'DarkGray'
 $text = ($text -replace "`r+`n", "`n") -replace "`n", "`r`n"
 [IO.File]::WriteAllText($ini, $text, [Text.Encoding]::Unicode)
 # Collectibles (design 2026-11-01-collectibles): their places next to the
@@ -875,6 +903,60 @@ $places = Join-Path $bin 'collectibles.tsv'
 if (Test-Path -LiteralPath $places) { Copy-Item -LiteralPath $places -Destination (Join-Path $data 'collectibles.tsv') -Force }
 else { Say '  this package has no collectibles places (collectibles stay off)' 'DarkGray' }
 if (-not (Component-On 'music')) { & (Join-Path $PSScriptRoot 'collectibles\songs-back.ps1') | ForEach-Object { Say "  $_" 'DarkGray' } }
+# Opt-in extras: only what is staged locally is copied; nothing staged is a
+# note, never an error. update.rpf and the game's own archives stay untouched.
+$schoolData = Join-Path $data 'addons\skate_school'
+if (Component-On 'tutorial') {
+    $schoolStaged = (Test-Path -LiteralPath (Join-Path $root 'local\m0-tutorial\m0-tutorial-manifest.json')) -or
+        (Test-Path -LiteralPath (Join-Path $build 'tutorial\dlcpacks\skate_school\dlc.rpf')) -or
+        (Test-Path -LiteralPath $schoolData)
+    $schoolCopied = 0
+    # The first staged folder that holds files wins.
+    foreach ($stage in (Join-Path $root 'local\m0-tutorial\addons\skate_school'), (Join-Path $build 'tutorial\addons\skate_school')) {
+        if ($schoolCopied) { break }
+        foreach ($kind in @(@('collision', '*.svwc'), @('splines', '*_rails.json'))) {
+            $from = Join-Path $stage $kind[0]
+            if (-not (Test-Path -LiteralPath $from -PathType Container)) { continue }
+            foreach ($file in @(Get-ChildItem -LiteralPath $from -Filter $kind[1] -File)) {
+                $to = Join-Path $schoolData $kind[0]
+                New-Item -ItemType Directory -Force -Path $to | Out-Null
+                Copy-Item -LiteralPath $file.FullName -Destination (Join-Path $to $file.Name) -Force
+                $schoolCopied++
+            }
+        }
+    }
+    $schoolRpf = Join-Path $build 'tutorial\dlcpacks\skate_school\dlc.rpf'
+    if (Test-Path -LiteralPath $schoolRpf -PathType Leaf) {
+        $schoolPack = Join-Path $Gta 'dlcpacks\skate_school'
+        New-Item -ItemType Directory -Force -Path $schoolPack | Out-Null
+        Copy-Item -LiteralPath $schoolRpf -Destination (Join-Path $schoolPack 'dlc.rpf') -Force
+        $schoolCopied++
+    }
+    if ($schoolCopied -or (Test-Path -LiteralPath (Join-Path $schoolData 'collision\DIST_SkateSchool.svwc'))) {
+        Say "  tutorial pack: $schoolCopied file(s) copied" 'DarkGray'
+        Done 'tutorial'
+    } elseif ($schoolStaged) { Say '  Tutorial pack is staged without collision, rail or dlc.rpf files; skipping optional copy' 'Yellow' }
+    else { Say '  Tutorial pack not staged locally; skipping optional copy' 'Yellow' }
+}
+$coopReceipt = Join-Path $Gta 'GTAxSkate-coop-backups\optional-coop-receipt.json'
+if (Component-On 'coop') {
+    $coopSetup = Join-Path $root 'coop\gtaxskate\Setup-FriendsCoop.ps1'
+    $coopPack = Join-Path $build 'coop-test-ready-20261015\optional-coop\Install-OptionalCoop.ps1'
+    if (Test-Path -LiteralPath $coopReceipt -PathType Leaf) {
+        # An installed pack keeps its host address and friend key.
+        Say '  Friends-Only Coop is already installed; its settings are kept' 'DarkGray'
+        Done 'coop'
+    } elseif ((Test-Path -LiteralPath $coopSetup -PathType Leaf) -and (Test-Path -LiteralPath $coopPack -PathType Leaf)) {
+        try {
+            & $coopPack -Mode Install -GtaDir $Gta | ForEach-Object { Say "  $_" 'DarkGray' }
+            if (-not (Test-Path -LiteralPath $coopReceipt -PathType Leaf)) { throw 'the pack left no install receipt' }
+            Done 'coop'
+        } catch { Say "  Optional coop setup did not finish ($($_.Exception.Message)); GTAxSkate itself is unaffected" 'Yellow' }
+    } elseif (Test-Path -LiteralPath $coopSetup -PathType Leaf) {
+        try { & $coopSetup -Mode VerifySecurity | ForEach-Object { Say "  $_" 'DarkGray' } } catch { Say "  Coop check failed: $($_.Exception.Message)" 'Yellow' }
+        Say '  Coop pack not staged locally (Setup-FriendsCoop.ps1 -Mode PrepareOptionalPack makes it); skipping optional copy' 'Yellow'
+    } else { Say '  Coop pack not staged locally; skipping optional copy' 'Yellow' }
+}
 # Actual installed state, independent of this selection and -Redo.
 $installed = @{
     boards = ((Test-Path -LiteralPath (Join-Path $receipts 'boards.done')) -or
@@ -885,6 +967,10 @@ $installed = @{
     music = (Test-Path -LiteralPath (Join-Path $receipts 'music.done'))
     world = ((Test-Path -LiteralPath (Join-Path $receipts 'world.done')) -or
         (Test-Path -LiteralPath (Join-Path $data 'world\sk8v-map.svwc')))
+    tutorial = ((Test-Path -LiteralPath (Join-Path $receipts 'tutorial.done')) -or
+        (Test-Path -LiteralPath (Join-Path $schoolData 'collision\DIST_SkateSchool.svwc')))
+    coop = ((Test-Path -LiteralPath (Join-Path $receipts 'coop.done')) -or
+        (Test-Path -LiteralPath $coopReceipt))
 }
 $componentLines = foreach ($name in $componentNames) {
     $present = $installed[$name] -and $removedComponents -notcontains $name

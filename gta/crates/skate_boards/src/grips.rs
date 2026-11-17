@@ -46,6 +46,18 @@ pub fn catalog(library: Option<&Library>) -> Vec<Grip> {
         Grip { id: "checker".into(), name: "Checker".into(), look: GripLook::Checker([235, 235, 230], [30, 30, 32], 4) },
         Grip { id: "checkerred".into(), name: "Checker Red".into(), look: GripLook::Checker([180, 30, 34], [30, 30, 32], 4) },
         Grip { id: "checkerfine".into(), name: "Checker Fine".into(), look: GripLook::Checker([235, 235, 230], [30, 30, 32], 8) },
+        Grip { id: "c057sprunkg".into(), name: "Sprunk Grip".into(), look: GripLook::Print(PartRef::new("f2c517ee8b8359da", "c057_sprunk_d")) },
+        Grip { id: "c057redwoodg".into(), name: "Redwood Grip".into(), look: GripLook::Checker([180, 20, 20], [240, 240, 240], 2) },
+        Grip { id: "c057ecolag".into(), name: "eCola Grip".into(), look: GripLook::Print(PartRef::new("f2c517ee8b8359da", "c057_ecola_d")) },
+        Grip { id: "c057pisswasg".into(), name: "Pißwasser Grip".into(), look: GripLook::Checker([0, 102, 204], [250, 250, 250], 4) },
+        Grip { id: "c057lscustg".into(), name: "LSC Grip".into(), look: GripLook::Checker([245, 200, 0], [30, 30, 32], 4) },
+        Grip { id: "c057prolapsg".into(), name: "ProLaps Grip".into(), look: GripLook::Print(PartRef::new("f2c517ee8b8359da", "c057_prolaps_d")) },
+        Grip { id: "c057bravadog".into(), name: "Bravado Grip".into(), look: GripLook::Checker([40, 40, 45], [230, 230, 230], 2) },
+        Grip { id: "c057pegassig".into(), name: "Pegassi Grip".into(), look: GripLook::Print(PartRef::new("f2c517ee8b8359da", "c057_pegassi_d")) },
+        Grip { id: "c057grup6g".into(), name: "Gruppe Sechs Grip".into(), look: GripLook::Checker([75, 83, 32], [30, 30, 32], 2) },
+        Grip { id: "c057flyusg".into(), name: "FlyUS Grip".into(), look: GripLook::Print(PartRef::new("f2c517ee8b8359da", "c057_flyus_d")) },
+        Grip { id: "c057burgersg".into(), name: "Burger Shot Grip".into(), look: GripLook::Checker([204, 0, 0], [245, 200, 0], 4) },
+        Grip { id: "c057clucking".into(), name: "Cluckin' Bell Grip".into(), look: GripLook::Checker([245, 200, 0], [204, 0, 0], 4) },
     ];
     if let Some(library) = library {
         for item in library.new_items(Part::Deck).into_iter().step_by(PRINT_EVERY) {

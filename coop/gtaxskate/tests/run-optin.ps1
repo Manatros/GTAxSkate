@@ -1,0 +1,15 @@
+$ErrorActionPreference='Stop'
+$root=Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
+$out=Join-Path $root 'build\coop-optin-tests'
+New-Item -ItemType Directory -Path $out -Force | Out-Null
+$csc=Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+if(!(Test-Path -LiteralPath $csc)){throw '.NET Framework C# compiler missing.'}
+$sources=@(Get-ChildItem (Join-Path (Split-Path $PSScriptRoot -Parent) 'shared') -Filter '*.cs' | ForEach-Object FullName)
+$sources+=Join-Path $PSScriptRoot 'CoopOptInTests.cs'
+$exe=Join-Path $out 'CoopOptInTests.exe'
+& $csc /nologo /warn:4 /warnaserror /target:exe "/out:$exe" $sources
+if($LASTEXITCODE){throw 'Opt-in path/preference tests compilation failed.'}
+$env:GTAXSKATE_COOP_TEST_TMP=Join-Path $out 'tmp'
+New-Item -ItemType Directory -Force -Path $env:GTAXSKATE_COOP_TEST_TMP | Out-Null
+& $exe
+if($LASTEXITCODE){throw 'Opt-in path/preference tests failed.'}

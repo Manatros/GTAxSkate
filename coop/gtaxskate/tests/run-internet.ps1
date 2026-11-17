@@ -1,0 +1,13 @@
+$ErrorActionPreference='Stop'
+$root=Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
+$out=Join-Path $root 'build\coop-internet-tests'
+New-Item -ItemType Directory -Path $out -Force | Out-Null
+$csc=Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+if(!(Test-Path -LiteralPath $csc)){throw '.NET Framework C# compiler missing.'}
+$sources=@(Get-ChildItem (Join-Path (Split-Path $PSScriptRoot -Parent) 'shared') -Filter '*.cs' | ForEach-Object FullName)
+$sources+=Join-Path $PSScriptRoot 'InternetLobbyTests.cs'
+$exe=Join-Path $out 'InternetLobbyTests.exe'
+& $csc /nologo /warn:4 /warnaserror /define:COOP_FIXTURE /target:exe "/out:$exe" $sources
+if($LASTEXITCODE){throw 'Internet lobby tests compilation failed.'}
+& $exe
+if($LASTEXITCODE){throw 'Internet lobby tests failed.'}

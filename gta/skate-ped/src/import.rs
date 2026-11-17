@@ -27,6 +27,7 @@ const BRANDS: &[&str] = &[
     "santacruz", "shut", "skatemental", "stereo", "think", "zero", "zooyork", "birdhouse", "toymachine", "powell", "powellperalta", "primitive",
     "polar", "palace", "hockey", "fucking awesome", "fuckingawesome", "april", "sovrn", "girl", "lakai", "darkstar", "foundation", "zoo", "hook-ups",
     "hookups", "world industries", "worldindustries", "bloodwizard", "welcome", "magenta", "quasi", "scumco", "sk8mafia", "jart", "madness", "cruzade",
+    "sprunk", "redwood", "ecola", "pisswasser", "lscustoms", "prolaps", "bravado", "pegassi", "gruppesechs", "flyus", "burgershot", "cluckinbell",
 ];
 
 /// The maker in `path` (lower case, letters and digits only compared), or
@@ -34,7 +35,10 @@ const BRANDS: &[&str] = &[
 pub fn brand_of(path: &Path) -> String {
     let words: Vec<String> = path
         .components()
-        .map(|c| c.as_os_str().to_string_lossy().to_ascii_lowercase().chars().filter(|c| c.is_ascii_alphanumeric()).collect())
+        .map(|c| {
+            let s = c.as_os_str().to_string_lossy().replace(['ß', 'ẞ'], "ss").to_ascii_lowercase();
+            s.chars().filter(|c| c.is_ascii_alphanumeric()).collect()
+        })
         .collect();
     // The deepest folder or the file's own name first.
     for word in words.iter().rev() {
@@ -220,9 +224,37 @@ pub fn import_decks(assets: &Path, folder: &Path) -> Result<usize, String> {
         );
         decks.push(id);
     }
-    let json = serde_json::json!({ "model": DECK, "materials": materials, "decks": decks });
-    std::fs::write(out_dir.join("custom.json"), serde_json::to_string_pretty(&json).unwrap()).map_err(|e| e.to_string())?;
-    Ok(decks.len())
+    let custom_file = out_dir.join("custom.json");
+    let mut root: serde_json::Value = if let Ok(text) = std::fs::read_to_string(&custom_file) {
+        serde_json::from_str(&text).unwrap_or_else(|_| serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+    if !root.is_object() {
+        root = serde_json::json!({});
+    }
+    let obj = root.as_object_mut().unwrap();
+    if !obj.contains_key("model") || obj["model"].as_str().map_or(true, |s| s.is_empty()) {
+        obj.insert("model".into(), serde_json::Value::String(DECK.into()));
+    }
+    let existing_materials = obj.entry("materials").or_insert_with(|| serde_json::json!({}));
+    if let Some(m_obj) = existing_materials.as_object_mut() {
+        for (k, v) in materials {
+            m_obj.insert(k, v);
+        }
+    }
+    let existing_decks = obj.entry("decks").or_insert_with(|| serde_json::json!([]));
+    if let Some(d_arr) = existing_decks.as_array_mut() {
+        for d in decks {
+            let val = serde_json::Value::String(d);
+            if !d_arr.contains(&val) {
+                d_arr.push(val);
+            }
+        }
+    }
+    let count = obj["decks"].as_array().map_or(0, |a| a.len());
+    std::fs::write(&custom_file, serde_json::to_string_pretty(&root).unwrap()).map_err(|e| e.to_string())?;
+    Ok(count)
 }
 
 #[cfg(test)]
@@ -237,6 +269,11 @@ mod tests {
         assert_eq!(brand_of(Path::new("random/cat.png")), "custom");
         assert_eq!(skate_boards::brand_name(&brand_of(Path::new("random/cat.png"))), "Custom");
         assert_eq!(title_of(Path::new("x/my_cool-deck.png")), "My Cool Deck");
+        assert_eq!(brand_of(Path::new("Sprunk/deck.png")), "sprunk");
+        assert_eq!(brand_of(Path::new("custom/redwood_special.png")), "redwood");
+        assert_eq!(brand_of(Path::new("eCola/soda.png")), "ecola");
+        assert_eq!(brand_of(Path::new("Pißwasser/beer.png")), "pisswasser");
+        assert_eq!(brand_of(Path::new("LSCustoms/tune.png")), "lscustoms");
     }
 
     #[test]

@@ -3,6 +3,7 @@
 Format: dotnet/runtime v6.0.36 Microsoft.NET.HostModel/Bundle/{Manifest,FileEntry}.cs.
 Never executes the server or follows names from the manifest as output paths.
 """
+import argparse
 import hashlib
 import io
 import json
@@ -15,8 +16,8 @@ SERVER = ROOT / "build/coop-lab/ragecoop-server/RageCoop.Server.exe"
 OUTPUT = ROOT / "build/coop-lab/server-references"
 
 
-def extract():
-    raw = SERVER.read_bytes()
+def extract(server):
+    raw = server.read_bytes()
     if hashlib.sha256(raw).hexdigest() != "5c2e94778560ad5097bce6654c1b24083845af442954e2acc26727b6ddaafa07":
         raise ValueError("Server executable differs from reviewed official nightly")
     signature = bytes.fromhex("8b1202b96a612038727b930214d7a03213f5b9e6efae3318ee3b2dce24b36aae")
@@ -83,4 +84,6 @@ def extract():
 
 
 if __name__ == "__main__":
-    extract()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--server", type=Path, default=SERVER)
+    extract(parser.parse_args().server)

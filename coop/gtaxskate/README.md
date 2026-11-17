@@ -57,6 +57,62 @@ disconnect, stale callbacks/queued startup, server lifetime and version guards.
 It is separate from the actual-binary compile check and does not load real
 RAGECOOP assemblies into a test process or establish gameplay acceptance.
 
+## Multiplayer is opt-in (default off), 2026-11-16
+
+Solo Story Mode starts **no** coop adapter, server, scan or on-screen coop message
+until multiplayer is turned on. Press **F11**: the small panel shows
+`Multiplayer: Off` with `Enable Multiplayer` / `Close`. The choice is remembered in
+`scripts\RageCoop\FriendsCoopPrefs.json` (`{"MultiplayerEnabled": true}`; missing or
+invalid file = off). `FriendsCoopClient.json` (endpoint and friend key) is never
+rewritten and never counts as consent. Enabling does not host or join anything:
+Host, Connect and Join stay separate actions in the F11 menu, which also offers
+`Disable Multiplayer & Return to Solo` (stops only the local server this mod
+started). While off, a raw RAGECOOP (F9) connection is dropped silently.
+
+The game root is always the folder of `GTA5.exe` (not SHVDN's shadow-copy cache);
+the local server is `scripts\RageCoop\HostServer\RageCoop.Server.exe` under it.
+Design: `docs/designs/2026-11-16-coop-optin-server-path.md`. Tests: `tests/run-adapter.ps1`,
+`tests/run-optin.ps1` (paths and preferences), `tests/run-identity.ps1` (built DLL metadata).
+
+## Internet lobby (code + password), 2026-11-17 (untested in game)
+
+F11 menu while disconnected: **Host online (internet)** starts the local server as usual with a generated password (never
+typed, never shown; see "Streamer-safe coop" above), opens UDP 4499 on the router through
+Windows' own UPnP API on a background thread (8 s timeout, only this install's own mapping is ever removed) and
+copies an **invite** (the **lobby code** `SK8-XXXX-XXXX-XXXX` = public IPv4 + port + checksum, plus the password) to the
+clipboard. **Join friend (paste invite)** reads it from the clipboard. Only a valid code pins a public host; the
+server admits public addresses only with the right password, with a bounded failure throttle. No relay, no
+master server, no web lookup. If the router refuses (no UPnP, double NAT): forward UDP 4499 by hand or use
+Tailscale. Design: `docs/designs/2026-11-16-coop-internet-lobby.md`. Tests: `tests/run-internet.ps1`
+(code, throttle, policy, UPnP fixture), the adapter suite (menu rows, server admission).
+
+## Streamer-safe coop, 2026-11-17 (untested in game)
+
+Anything on screen ends up in a stream, so **nothing secret is ever typed into GTA's on-screen keyboard or drawn by
+our code** (no public/LAN/VPN address, lobby code, session join code, password, Windows user name or path).
+
+- **Host:** "Host online (internet)" and "Host private session (LAN / VPN)" generate a fresh random password
+  (20 symbols, about 100 bits) and copy one **invite** to the clipboard: `GTAxSkate coop invite <locator> <password>`
+  (online: the lobby code; private: this PC's VPN address if it has one, else its LAN address). The screen only
+  says "Invite copied to the clipboard (hidden for streaming). Send it to your friend in a private message."
+  "Copy invite to clipboard" copies it again. The copy is excluded from Windows clipboard history and the cloud
+  clipboard, and it is cleared after 10 minutes or when hosting stops (only if the clipboard still holds it).
+- **Friend:** copy the invite, then choose **Join friend (paste invite)**. The invite is read from the clipboard,
+  parsed, and removed from the clipboard (if unchanged). Nothing is typed or shown. The in-game session join code
+  works the same way ("Copy join code to clipboard" / "Join Friend Lobby (paste code)").
+- **On screen:** hosts are named only by label + trust tag (`Friend [LAN]`, `Online host [ONLINE]`); every
+  notice, menu row, banner and panel passes `SafeText.ForScreen`, which masks addresses, `host:port`, paths, the
+  Windows user name, lobby codes and the current secrets with `[hidden]`.
+- **RageCoop's own client UI** (F9 menu with server address and player name, server browser) is locked while
+  multiplayer is on: `scripts\RageCoop\Data\RageCoop.Client.Settings.xml` gets `MenuKey` F24, empty `MasterServer`,
+  `LastServerAddress` 127.0.0.1:4499, `Username` Skater; your own values come back when multiplayer is switched off
+  or the coop is uninstalled. The player name is also forced to `Skater` before every connect.
+- **Limits:** RageCoop's own GTA notifications (for example "Cannot connect to server") and its server log on the
+  host PC are not under our control. **Never paste an invite into a chat you stream.** Chat text is the players' own.
+
+Design: `docs/designs/2026-11-17-streamer-safe-coop.md`. Tests: `tests/run-streamer.ps1` (invite, password, sanitizer,
+labels, clipboard worker, settings lock), the adapter suite (leak scan over every notice and overlay frame).
+
 ## What exists and what does not
 
 The inspected RAGECOOP source supports `byte[]` CustomEvent arguments

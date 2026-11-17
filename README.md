@@ -6,7 +6,10 @@
 Joining players need GTA V Legacy and [FiveM](https://fivem.net/); the server sends the skate resources automatically.
 See the [short joining guide](FIVEM-JOIN.md). The ZIP is for server hosts. The current prototype fails to load its board model; full animations, shops and F10 are not included. Singleplayer validation currently takes priority.
 
-**Current release: [v0.8.3](https://github.com/Manatros/GTAxSkate/releases/tag/v0.8.3)** — published on 11 November 2026 (SK8V 1.1.10). v0.8.3 adds complete keyboard and mouse shortcuts across the replay editor, speed presets, camera editing hotkeys, and 3-band fisheye HUD text clarity; v0.8.2 fixed GTA streaming thread crashes and memory churn, continuous grind rails across joints, geometry polish, and replay sound/filters; v0.8.0 brought skatepark collision from the visible park models, collectibles and trick lines, replay, a reworked Skate Shop and grind lines on train rails and ramp rims. See the [known issues](#known-issues). Historical privacy-affected downloads remain withdrawn; see [privacy guidance](PRIVACY.md).
+> **Project on hold.** v0.9.0 is the last release for now: the maintainer has stepped away. Everything stays public so anyone can continue it.
+> **[STATUS.md](STATUS.md)** lists what works, what was never confirmed in game and what is broken, plus where to start as a contributor.
+
+**Current release: [v0.9.0](https://github.com/Manatros/GTAxSkate/releases/tag/v0.9.0)** — published on 18 November 2026 (SK8V 1.1.10). v0.9.0 lets you choose the collision and grind rails (F10 > World > *Collision and grind rails*: our baked map, or GTA's live collision as SK8V does it), cleans up the skateparks (fence boxes, duplicate lines, open arches you can hippie jump through), replays moving cars and people, and reworks the F10 menu. v0.8.3 added complete keyboard and mouse shortcuts across the replay editor, speed presets, camera editing hotkeys, and 3-band fisheye HUD text clarity; v0.8.2 fixed GTA streaming thread crashes and memory churn, continuous grind rails across joints, geometry polish, and replay sound/filters; v0.8.0 brought skatepark collision from the visible park models, collectibles and trick lines, replay, a reworked Skate Shop and grind lines on train rails and ramp rims. See the [known issues](#known-issues). Historical privacy-affected downloads remain withdrawn; see [privacy guidance](PRIVACY.md).
 
 **GTAxSkate** adds to **[SK8V](https://github.com/becaring/SK8V)** by becaring, the mod that runs
 the real **Skate 3** engine in **GTA V story mode**. SK8V does the skating (Skate's own physics,
@@ -25,7 +28,7 @@ is made from your own copies of the games.
 
 ## Project status and repository roles
 
-The current stable version **v0.8.3** uses SK8V **1.1.10**. The host/runtime pair is exactly `test-replay-workflow-583be93` (source `583be93`, world rules `8a1fe36e1275922c`, compatible with v0.8.0: no world rebuild needed when updating from v0.8.0/v0.8.1/v0.8.2). The maintainer tested this build on 11 November 2026; the remaining problems are listed under known issues. Not every feature was retested on this exact build.
+The current stable version **v0.9.0** uses SK8V **1.1.10**. The host/runtime pair is exactly `test-20261117-v090rc-c958dce` (source SK8V `release/v0.9.0` `c958dce`, world rules `213170a43c53a499`; it still reads v0.8.x tiles, but the park cleanup needs the v0.9.0 world bake). The maintainer tested this build on 17 November 2026; untested parts and remaining problems are in [STATUS.md](STATUS.md).
 
 
 Complete SK8V, RP, User, Custom and Developer settings profiles cover 120 menu settings. Keyboard presets remain separate, preserving personal bindings. SK8V retains animation and transition ownership.
@@ -38,7 +41,7 @@ The optional Python/RAGE board composition helper prepares exact shop selections
 |---|---|
 | [GTAxSkate](https://github.com/Manatros/GTAxSkate) | Player installer, setup scripts, downloads, issue tracking and package documentation. |
 | [SK8V development fork](https://github.com/Manatros/SK8V/tree/skatemods) | Modified SK8V source, contribution branches and independently adoptable package patches. Upstream attribution remains intact. |
-| `main` / v0.8.3 | Stable release (SK8V 1.1.10); known issues listed below. |
+| `main` / v0.9.0 | Last stable release (SK8V 1.1.10); project on hold, see [STATUS.md](STATUS.md). |
 | Test builds / future work | Pre-releases with their own tests before they reach `main`; experimental multiplayer support remains separate. |
 
 [Report a bug](https://github.com/Manatros/GTAxSkate/issues/new/choose) ·
@@ -47,7 +50,7 @@ The optional Python/RAGE board composition helper prepares exact shop selections
 
 ## Download
 
-Download [v0.8.3](https://github.com/Manatros/GTAxSkate/releases/tag/v0.8.3): **GTAxSkate-Setup.zip** for the full installer, or **GTAxSkate-dropin-for-SK8V-1.1.10.zip** for an existing matching SK8V installation. Always replace both host and runtime together. Release assets include notices and checksums; the full tool bundle includes corresponding source for GPL tools. The Setup ZIP is the complete package; installing from this repository's source downloads the same release programs and checks their SHA-256 digest. The new world collision is built by the installer (step 7, world); the drop-in ZIP alone uses GTA's live collision.
+Download [v0.9.0](https://github.com/Manatros/GTAxSkate/releases/tag/v0.9.0): **GTAxSkate-Setup.zip** for the full installer, or **GTAxSkate-dropin-for-SK8V-1.1.10.zip** for an existing matching SK8V installation. Always replace both host and runtime together. Release assets include notices and checksums; the full tool bundle includes corresponding source for GPL tools. The Setup ZIP is the complete package; installing from this repository's source downloads the same release programs and checks their SHA-256 digest. The new world collision is built by the installer (step 7, world); the drop-in ZIP alone uses GTA's live collision.
 
 The separate [FiveM test release](https://github.com/Manatros/GTAxSkate/releases/tag/fivem-friends-test-20261014) remains a paused historical prototype with a missing-board model.
 
@@ -139,7 +142,10 @@ Controller input follows SK8V; keyboard/mouse support is provided by this fork. 
 
 ## Known issues
 
-- The replay is silent: Skate's sounds pause while it plays (sound in the replay is planned).
+- Full list with untested parts: [STATUS.md](STATUS.md).
+- **Realism Enhanced Traffic and Driver A.I** freezes every NPC in place (its `pedpersonality.ymt`); leave it off.
+- Metro stairs (M14-M16) and the concrete wall under one Vespucci handrail (M27) still collide wrong.
+- Coop "Host online" did not work on the maintainer's DS-Lite connection; coop on one PC works, two-PC coop is untested.
 - **M** while skating does not open GTA's interaction menu yet (B104; it works on foot).
 - Printed griptapes still show a seam at the deck's edge; a thin seam between the deck's middle and its nose and tail.
 - Riding sideways along an edge the board does not always stick to it; a board hit while bailing can drag the body.
@@ -190,7 +196,7 @@ Do not install the Story Mode ASIs as a FiveM resource.
    and unzip it anywhere (it carries the installer and every GTAxSkate program).
 2. Install **PowerShell 7 (`pwsh`)** for the world build, and close GTA V, OpenIV and CodeWalker.
 3. Double-click **`Install GTAxSkate.cmd`**.
-4. Keep **world** selected: step 7 builds the whole map from your GTA files. It takes a long time and needs several GB of free space; the game folder changes only after it has finished and passed its check.
+4. Keep **world** selected: step 7 builds the whole map from your GTA files. The skateparks are ready first; the whole map takes from 1-2 hours up to several hours and needs several GB of free space. Tiles go into the game folder only while GTA is closed and after they pass their check. Without the world bake, GTAxSkate uses GTA's live collision (F10 > World > *Collision and grind rails* > Live, the SK8V way).
 
 (From this repository's source instead: the same `Install GTAxSkate.cmd`; it downloads the pinned release's programs and checks their SHA-256 digest.)
 
