@@ -18,10 +18,18 @@ import zipfile
 
 
 RULES = {
-    "profile_path": r"(?i)(?:[a-z]:[\\/]+Users[\\/]+[^\\/\s\x00]+|/(?:Users|home)/[^/\s\x00]+)",
+    # Require a plausible username component and a path/text boundary. Without
+    # this, scanning the odd byte alignment of UTF-16 binaries can join the
+    # literal `/users/` with unrelated following metadata and report it as a
+    # profile path.
+    "profile_path": r"(?i)(?:[a-z]:[\\/]+Users[\\/]+[\w][^\\/\x00\r\n\"'<>),;]*|/(?:Users|home)/[\w][^/\x00\r\n\"'<>),;]*)(?=[\\/\x00\r\n\"'<>),;]|$)",
     "game_install_path": r"(?i)(?<![a-z0-9_])(?:[a-z]:[\\/]+(?:Games|SteamLibrary|XboxGames)[\\/]|[a-z]:[\\/]+[^\r\n\x00]{0,160}?(?:steamapps[\\/]+common|Rockstar Games)[\\/])",
     "private_key": r"-----BEGIN (?:RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----",
-    "access_token": r"(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-(?:proj-)?[A-Za-z0-9_-]{32,}|AKIA[A-Z0-9]{16})",
+    # OpenAI key bodies use alphanumeric/underscore characters; a hyphen is
+    # only part of the optional `proj-` prefix. Allowing body hyphens made the
+    # ICU locale table in the pinned RageCoop server look like one long key
+    # (`sk-SK-...`).
+    "access_token": r"(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-(?:proj-)?[A-Za-z0-9_]{32,}|AKIA[A-Z0-9]{16})",
 }
 RETAIL_EXTENSIONS = {".rpf", ".big", ".xex", ".bik", ".bk2", ".awc", ".iso"}
 RETAIL_NAMES = {"gta5.exe", "gta5_enhanced.exe", "playgta5.exe", "default.xex"}
@@ -142,8 +150,27 @@ def scan_zip(path, rules, exceptions=None, applied=None):
             else:
                 data = archive.read(member)
                 # Do not silently approve a compressed payload hidden one level deeper.
-                if zipfile.is_zipfile(io.BytesIO(data)):
-                    counts["nested_archive_requires_separate_scan"] += 1
+                if (PurePosixPath(member.filename).suffix.lower() == ".zip"
+                        or zipfile.is_zipfile(io.BytesIO(data))):
+                    try:
+                        with zipfile.ZipFile(io.BytesIO(data)) as nested:
+                            nested.infolist()
+                            # Validate member headers/checksums before treating
+                            # a binary signature as a real nested archive.
+                            # testzip streams in bounded chunks.
+                            corrupt = nested.testzip()
+                            if corrupt is not None:
+                                raise zipfile.BadZipFile("corrupt nested member")
+                    except Exception:
+                        # Some managed assemblies contain a PK signature/resource
+                        # that fools is_zipfile() without containing an extractable
+                        # archive. Still scan the raw bytes above; any parse/read
+                        # failure for content explicitly named .zip remains a hard
+                        # error below.
+                        if PurePosixPath(member.filename).suffix.lower() == ".zip":
+                            raise
+                    else:
+                        counts["nested_archive_requires_separate_scan"] += 1
                 counts.update(reviewed_content(data, member.filename, rules, exceptions, applied))
             if counts:
                 # Member names can themselves contain sensitive values.
@@ -160,7 +187,7 @@ def safe_location(name, rules, index=None):
 
 def scan_path(path, rules, exceptions=None, applied=None):
     path = Path(path)
-    if path.is_file() and zipfile.is_zipfile(path):
+    if path.is_file() and path.suffix.lower() == ".zip":
         return scan_zip(path, rules, exceptions, applied)
     files = sorted(path.rglob("*")) if path.is_dir() else [path]
     findings = []
@@ -175,11 +202,30 @@ def scan_path(path, rules, exceptions=None, applied=None):
             continue
         counts = Counter(path_findings(relative))
         counts.update(scan_bytes(relative.encode("utf-8"), rules))
-        if zipfile.is_zipfile(file):
+        if file.suffix.lower() == ".zip":
             nested = scan_zip(file, rules, exceptions, applied)
             for item in nested:
                 item["path"] = safe_location(relative, rules) + "!" + item["path"]
             findings.extend(nested)
+            counts.update(reviewed_content(file.read_bytes(), relative, rules, exceptions, applied))
+        elif zipfile.is_zipfile(file):
+            try:
+                with zipfile.ZipFile(file) as candidate:
+                    candidate.infolist()
+            except zipfile.BadZipFile:
+                counts.update(reviewed_content(file.read_bytes(), relative, rules, exceptions, applied))
+            else:
+                # Validate the central directory first. If it parses, any later
+                # member read failure is a real incomplete scan and must fail closed.
+                try:
+                    nested = scan_zip(file, rules, exceptions, applied)
+                except Exception:
+                    counts["unreadable_archive_candidate"] += 1
+                else:
+                    for item in nested:
+                        item["path"] = safe_location(relative, rules) + "!" + item["path"]
+                    findings.extend(nested)
+                counts.update(reviewed_content(file.read_bytes(), relative, rules, exceptions, applied))
         else:
             counts.update(reviewed_content(file.read_bytes(), relative, rules, exceptions, applied))
         if counts:
@@ -227,8 +273,11 @@ def main(argv=None):
         findings = scan_path(args.path, rules, exceptions, applied)
         if args.git_scan:
             findings.extend(scan_git(args.path, args.git_ref or ["HEAD"], rules, args.own_identity_pattern))
-    except (OSError, ValueError, TypeError, KeyError, re.error, zipfile.BadZipFile, RuntimeError, subprocess.CalledProcessError):
+    except Exception:
         # Exception messages can disclose paths, private patterns, or Git stderr.
+        # ZIP readers can also raise EOFError, zlib.error, NotImplementedError,
+        # and other format-specific errors. Any such error means the scan was
+        # incomplete, so fail closed with a redacted result.
         print(json.dumps({"ok": False, "error": "Input could not be scanned completely."}))
         return 2
     print(json.dumps({"ok": not findings, "findings": findings, "applied_upstream_exceptions": applied, "applied_upstream_exception_count": len(applied)}, indent=2))

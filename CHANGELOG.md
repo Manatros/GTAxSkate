@@ -3,12 +3,28 @@
 All notable changes, newest first. Versions follow [semantic versioning](https://semver.org/):
 minor versions collect features; patch versions collect fixes. Each release records its validation limits.
 
-## v0.9.0 — 18 November 2026 (last release for now)
+## v0.9.1 — 18 November 2026 (last release for now)
 
-Source SK8V `release/v0.9.0` `c958dce`, world rules `213170a43c53a499` (also reads v0.8.x-era tiles `d8f4ecbeaba164d5`/`8a1fe36e1275922c`).
+Patch release; the original public v0.9.0 tag and assets remain unchanged.
+
+Source SK8V `fix/replay-ped-ai` `7c4fe96`, world rules `213170a43c53a499` (also reads v0.8.x-era tiles `d8f4ecbeaba164d5`/`8a1fe36e1275922c`).
 **The project is on hold after this release**: see [STATUS.md](STATUS.md) for what works, what is untested and what is broken.
-Tested in game by the maintainer on 17 November 2026 (skating, menus, NPC traffic, Live collision switch, local coop host);
+Tested in game by the maintainer on 17 and 18 November 2026 (skating, slopes, menus, NPC traffic, Live collision switch, local coop host);
 items marked *untested* below passed the automated tests only.
+
+| Works (tested) | Built, not confirmed in game | Known problems / needs more work |
+|---|---|---|
+| Skating, tricks, grinds; wheels on slopes (fixed 18 Nov) | Park rules R1-R6 and drawn-ground alignment | Tutorial Island (optional): collision/textures incomplete, travel lands in the wrong place |
+| Boards, shops, music, replay editor, collectibles | Top-floor rule, NPC replay fix | Some curb and canal-bridge grind edges (1118-1/5/6/10) |
+| Baked and Live collision, switching in game | Coop between two PCs (optional) | Metro stairs M14-M16, wall under a handrail M27 |
+| NPC traffic, coop host on one PC | Replay Wide lens | Coop "Host online" fails on DS-Lite connections |
+
+**Optional downloads, never installed by default:** `GTAxSkate-Tutorial-Optional.zip` and the experimental `GTAxSkate-Coop-Optional.zip`, both attached separately to this release. Neither package contains a host key; Tutorial Island contains tools only and builds from the player's own Skate 3 files.
+
+- **Wheels on slopes (fix):** since 11 November the wheels sank about 2 cm into every slope of 9 degrees and more
+  (an unreviewed change to the physics' step filter); restored, with a test and a build check that refuses such edits.
+- **Top floor wins:** where two floors lie 1.5-30 cm apart outside parks, only the upper (visible) one is ridden.
+- **NPCs keep walking:** the replay recorder no longer pins nearby peds, so they do not freeze in live play.
 
 - **Collision and grind rails: your choice.** F10 > World > "Collision and grind rails": *Baked map (GTAxSkate)*
   uses the baked whole-map collision and grind lines from your own GTA files; *Live (SK8V style)* uses GTA's own
@@ -23,10 +39,24 @@ items marked *untested* below passed the automated tests only.
   help text for every setting.
 - **Boards:** 12 GTA brand equipment lines (48 parts), collectible fixes, unlock-all for developers.
 - **Faster world bake:** parks and marked spots bake first and install as soon as they are ready; the rest follows.
-- *Untested:* Tutorial Island with Coach Frank (optional `-WithTutorial`), friends coop over the internet
-  (optional `-WithCoop`; localhost works, internet hosting did not work on the maintainer's DS-Lite connection).
+- *Needs more work:* Tutorial Island with Coach Frank (optional download; collision, textures and travel position are incomplete). *Experimental:* friends coop between two PCs is untested; localhost works, internet hosting did not work on the maintainer's DS-Lite connection.
 - Known incompatibility: **Realism Enhanced Traffic and Driver A.I** (it replaces `pedpersonality.ymt`) froze every
   NPC in place; leave it off.
+
+## v0.9.0 — 18 November 2026 (original release)
+
+Source SK8V `release/v0.9.0` `c958dce`, world rules `213170a43c53a499` (also reads v0.8.x-era tiles `d8f4ecbeaba164d5`/`8a1fe36e1275922c`).
+The project went on hold after this release; see [STATUS.md](STATUS.md) for what works, what is untested and what is broken.
+Tested in game by the maintainer on 17 November 2026 (skating, menus, NPC traffic, Live collision switch, local coop host); items marked *untested* below passed automated tests only.
+
+- **Collision and grind rails: your choice.** F10 > World > "Collision and grind rails": *Baked map (GTAxSkate)* uses the baked whole-map collision and grind lines from your own GTA files; *Live (SK8V style)* uses GTA's own collision the way SK8V does, with no bake needed. The installer picks Baked when the world bake is installed, else Live.
+- **Skatepark cleanup (rules R1-R6):** railing-only fence boxes become their visible bars, floating tubes and duplicate or orphan grind lines go, crest lines extend along ridges, holes in visible park walls are open, and drawn-ground alignment matches road surfaces. Needs the v0.9.0 world bake (install step 7, 1-2 h).
+- **Replay:** moving world actors, Skate 3 style HUD with F4 toggle, Wide lens and strength, crash fixes on replay enter/exit.
+- **F10 menu:** player pages, reset-to-default controls, beginner guide and setting help.
+- **Boards:** 12 GTA brand equipment lines (48 parts), collectible fixes and developer unlock-all.
+- **Faster world bake:** parks and marked spots install first while the remaining map bakes.
+- *Untested:* Tutorial Island and friends coop over the internet; localhost coop works, internet hosting did not work on the maintainer's DS-Lite connection.
+- Known incompatibility: **Realism Enhanced Traffic and Driver A.I** froze NPCs in place; leave it off.
 
 ## v0.8.3 — 11 November 2026
 

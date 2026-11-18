@@ -1,14 +1,18 @@
-# Project status (v0.9.0)
+# Project status (v0.9.1)
 
-GTAxSkate is on hold: the maintainer has stopped active development after v0.9.0.
+GTAxSkate is on hold: the maintainer has stopped active development after v0.9.1. The original v0.9.0 release remains available as a separate tag.
 The code, tools and design notes stay public so anyone can pick it up.
 This page is the honest list of what works and what does not.
 
-## Works (tested in game by the maintainer)
+**Optional downloads, not installed by default:** Tutorial Island (`GTAxSkate-Tutorial-Optional.zip`) and experimental Friends-Only Coop (`GTAxSkate-Coop-Optional.zip`).
+A normal install (`Install GTAxSkate.cmd`) never adds them; GTAxSkate works fully without either.
+
+## Works (tested in game by the maintainer, 17-18 November 2026)
 
 | Area | State |
 |---|---|
 | Skating in GTA V Legacy story mode (build 3889) | Skate 3 physics, tricks, grinds, manuals, bails; 80-100 fps on the test PC |
+| Wheels on slopes | Fixed 18 Nov: wheels no longer sink into slopes of 9 degrees and more (an unreviewed physics edit since 11 Nov; tested on the Vespucci canal slope and hill roads) |
 | Getting on and off | E/F to step on, board in hand, carry, put away; GTA camera carries over |
 | Controller and keyboard/mouse | Controller (incl. the right-stick camera fix), keyboard layouts (Mouse Flick, Twin Stick, Arcade, Standard) |
 | Boards and parts | Board shop (Suburban, Vespucci Skate Shop), decks, griptapes, trucks, wheels, paints, GTA-brand equipment |
@@ -23,20 +27,23 @@ This page is the honest list of what works and what does not.
 
 ## Built but not confirmed in game
 
-These are in v0.9.0 and pass the automated tests, but the maintainer did not get to test them fully.
+These are in v0.9.1 and pass the automated tests, but the maintainer did not get to test them fully.
 
 | Area | State |
 |---|---|
 | Park rules R1-R6 and road-surface alignment | Fewer duplicate grind lines and fence boxes in parks, arch openings, drawn-ground alignment (needs the v0.9.0 bake) |
+| Top floor wins | Where two floors lie 1.5-30 cm apart outside parks, only the upper (visible) one stays; in both 18 Nov test sessions, no problems seen, not checked spot by spot |
+| NPCs near the skater | The replay recorder no longer pins peds, so they keep walking; in both 18 Nov test sessions, not checked on purpose |
 | Replay Wide lens and lens strength | Host only |
-| Tutorial Island (Coach Frank, 17 lessons) | Optional component (`-WithTutorial`); lessons and travel work offline; island fidelity is incomplete |
-| Friends coop between two PCs (RageCoop based) | Optional component (`-WithCoop`); streamer-safe invites; never tested between two real PCs. "Host online" did not work on the maintainer's connection (DS-Lite: no public IPv4; an IPv6 hosting design exists in the workspace) |
+| Friends coop between two PCs (RageCoop based) | **Experimental optional download**; streamer-safe invites; never tested between two real PCs. "Host online" did not work on the maintainer's connection (DS-Lite: no public IPv4; an IPv6 hosting design exists in the workspace) |
 | F11 coop menu key lock | While the F11 panel is open, arrows/Enter/Backspace/Esc no longer open the phone or pause |
 
 ## Known problems (not fixed)
 
 | Area | Problem |
 |---|---|
+| Tutorial Island (Coach Frank, 17 lessons) | **Experimental optional download, needs more work:** the island's collision and textures are incomplete, and travel does not put you where the tutorial starts (maintainer test 18 Nov) |
+| Some curb and bridge grind edges | Curb edges on Vespucci hill roads and the canal bridge edges miss or break their grind line (marks 1118-1/5/6/10) |
 | Metro stairs (marks M14-M16) | Stairs collide wrong; no version got them right |
 | Concrete wall under a handrail (M27) | Not treated as a railing |
 | Some park spots (1115-3/4/5/7) | A pipe stub, a short ridge line, a cut slab on a wall top |
@@ -50,7 +57,8 @@ These are in v0.9.0 and pass the automated tests, but the maintainer did not get
 
 ## For contributors
 
-- Code: the SK8V fork (github.com/Manatros/SK8V, branch `dev`; v0.9.0 source on `release/v0.9.0`).
+- Code: the SK8V fork (github.com/Manatros/SK8V, branch `fix/replay-ped-ai`, commit `7c4fe96` for v0.9.1).
+- Physics: the Skate physics overlay is rebuilt from `patches/skate/*.patch`; never edit `build/overlay` directly (`tools/prepare-skate-overlay.ps1` refuses a drifted overlay).
 - Build: `tools/build-rust.ps1` (runtime, baker), `tools/build-host.ps1` (ASI), `tools/build-host-tests.ps1` (host test suites).
 - Rust tests: `cd rust; cargo test --offline --locked --release -p skatev-runtime -p skatev-world-cache -p svwc`.
 - World collision: one build = one rules hash; tiles and the runtime must come from the same commit (`skatev-world-cache --rules`).

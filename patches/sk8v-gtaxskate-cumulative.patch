@@ -14544,10 +14544,10 @@ index b28d6b6657056377b66c44645bc784284b59674d..417106ef47031a21535399aac931625f
  }
 diff --git a/host/src/replay.cpp b/host/src/replay.cpp
 new file mode 100644
-index 0000000000000000000000000000000000000000..60eb5fb1a75ccc00851e02cb2a688c9db3006312
+index 0000000000000000000000000000000000000000..8b793f1c5e97c9904badb4eb327c6c21e61283d6
 --- /dev/null
 +++ b/host/src/replay.cpp
-@@ -0,0 +1,2636 @@
+@@ -0,0 +1,2643 @@
 +#include "replay.h"
 +
 +#include <algorithm>
@@ -14889,6 +14889,10 @@ index 0000000000000000000000000000000000000000..60eb5fb1a75ccc00851e02cb2a688c9d
 +    }
 +    if (!g_loaded) {
 +        std::set<int> presentHandles;
++        // The pose hook has 16 slots and a ped keeps its slot until cleared; free the slots of
++        // peds not posed this frame so peds seen later in the 30 s still get one (else they slide).
++        static std::set<std::uintptr_t> s_posedLastFrame;
++        std::set<std::uintptr_t> posedSkeletons;
 +        auto updateActors = [&](const ActorSample* arrA, int countA, const ActorSample* arrB, int countB, ActorKind kind) {
 +            for (int i = 0; i < countA; ++i) {
 +                const ActorSample& sa = arrA[i];
@@ -14952,6 +14956,7 @@ index 0000000000000000000000000000000000000000..60eb5fb1a75ccc00851e02cb2a688c9d
 +                                s_pedMats[bi] = m;
 +                            }
 +                            posehook::SetExtraPedPose(skel.skeleton, reinterpret_cast<const float*>(s_pedMats), nBones);
++                            posedSkeletons.insert(skel.skeleton);
 +                        }
 +                    }
 +                }
@@ -14960,6 +14965,10 @@ index 0000000000000000000000000000000000000000..60eb5fb1a75ccc00851e02cb2a688c9d
 +        if (g_replayVehicles && a.vehicleCount > 0) updateActors(a.vehicles, a.vehicleCount, b.vehicles, b.vehicleCount, ActorKind::Vehicle);
 +        if (g_replayPeds && a.pedCount > 0) updateActors(a.peds, a.pedCount, b.peds, b.pedCount, ActorKind::Ped);
 +        if (g_replayObjects && a.objectCount > 0) updateActors(a.objects, a.objectCount, b.objects, b.objectCount, ActorKind::Object);
++        for (std::uintptr_t sk : s_posedLastFrame) {
++            if (!posedSkeletons.count(sk)) posehook::ClearExtraPedPose(sk);
++        }
++        s_posedLastFrame.swap(posedSkeletons);
 +        for (const auto& kv : g_actorSpans) {
 +            const int h = kv.first;
 +            if (presentHandles.count(h) || !Call<BOOL>(DOES_ENTITY_EXIST, h)) continue;
@@ -16755,11 +16764,9 @@ index 0000000000000000000000000000000000000000..60eb5fb1a75ccc00851e02cb2a688c9d
 +            s.vel[0] = vel.x, s.vel[1] = vel.y, s.vel[2] = vel.z;
 +            s.extra = Call<float>(GET_ENTITY_HEADING, p);
 +            s.visible = Call<BOOL>(IS_ENTITY_VISIBLE, p) != 0;
-+            if (!g_pinnedEntities.count(p) && !Call<BOOL>(IS_ENTITY_A_MISSION_ENTITY, p)) {
-+                Call<void>(SET_ENTITY_AS_MISSION_ENTITY, p, TRUE, TRUE);
-+                g_pinnedEntities.insert(p);
-+            }
-+            if (g_pinnedEntities.count(p)) g_pinnedLastSeen[p] = o.tick;
++            // Peds are never pinned as mission entities: script ownership ends their ambient
++            // wandering, so the nearest NPCs stood still in live play (test 2026-11-18 08:41).
++            // A ped that despawns just drops out of the replay (handle + model are checked).
 +            if (i < kMaxTrackedPedPoses && s.visible) {
 +                probe::SkeletonInfo skel{};
 +                const char* why = nullptr;
@@ -18209,7 +18216,7 @@ index 0000000000000000000000000000000000000000..27c7df03863727cfc7f48386f7253442
 +}  // namespace replay
 diff --git a/host/src/replay_logic.h b/host/src/replay_logic.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..c322b48c5c1c42ba9b3d75bf92795497cd6a0af2
+index 0000000000000000000000000000000000000000..40780701a564e8b88b7ca9fe7f04a3a61d1544d3
 --- /dev/null
 +++ b/host/src/replay_logic.h
 @@ -0,0 +1,290 @@
@@ -18227,7 +18234,7 @@ index 0000000000000000000000000000000000000000..c322b48c5c1c42ba9b3d75bf92795497
 +// One presented frame. Bone and board matrices: 16 floats each, GTA world
 +// space, RAGE row layout (as posehook::PublishPose takes them).
 +static constexpr int kMaxTrackedVehicles = 48;
-+static constexpr int kMaxTrackedPeds = 32;
++static constexpr int kMaxTrackedPeds = 12; // = kMaxTrackedPedPoses: a ped without a pose slides
 +static constexpr int kMaxTrackedObjects = 32;
 +static constexpr int kMaxTrackedPedPoses = 12;
 +
@@ -22025,7 +22032,7 @@ index 0000000000000000000000000000000000000000..3e3ed1b8f5bdac9995a90d80a5762169
 +}
 diff --git a/host/tests/replay_tests.cpp b/host/tests/replay_tests.cpp
 new file mode 100644
-index 0000000000000000000000000000000000000000..f269268a37046f7d8f4344214563031efde4f7eb
+index 0000000000000000000000000000000000000000..7f0dbb4b917480754058e8561e593ad4f2ec5504
 --- /dev/null
 +++ b/host/tests/replay_tests.cpp
 @@ -0,0 +1,620 @@
@@ -22534,7 +22541,7 @@ index 0000000000000000000000000000000000000000..f269268a37046f7d8f4344214563031e
 +            fFull.vehicles[v].quat[3] = 1.0f;
 +        }
 +        fFull.pedCount = kMaxTrackedPeds;
-+        assert(kMaxTrackedPeds == 32);
++        assert(kMaxTrackedPeds == kMaxTrackedPedPoses); // every tracked ped carries a pose
 +        for (int p = 0; p < kMaxTrackedPeds; ++p) {
 +            fFull.peds[p].handle = 2000 + p;
 +            fFull.peds[p].pos[1] = static_cast<float>(p);
@@ -22544,9 +22551,9 @@ index 0000000000000000000000000000000000000000..f269268a37046f7d8f4344214563031e
 +        recFull.Reserve(5.0, 60.0, 2);
 +        recFull.Add(fFull, 0.0);
 +        assert(recFull.Last().vehicleCount == 48);
-+        assert(recFull.Last().pedCount == 32);
++        assert(recFull.Last().pedCount == kMaxTrackedPeds);
 +        assert(recFull.Last().vehicles[47].handle == 1047);
-+        assert(recFull.Last().peds[31].handle == 2031);
++        assert(recFull.Last().peds[kMaxTrackedPeds - 1].handle == 2000 + kMaxTrackedPeds - 1);
 +
 +        // ActorSpan computation & GetActorReplayState test:
 +        Recording recSpan(10.0);
@@ -23935,6 +23942,46 @@ index 0000000000000000000000000000000000000000..7709416951b3e167bb9b70ee04579f96
 +     /// SkateV: dynamic geometry the board touched since the last
 +     /// `set_dynamic_triangles`: (tag, point, normal) in Skate space.
 +     pub fn dynamic_hits(&self) -> Vec<(u32, [f32; 3], [f32; 3])> {
+diff --git a/patches/skate/0057-slope-floor-keeps-contact.patch b/patches/skate/0057-slope-floor-keeps-contact.patch
+new file mode 100644
+index 0000000000000000000000000000000000000000..1fa183d80d7a86578d833cefcfcbece8489bcc01
+--- /dev/null
++++ b/patches/skate/0057-slope-floor-keeps-contact.patch
+@@ -0,0 +1,34 @@
++diff --git a/crates/skate-core/src/physics/board_world/tests.rs b/crates/skate-core/src/physics/board_world/tests.rs
++index ed0d2b7..544fe3b 100644
++--- a/crates/skate-core/src/physics/board_world/tests.rs
+++++ b/crates/skate-core/src/physics/board_world/tests.rs
++@@ -451,6 +451,29 @@ fn step_world(h: f32) -> Vec<WorldTriangle> {
++     w
++ }
++ 
+++/// GTAxSkate 2026-11-18: wheels sank about 2.3 cm into every slope of 9 deg
+++/// and more after an unpatched overlay edit lowered the lateral gate of
+++/// `wheel_scale_step` from 0.5 to 0.15: a slope's own floor normal then
+++/// counted as a step lip (the slope just uphill is a "walkable top"), and its
+++/// contact was dropped. A plain slope must keep every floor contact.
+++#[test]
+++fn a_plain_slope_keeps_its_floor_contacts() {
+++    for deg in [5f32, 9., 12., 20., 25.] {
+++        let (s, c) = deg.to_radians().sin_cos();
+++        // A plane rising toward +x at `deg`, 4 m long.
+++        let p = |x: f32, z: f32| [x, x * s / c, z];
+++        let w = vec![tri([p(-2., -1.), p(-2., 1.), p(2., 1.)]), tri([p(-2., -1.), p(2., 1.), p(2., -1.)])];
+++        let n = [-s, c, 0.];
+++        // The board point is the body's touching point (here on the slope),
+++        // as Skate reports it; the wheels are the case the gate guards.
+++        // Trucks and deck are kept by their own normal test and stay covered.
+++        for body in [BodyId::RightFrontWheel, BodyId::LeftBackWheel, BodyId::FrontTruck, BodyId::Deck] {
+++            let b = CollisionBody::Board(body);
+++            assert!(!wheel_step(&w, b, [0., 0., 0.], [0., 0., 0.], n), "{deg} deg slope floor contact dropped for {body:?}");
+++        }
+++    }
+++}
+++
++ #[test]
++ fn wheels_roll_over_steps_below_their_axle_but_not_curbs() {
++     let wheel = CollisionBody::Board(BodyId::RightFrontWheel);
 diff --git a/patches/skate/1000-trainer-tuning.patch b/patches/skate/1000-trainer-tuning.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..0c1313667a0152ae5d7ea88c9a99118eae29ce72
@@ -33815,6 +33862,672 @@ index 1cfa1f406941bf1f79ecc97052b5fc57fffab4e0..49086cbb3e5c75c0e821b20f1178123b
 +        assert!(installed.iter().flat_map(|(t,_)| t.v).map(Vec3::from_array).all(|p| p.cmpge(lo).all() && p.cmple(hi).all()), "halfpipe collision left source extent");
 +    }
 +}
+diff --git a/rust/skatev-runtime/src/floors.rs b/rust/skatev-runtime/src/floors.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..ce32f793fc7b7997b5083f2eef0d725350172595
+--- /dev/null
++++ b/rust/skatev-runtime/src/floors.rs
+@@ -0,0 +1,660 @@
++//! Top floor wins (design docs/designs/2026-11-18-top-floor-wins.md; Manatros
++//! 2026-11-18: "make sure to always use the top layer collision when 2 faces
++//! are very close to each other"). GTA stacks floors 1.5..30 cm apart (a road
++//! sheet over the canal ground, thin boxes on a slope); the visible surface is
++//! the upper one, but a board that slips under its edge rides the lower one
++//! with its wheels in the drawn ground. `svwc::clean::drop_hidden_layers` only
++//! drops a lower face that is covered whole and at most 6 m long, so large
++//! partly covered ones stayed. Here every such face is split and its covered
++//! pieces go; where a dropped piece meets kept lower floor a riser closes the
++//! gap, so the upper sheet's edge is a step and nothing rolls under it.
++//!
++//! Runs on each decoded tile (`tiles::Cache::get`), outside the rules hash:
++//! installed tiles stay valid. Park circles and tagged faces are untouched.
++use crate::tiles::{Tile, Triangle};
++use rustc_hash::FxHashMap as HashMap;
++use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering::Relaxed};
++
++/// Switch (default on). Read when a tile is decoded.
++pub static TOP_FLOORS: AtomicBool = AtomicBool::new(true);
++/// Totals since start (log).
++pub static DROPPED: AtomicUsize = AtomicUsize::new(0);
++pub static RISERS: AtomicUsize = AtomicUsize::new(0);
++pub static SPLIT_FACES: AtomicUsize = AtomicUsize::new(0);
++
++/// Park, slab, visbar, step/ramp variants, fallback, live, railbox bits (17..29).
++const SPECIAL: u32 = 0x3FFE_0000;
++/// No grind line from a riser.
++const NO_GRIND: u32 = 1 << 30;
++/// A floor faces up at least this much (unit normal z, 45 deg).
++const MIN_UP: f32 = 0.7;
++/// Gaps the board can get stuck in: above the coplanar pass's range, up to
++/// `drop_hidden_layers`' gap (neither board nor skater fits between).
++const MIN_GAP: f32 = 0.015;
++const MAX_GAP: f32 = 0.30;
++/// Normals of a floor and its cover within 37 deg (13:04: a 25 deg bank over a 16 deg floor).
++const MIN_DOT: f32 = 0.8;
++/// Smallest piece edge (m).
++/// Riser segments at most this long (m).
++const RISER_STEP: f32 = 0.5;
++/// Park circles widened by this (m) are left alone.
++const PARK_MARGIN: f32 = 5.0;
++const CELL: f32 = 2.0;
++
++type V = [f32; 3];
++
++fn sub(a: V, b: V) -> V { [a[0] - b[0], a[1] - b[1], a[2] - b[2]] }
++fn cross(a: V, b: V) -> V { [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]] }
++fn dot(a: V, b: V) -> f32 { a[0] * b[0] + a[1] * b[1] + a[2] * b[2] }
++fn centroid(t: &Triangle) -> V { [(t[0][0] + t[1][0] + t[2][0]) / 3., (t[0][1] + t[1][1] + t[2][1]) / 3., (t[0][2] + t[1][2] + t[2][2]) / 3.] }
++
++fn unit_normal(t: &Triangle) -> V {
++    let n = cross(sub(t[1], t[0]), sub(t[2], t[0]));
++    let l = dot(n, n).sqrt();
++    if l > 1e-9 && l.is_finite() { [n[0] / l, n[1] / l, n[2] / l] } else { [0.; 3] }
++}
++
++fn bounds(t: &Triangle) -> ([f32; 3], [f32; 3]) {
++    let mut lo = t[0];
++    let mut hi = t[0];
++    for p in &t[1..] {
++        for k in 0..3 { lo[k] = lo[k].min(p[k]); hi[k] = hi[k].max(p[k]); }
++    }
++    (lo, hi)
++}
++
++/// Height of a non-vertical triangle over (x, y), when (x, y) lies on it.
++fn height_at(t: &Triangle, x: f32, y: f32) -> Option<f32> {
++    let [a, b, c] = *t;
++    let d = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1]);
++    if d.abs() < 1e-12 { return None; }
++    let w0 = ((b[1] - c[1]) * (x - c[0]) + (c[0] - b[0]) * (y - c[1])) / d;
++    let w1 = ((c[1] - a[1]) * (x - c[0]) + (a[0] - c[0]) * (y - c[1])) / d;
++    let w2 = 1. - w0 - w1;
++    (w0 >= -1e-5 && w1 >= -1e-5 && w2 >= -1e-5).then(|| w0 * a[2] + w1 * b[2] + w2 * c[2])
++}
++
++fn in_park(p: V) -> bool {
++    crate::parks::PARKS.iter().any(|park| {
++        let (dx, dy) = (p[0] - park.centre.x, p[1] - park.centre.y);
++        dx * dx + dy * dy <= (park.radius + PARK_MARGIN).powi(2)
++    })
++}
++
++/// The tile's floors (each one both a candidate to go and a cover).
++struct Floors {
++    tris: Vec<Triangle>,
++    normals: Vec<V>,
++    lo: Vec<V>,
++    hi: Vec<V>,
++    grid: HashMap<(i32, i32), Vec<u32>>,
++}
++
++impl Floors {
++    fn new(tris: Vec<Triangle>) -> Self {
++        let normals: Vec<V> = tris.iter().map(unit_normal).collect();
++        let (lo, hi): (Vec<V>, Vec<V>) = tris.iter().map(bounds).unzip();
++        let mut grid: HashMap<(i32, i32), Vec<u32>> = HashMap::default();
++        for (i, (l, h)) in lo.iter().zip(&hi).enumerate() {
++            if h[0] - l[0] > 2000. || h[1] - l[1] > 2000. { continue; }
++            for x in (l[0] / CELL).floor() as i32..=(h[0] / CELL).floor() as i32 {
++                for y in (l[1] / CELL).floor() as i32..=(h[1] / CELL).floor() as i32 {
++                    grid.entry((x, y)).or_default().push(i as u32);
++                }
++            }
++        }
++        Self { tris, normals, lo, hi, grid }
++    }
++
++    fn near(&self, x: f32, y: f32) -> &[u32] {
++        self.grid.get(&((x / CELL).floor() as i32, (y / CELL).floor() as i32)).map_or(&[], |v| v.as_slice())
++    }
++
++    /// The other floors that may cover floor `own` somewhere.
++    fn covers_of(&self, own: usize, n: V) -> Vec<usize> {
++        let (lo, hi) = (self.lo[own], self.hi[own]);
++        let mut out: Vec<usize> = Vec::new();
++        for x in (lo[0] / CELL).floor() as i32..=(hi[0] / CELL).floor() as i32 {
++            for y in (lo[1] / CELL).floor() as i32..=(hi[1] / CELL).floor() as i32 {
++                let Some(list) = self.grid.get(&(x, y)) else { continue };
++                for &j in list {
++                    let j = j as usize;
++                    if j != own && dot(n, self.normals[j]) >= MIN_DOT
++                        && self.lo[j][0] <= hi[0] && self.hi[j][0] >= lo[0]
++                        && self.lo[j][1] <= hi[1] && self.hi[j][1] >= lo[1]
++                        && self.hi[j][2] >= lo[2] + MIN_GAP && self.lo[j][2] <= hi[2] + MAX_GAP
++                    { out.push(j); }
++                }
++            }
++        }
++        out.sort_unstable();
++        out.dedup();
++        out
++    }
++
++    /// Pass 1: where each other floor lies MIN_GAP..MAX_GAP above floor `own`
++    /// (convex, counter-clockwise, inside both outlines), with its plane.
++    fn raw_regions(&self, own: usize) -> Vec<(Poly, Plane, usize)> {
++        let n = self.normals[own];
++        let covers = self.covers_of(own, n);
++        let face = self.tris[own];
++        let Some(low) = Plane::of(&face) else { return Vec::new() };
++        let outline = ccw(face.iter().map(|p| [p[0], p[1]]).collect());
++        let mut out = Vec::new();
++        for &j in &covers {
++            let Some(top) = Plane::of(&self.tris[j]) else { continue };
++            let gap = top.minus(&low);
++            let mut r = ccw(self.tris[j].iter().map(|p| [p[0], p[1]]).collect());
++            r = clip(&r, |q| gap.z(q) - MIN_GAP);
++            r = clip(&r, |q| MAX_GAP - gap.z(q));
++            for k in 0..outline.len() {
++                let (u, v) = (outline[k], outline[(k + 1) % outline.len()]);
++                r = clip(&r, |q| (v[0] - u[0]) * (q[1] - u[1]) - (v[1] - u[1]) * (q[0] - u[0]));
++            }
++            if r.len() >= 3 && area(&r) >= 1e-4 { out.push((r, top, j)); }
++        }
++        out
++    }
++
++    /// Whether point q (on a floor at height z with normal n, floor `own`) has
++    /// an effective cover: a floor MIN_GAP..MAX_GAP above it that is not
++    /// itself covered there (regions from pass 1).
++    fn covered_eff(&self, own: usize, q: [f32; 2], z: f32, n: V, raw: &[Vec<(Poly, Plane, usize)>]) -> bool {
++        self.near(q[0], q[1]).iter().any(|&j| {
++            let j = j as usize;
++            j != own && dot(n, self.normals[j]) >= MIN_DOT
++                && height_at(&self.tris[j], q[0], q[1]).is_some_and(|zj| zj - z >= MIN_GAP && zj - z <= MAX_GAP)
++                && !raw[j].iter().any(|(r, _, _)| inside(r, q))
++        })
++    }
++
++    /// Pass 2: floor `own` minus its effectively covered parts (exact convex
++    /// pieces), plus risers where a covered part meets open lower floor.
++    /// None when nothing measurable is covered.
++    fn cut(&self, own: usize, walls: &Walls, raw: &[Vec<(Poly, Plane, usize)>]) -> Option<(Vec<Triangle>, Vec<Triangle>)> {
++        if raw[own].is_empty() { return None; }
++        let n = self.normals[own];
++        let face = self.tris[own];
++        let low = Plane::of(&face)?;
++        let outline = ccw(face.iter().map(|p| [p[0], p[1]]).collect());
++        let mut pieces: Vec<Poly> = vec![outline.clone()];
++        let mut regions: Vec<(Poly, Plane)> = Vec::new();
++        for (r, top, j) in &raw[own] {
++            // A cover that is itself covered there does not count (A over B over
++            // C: B's covered part must not take C away under a far A).
++            let mut eff = vec![r.clone()];
++            for (rj, _, _) in &raw[*j] {
++                let mut next = Vec::with_capacity(eff.len() + 3);
++                for e in eff { next.extend(subtract(&e, rj)); }
++                eff = next;
++            }
++            for e in eff {
++                if area(&e) < 1e-4 { continue; }
++                let mut next = Vec::with_capacity(pieces.len() + 3);
++                for p in pieces { next.extend(subtract(&p, &e)); }
++                pieces = next;
++                regions.push((e, *top));
++            }
++        }
++        let kept_area: f32 = pieces.iter().map(area).sum();
++        if area(&outline) - kept_area < 0.005 { return None; }
++        let mut kept = Vec::new();
++        for p in &pieces {
++            if area(p) < 1e-5 { continue; }
++            for i in 1..p.len() - 1 {
++                let t = [low.point(p[0]), low.point(p[i]), low.point(p[i + 1])];
++                // Keep the source winding (upward).
++                let tn = cross(sub(t[1], t[0]), sub(t[2], t[0]));
++                let t = if dot(tn, n) < 0. { [t[0], t[2], t[1]] } else { t };
++                if sound(&t) { kept.push(t); }
++            }
++        }
++        // Risers along each covered region's border where open lower floor
++        // continues just outside it.
++        let mut added = Vec::new();
++        for (r, top) in &regions {
++            let c = centroid2(r);
++            for k in 0..r.len() {
++                let (a, b) = (r[k], r[(k + 1) % r.len()]);
++                let len = ((b[0] - a[0]).powi(2) + (b[1] - a[1]).powi(2)).sqrt();
++                if len < 0.02 { continue; }
++                let mut o = [(b[1] - a[1]) / len, -(b[0] - a[0]) / len];
++                let m = [(a[0] + b[0]) * 0.5, (a[1] + b[1]) * 0.5];
++                if (c[0] - m[0]) * o[0] + (c[1] - m[1]) * o[1] > 0. { o = [-o[0], -o[1]]; }
++                let steps = ((len / RISER_STEP).ceil() as usize).max(1);
++                for s in 0..steps {
++                    let (f0, f1) = (s as f32 / steps as f32, (s + 1) as f32 / steps as f32);
++                    let p0 = [a[0] + (b[0] - a[0]) * f0, a[1] + (b[1] - a[1]) * f0];
++                    let p1 = [a[0] + (b[0] - a[0]) * f1, a[1] + (b[1] - a[1]) * f1];
++                    let pm = [(p0[0] + p1[0]) * 0.5, (p0[1] + p1[1]) * 0.5];
++                    let q = [pm[0] + o[0] * 0.02, pm[1] + o[1] * 0.02];
++                    let qz = low.z(q);
++                    // Open floor just outside: a floor there, within 2 cm of
++                    // this floor's plane, with no effective cover.
++                    let open = self.near(q[0], q[1]).iter().any(|&j| {
++                        let j = j as usize;
++                        height_at(&self.tris[j], q[0], q[1]).is_some_and(|z| (z - qz).abs() <= 0.02)
++                            && !self.covered_eff(j, q, qz, self.normals[j], raw)
++                    });
++                    if !open { continue; }
++                    let (b0, b1) = (low.point(p0), low.point(p1));
++                    let (t0, t1) = (top.point(p0), top.point(p1));
++                    let (mid_low, mid_top) = ((b0[2] + b1[2]) * 0.5, (t0[2] + t1[2]) * 0.5);
++                    if walls.closes([pm[0], pm[1], mid_low], mid_low + (mid_top - mid_low) * 0.25, mid_top - (mid_top - mid_low) * 0.25) { continue; }
++                    for mut t in [[b0, b1, t1], [b0, t1, t0]] {
++                        let tn = cross(sub(t[1], t[0]), sub(t[2], t[0]));
++                        if dot(tn, tn) < 1e-10 { continue; }
++                        if tn[0] * o[0] + tn[1] * o[1] < 0. { t.swap(1, 2); }
++                        if sound(&t) { added.push(t); }
++                    }
++                }
++            }
++        }
++        Some((kept, added))
++    }
++}
++
++/// Point q inside (or on) convex counter-clockwise r.
++fn inside(r: &Poly, q: [f32; 2]) -> bool {
++    r.len() >= 3 && (0..r.len()).all(|k| {
++        let (a, b) = (r[k], r[(k + 1) % r.len()]);
++        (b[0] - a[0]) * (q[1] - a[1]) - (b[1] - a[1]) * (q[0] - a[0]) >= -1e-6
++    })
++}
++
++type Poly = Vec<[f32; 2]>;
++
++/// A triangle Skate's world builder accepts: no two corners within 2 mm (it
++/// welds at 1 mm) and a normal that normalizes (`skate_world.rs`: "Invalid
++/// SKATE collision triangle normal" fails the whole stream).
++fn sound(t: &Triangle) -> bool {
++    let far = |a: V, b: V| { let d = sub(a, b); dot(d, d) > 0.002 * 0.002 };
++    let n = cross(sub(t[1], t[0]), sub(t[2], t[0]));
++    let l = dot(n, n).sqrt();
++    t.iter().flatten().all(|x| x.is_finite()) && far(t[0], t[1]) && far(t[1], t[2]) && far(t[2], t[0]) && l.is_finite() && l > 1e-6
++}
++
++/// z = a x + b y + d.
++#[derive(Clone, Copy)]
++struct Plane { a: f32, b: f32, d: f32 }
++
++impl Plane {
++    fn of(t: &Triangle) -> Option<Self> {
++        let n = cross(sub(t[1], t[0]), sub(t[2], t[0]));
++        if n[2].abs() < 1e-9 { return None; }
++        let (a, b) = (-n[0] / n[2], -n[1] / n[2]);
++        Some(Self { a, b, d: t[0][2] - a * t[0][0] - b * t[0][1] })
++    }
++    fn z(&self, q: [f32; 2]) -> f32 { self.a * q[0] + self.b * q[1] + self.d }
++    fn point(&self, q: [f32; 2]) -> V { [q[0], q[1], self.z(q)] }
++    fn minus(&self, o: &Plane) -> Plane { Plane { a: self.a - o.a, b: self.b - o.b, d: self.d - o.d } }
++}
++
++fn signed_area(p: &Poly) -> f32 {
++    // Relative to the first vertex: world coordinates (thousands of metres)
++    // would cancel away in f32.
++    let Some(&o) = p.first() else { return 0. };
++    let mut s = 0.;
++    for i in 1..p.len().saturating_sub(1) {
++        let (a, b) = ([p[i][0] - o[0], p[i][1] - o[1]], [p[i + 1][0] - o[0], p[i + 1][1] - o[1]]);
++        s += a[0] * b[1] - b[0] * a[1];
++    }
++    s * 0.5
++}
++
++fn area(p: &Poly) -> f32 { signed_area(p).abs() }
++
++fn ccw(mut p: Poly) -> Poly {
++    if signed_area(&p) < 0. { p.reverse(); }
++    p
++}
++
++fn centroid2(p: &Poly) -> [f32; 2] {
++    let k = p.len().max(1) as f32;
++    [p.iter().map(|q| q[0]).sum::<f32>() / k, p.iter().map(|q| q[1]).sum::<f32>() / k]
++}
++
++/// The part of convex polygon p where f >= 0 (f linear).
++fn clip(p: &Poly, f: impl Fn([f32; 2]) -> f32) -> Poly {
++    let mut out = Vec::with_capacity(p.len() + 1);
++    for i in 0..p.len() {
++        let (a, b) = (p[i], p[(i + 1) % p.len()]);
++        let (fa, fb) = (f(a), f(b));
++        if fa >= 0. { out.push(a); }
++        if (fa >= 0.) != (fb >= 0.) {
++            let t = fa / (fa - fb);
++            out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
++        }
++    }
++    // Clipping through a vertex repeats it; repeated points make zero-length
++    // edges that `subtract` cannot use.
++    out.dedup_by(|a, b| (a[0] - b[0]).abs() < 1e-5 && (a[1] - b[1]).abs() < 1e-5);
++    while out.len() > 1 && (out[0][0] - out[out.len() - 1][0]).abs() < 1e-5 && (out[0][1] - out[out.len() - 1][1]).abs() < 1e-5 { out.pop(); }
++    if out.len() < 3 { Vec::new() } else { out }
++}
++
++/// Convex p minus convex counter-clockwise r: up to r.len() convex pieces.
++fn subtract(p: &Poly, r: &Poly) -> Vec<Poly> {
++    let mut out = Vec::new();
++    let mut rest = p.clone();
++    for k in 0..r.len() {
++        if rest.is_empty() { break; }
++        let (a, b) = (r[k], r[(k + 1) % r.len()]);
++        if (b[0] - a[0]).abs() < 1e-5 && (b[1] - a[1]).abs() < 1e-5 { continue; }
++        // Left of a->b is inside a counter-clockwise r.
++        let left = |q: [f32; 2]| (b[0] - a[0]) * (q[1] - a[1]) - (b[1] - a[1]) * (q[0] - a[0]);
++        let outside = clip(&rest, |q| -left(q));
++        if area(&outside) > 1e-7 { out.push(outside); }
++        rest = clip(&rest, left);
++    }
++    // No overlap: p stays whole.
++    if rest.is_empty() || area(&rest) < 1e-7 { return vec![p.clone()]; }
++    out
++}
++
++/// The tile's near-vertical faces, to find edges GTA already closes.
++struct Walls {
++    lo: Vec<V>,
++    hi: Vec<V>,
++    grid: HashMap<(i32, i32), Vec<u32>>,
++}
++
++impl Walls {
++    fn new(tris: impl Iterator<Item = Triangle>) -> Self {
++        let (mut lo, mut hi, mut grid) = (Vec::new(), Vec::new(), HashMap::<(i32, i32), Vec<u32>>::default());
++        for t in tris {
++            if unit_normal(&t)[2].abs() >= 0.6 || !t.iter().flatten().all(|x| x.is_finite()) { continue; }
++            let (l, h) = bounds(&t);
++            if h[0] - l[0] > 2000. || h[1] - l[1] > 2000. { continue; }
++            let i = lo.len() as u32;
++            for x in (l[0] / CELL).floor() as i32..=(h[0] / CELL).floor() as i32 {
++                for y in (l[1] / CELL).floor() as i32..=(h[1] / CELL).floor() as i32 {
++                    grid.entry((x, y)).or_default().push(i);
++                }
++            }
++            lo.push(l);
++            hi.push(h);
++        }
++        Self { lo, hi, grid }
++    }
++
++    /// A wall within 6 cm of p spanning heights z0..z1.
++    fn closes(&self, p: V, z0: f32, z1: f32) -> bool {
++        const NEAR: f32 = 0.06;
++        self.grid.get(&((p[0] / CELL).floor() as i32, (p[1] / CELL).floor() as i32)).is_some_and(|list| list.iter().any(|&i| {
++            let (l, h) = (self.lo[i as usize], self.hi[i as usize]);
++            l[0] - NEAR <= p[0] && h[0] + NEAR >= p[0] && l[1] - NEAR <= p[1] && h[1] + NEAR >= p[1] && l[2] <= z0 && h[2] >= z1
++        }))
++    }
++}
++
++/// Applies the rule to a decoded tile. Returns (faces split, riser triangles added).
++pub fn top_floor_wins(tile: &mut Tile) -> (usize, usize) {
++    let is_floor = |t: &Triangle, tag: u32| {
++        tag & SPECIAL == 0 && t.iter().flatten().all(|x| x.is_finite())
++            && unit_normal(t)[2] >= MIN_UP && !in_park(centroid(t))
++    };
++    let floor_index: Vec<Option<usize>> = {
++        let mut k = 0;
++        tile.triangles.iter().map(|(t, tag)| is_floor(t, *tag).then(|| { k += 1; k - 1 })).collect()
++    };
++    let floors = Floors::new(tile.triangles.iter().filter(|(t, tag)| is_floor(t, *tag)).map(|(t, _)| *t).collect());
++    if floors.tris.len() < 2 { return (0, 0); }
++    let walls = Walls::new(tile.triangles.iter().filter(|(_, tag)| tag & SPECIAL == 0).map(|(t, _)| *t));
++    let has_origins = tile.origins.len() == tile.triangles.len();
++    // Two passes over independent floors (covers are read only), each split
++    // over a few threads: raw cover regions, then the cut. Assembled in
++    // source order.
++    type Result = Option<(Vec<Triangle>, Vec<Triangle>)>;
++    let threads = std::thread::available_parallelism().map_or(1, |n| n.get()).saturating_sub(2).clamp(1, 8);
++    let count = floors.tris.len();
++    let chunk = count.div_ceil(threads).max(1);
++    let mut raw: Vec<Vec<(Poly, Plane, usize)>> = Vec::with_capacity(count);
++    std::thread::scope(|scope| {
++        let floors = &floors;
++        let handles: Vec<_> = (0..count).step_by(chunk).map(|start| {
++            scope.spawn(move || (start..(start + chunk).min(count)).map(|own| floors.raw_regions(own)).collect::<Vec<_>>())
++        }).collect();
++        for h in handles { raw.extend(h.join().unwrap_or_default()); }
++    });
++    if raw.len() != count { return (0, 0); }
++    let mut cut: Vec<Result> = vec![None; count];
++    std::thread::scope(|scope| {
++        let (floors, walls, raw) = (&floors, &walls, &raw);
++        let handles: Vec<_> = (0..count).step_by(chunk).map(|start| {
++            scope.spawn(move || (start..(start + chunk).min(count)).map(|own| (own, floors.cut(own, walls, raw))).collect::<Vec<_>>())
++        }).collect();
++        for h in handles {
++            for (own, r) in h.join().unwrap_or_default() { cut[own] = r; }
++        }
++    });
++    let mut results: Vec<Result> = vec![None; tile.triangles.len()];
++    for (i, f) in floor_index.iter().enumerate() {
++        if let Some(own) = *f { results[i] = cut[own].take(); }
++    }
++    let mut triangles = Vec::with_capacity(tile.triangles.len());
++    let mut origins = Vec::with_capacity(if has_origins { tile.triangles.len() } else { 0 });
++    let (mut dropped_n, mut risers_n, mut split_n) = (0, 0, 0);
++    for (i, (&(t, tag), r)) in tile.triangles.iter().zip(results).enumerate() {
++        let origin = if has_origins { tile.origins[i] } else { 0 };
++        let Some((kept, added)) = r else {
++            triangles.push((t, tag));
++            if has_origins { origins.push(origin); }
++            continue;
++        };
++        split_n += 1;
++        dropped_n += 1;
++        risers_n += added.len();
++        for k in kept {
++            triangles.push((k, tag));
++            if has_origins { origins.push(origin); }
++        }
++        for w in added {
++            triangles.push((w, tag | NO_GRIND));
++            if has_origins { origins.push(origin); }
++        }
++    }
++    tile.triangles = triangles;
++    if has_origins { tile.origins = origins; }
++    let _ = dropped_n;
++    RISERS.fetch_add(risers_n, Relaxed);
++    SPLIT_FACES.fetch_add(split_n, Relaxed);
++    (split_n, risers_n)
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    fn tile(tris: Vec<(Triangle, u32)>) -> Tile {
++        Tile { cell: (0, 0), size: 64., source: String::new(), origins: vec![0; tris.len()], origin_names: vec!["t".into()],
++               triangles: tris, rails: Vec::new(), noses: Vec::new() }
++    }
++    /// A square floor [x0, x1] x [y0, y1] at height z as two upward triangles.
++    fn quad(x0: f32, y0: f32, x1: f32, y1: f32, z: f32) -> [Triangle; 2] {
++        [[[x0, y0, z], [x1, y0, z], [x1, y1, z]], [[x0, y0, z], [x1, y1, z], [x0, y1, z]]]
++    }
++    fn area_up(t: &Tile, z: f32) -> f32 {
++        t.triangles.iter().filter(|(t, _)| unit_normal(t)[2] > 0.7 && (t[0][2] - z).abs() < 1e-3)
++            .map(|(t, _)| { let n = cross(sub(t[1], t[0]), sub(t[2], t[0])); dot(n, n).sqrt() / 2. }).sum()
++    }
++    // Far from every park.
++    const X: f32 = 1000.;
++
++    #[test]
++    fn covered_part_of_a_large_lower_floor_goes_and_a_riser_closes_the_edge() {
++        let mut tris: Vec<(Triangle, u32)> = quad(X, 0., X + 10., 10., 1.0).into_iter().map(|t| (t, 7)).collect();
++        tris.extend(quad(X + 4., 0., X + 10., 10., 1.10).into_iter().map(|t| (t, 7)));
++        let mut t = tile(tris);
++        let (dropped, risers) = top_floor_wins(&mut t);
++        assert!(dropped > 0 && risers > 0, "dropped {dropped}, risers {risers}");
++        // Upper sheet untouched (60 m2); the lower floor keeps about its open 40 m2.
++        assert!((area_up(&t, 1.10) - 60.).abs() < 1e-3, "upper {} lower {} n {}", area_up(&t, 1.10), area_up(&t, 1.0), t.triangles.len());
++        let low = area_up(&t, 1.0);
++        assert!((38.5..=41.5).contains(&low), "lower floor kept {low} m2");
++        // Nothing of the lower floor is left under the sheet, beyond one leaf from its edge.
++        assert!(t.triangles.iter().all(|(t, _)| !((t[0][2] - 1.0).abs() < 1e-3 && unit_normal(t)[2] > 0.7 && centroid(t)[0] > X + 4.15)));
++        // Risers stand at the sheet's edge, facing the open floor, from 1.0 to 1.1 m, no grind line.
++        let walls: Vec<_> = t.triangles.iter().filter(|(t, _)| unit_normal(t)[2].abs() < 0.1).collect();
++        assert!(!walls.is_empty());
++        assert!(walls.iter().any(|(w, _)| unit_normal(w)[0] < -0.6), "most risers face the open floor");
++        for (w, tag) in &walls {
++            assert_eq!(*tag, 7 | NO_GRIND);
++            assert!(w.iter().all(|p| (p[0] - (X + 4.)).abs() < 0.16 && p[2] >= 0.999 && p[2] <= 1.101));
++            assert!(unit_normal(w)[0] <= 0.1, "riser never faces into the sheet: {:?}", unit_normal(w));
++        }
++        assert_eq!(t.origins.len(), t.triangles.len());
++    }
++
++    #[test]
++    fn floor_under_a_high_sheet_stays() {
++        let mut tris: Vec<(Triangle, u32)> = quad(X, 0., X + 10., 10., 1.0).into_iter().map(|t| (t, 0)).collect();
++        tris.extend(quad(X + 4., 0., X + 10., 10., 1.40).into_iter().map(|t| (t, 0)));
++        let mut t = tile(tris.clone());
++        assert_eq!(top_floor_wins(&mut t), (0, 0));
++        assert_eq!(t.triangles, tris);
++    }
++
++    #[test]
++    fn coplanar_layers_are_left_to_the_coplanar_pass() {
++        let mut tris: Vec<(Triangle, u32)> = quad(X, 0., X + 10., 10., 1.0).into_iter().map(|t| (t, 0)).collect();
++        tris.extend(quad(X + 4., 0., X + 10., 10., 1.01).into_iter().map(|t| (t, 0)));
++        let mut t = tile(tris.clone());
++        assert_eq!(top_floor_wins(&mut t), (0, 0));
++        assert_eq!(t.triangles, tris);
++    }
++
++    #[test]
++    fn parks_and_tagged_faces_are_untouched() {
++        let v = crate::parks::PARKS[0].centre;
++        let mut tris: Vec<(Triangle, u32)> = quad(v.x - 5., v.y - 5., v.x + 5., v.y + 5., 2.0).into_iter().map(|t| (t, 0)).collect();
++        tris.extend(quad(v.x, v.y - 5., v.x + 5., v.y + 5., 2.1).into_iter().map(|t| (t, 0)));
++        let mut t = tile(tris.clone());
++        assert_eq!(top_floor_wins(&mut t), (0, 0));
++        assert_eq!(t.triangles, tris);
++        // A step-tagged floor under a sheet stays.
++        let step = crate::live::STEP_TAG;
++        let mut tris: Vec<(Triangle, u32)> = quad(X, 0., X + 10., 10., 1.0).into_iter().map(|t| (t, step)).collect();
++        tris.extend(quad(X + 4., 0., X + 10., 10., 1.10).into_iter().map(|t| (t, 0)));
++        let mut t = tile(tris.clone());
++        assert_eq!(top_floor_wins(&mut t), (0, 0));
++        assert_eq!(t.triangles, tris);
++    }
++
++    #[test]
++    fn uncovered_faces_keep_their_identity() {
++        let tris: Vec<(Triangle, u32)> = quad(X, 0., X + 10., 10., 1.0).into_iter()
++            .chain(quad(X + 20., 0., X + 30., 10., 1.10)).map(|t| (t, 3)).collect();
++        let mut t = tile(tris.clone());
++        assert_eq!(top_floor_wins(&mut t), (0, 0));
++        assert_eq!(t.triangles, tris);
++    }
++
++    #[test]
++    fn thin_box_on_a_slope_leaves_no_floor_under_its_top() {
++        // The canal slope (-878.8 -1038.9): a 13 m slope with an 8 cm thick
++        // box lying on it (top, no bottom needed for the rule).
++        let slope = |x: f32| 5.0 - 0.2 * (x - X);
++        let mut tris: Vec<(Triangle, u32)> = vec![
++            ([[X, 0., slope(X)], [X + 13., 0., slope(X + 13.)], [X + 13., 4., slope(X + 13.)]], 0),
++            ([[X, 0., slope(X)], [X + 13., 4., slope(X + 13.)], [X, 4., slope(X)]], 0),
++        ];
++        tris.push(([[X + 4., 1.6, slope(X + 4.) + 0.08], [X + 9., 1.6, slope(X + 9.) + 0.08], [X + 9., 2.0, slope(X + 9.) + 0.08]], 0));
++        tris.push(([[X + 4., 1.6, slope(X + 4.) + 0.08], [X + 9., 2.0, slope(X + 9.) + 0.08], [X + 4., 2.0, slope(X + 4.) + 0.08]], 0));
++        let mut t = tile(tris);
++        let (dropped, risers) = top_floor_wins(&mut t);
++        assert!(dropped > 0 && risers > 0);
++        // Under the box's middle only the box top remains.
++        let under: Vec<f32> = t.triangles.iter().filter_map(|(t, _)| height_at(t, X + 6.3, 1.87)).collect();
++        assert_eq!(under.len(), 1, "{under:?}");
++        assert!((under[0] - (slope(X + 6.3) + 0.08)).abs() < 1e-3);
++    }
++
++    /// Real tiles: GTAXSKATE_TILES=<tiles dir> GTAXSKATE_TILES_OUT=<dir>
++    /// GTAXSKATE_CELLS="x,y x,y" writes each processed tile and prints counts.
++    #[test]
++    #[ignore]
++    fn real_tiles() {
++        let (Ok(dir), Ok(out), Ok(cells)) = (std::env::var("GTAXSKATE_TILES"), std::env::var("GTAXSKATE_TILES_OUT"), std::env::var("GTAXSKATE_CELLS")) else { return };
++        std::fs::create_dir_all(&out).unwrap();
++        for c in cells.split_whitespace() {
++            let (x, y) = c.split_once(',').unwrap();
++            let cell = (x.parse().unwrap(), y.parse().unwrap());
++            let path = crate::tiles::path(std::path::Path::new(&dir), cell);
++            let mut t = Tile::read(std::io::BufReader::new(std::fs::File::open(&path).unwrap())).unwrap();
++            let before = t.triangles.len();
++            let start = std::time::Instant::now();
++            let (d, r) = top_floor_wins(&mut t);
++            let bad = t.triangles.iter().filter(|(t, _)| !sound(t)).count();
++            let bad_before = Tile::read(std::io::BufReader::new(std::fs::File::open(&path).unwrap())).unwrap().triangles.iter().filter(|(t, _)| !sound(t)).count();
++            assert!(bad <= bad_before, "tile {c}: {bad} unsound triangles after, {bad_before} before");
++            eprintln!("tile {c}: {bad_before} -> {bad} unsound; {before} -> {} triangles, {d} faces cut, {r} riser triangles, {:.0} ms", t.triangles.len(), start.elapsed().as_secs_f64() * 1e3);
++            t.write(std::fs::File::create(crate::tiles::path(std::path::Path::new(&out), cell)).unwrap()).unwrap();
++        }
++    }
++
++    #[test]
++    fn a_covered_cover_does_not_take_the_floor_far_below() {
++        // C at 1.0, B at 1.2 over all of it, A at 1.4 over the right half.
++        // B's right half goes (under A); C's right half stays (A is 40 cm up,
++        // B does not count there); C's left half goes under B.
++        let mut tris: Vec<(Triangle, u32)> = quad(X, 0., X + 10., 10., 1.0).into_iter().map(|t| (t, 0)).collect();
++        tris.extend(quad(X, 0., X + 10., 10., 1.2).into_iter().map(|t| (t, 0)));
++        tris.extend(quad(X + 5., 0., X + 10., 10., 1.4).into_iter().map(|t| (t, 0)));
++        let mut t = tile(tris);
++        top_floor_wins(&mut t);
++        let c = area_up(&t, 1.0);
++        let b = area_up(&t, 1.2);
++        assert!((c - 50.).abs() < 0.5, "C keeps the right half: {c}");
++        assert!((b - 50.).abs() < 0.5, "B keeps the left half: {b}");
++        assert!((area_up(&t, 1.4) - 50.).abs() < 1e-3);
++        let left_c = t.triangles.iter().any(|(t, _)| (t[0][2] - 1.0).abs() < 1e-3 && unit_normal(t)[2] > 0.7 && centroid(t)[0] < X + 4.9);
++        assert!(!left_c, "C's left half went under B");
++    }
++
++    #[test]
++    fn subtract_square_minus_half() {
++        let p: Poly = ccw(vec![[0., 0.], [10., 0.], [10., 10.]]);
++        let r: Poly = ccw(vec![[4., 0.], [10., 0.], [10., 10.]]);
++        let out = subtract(&p, &r);
++        let a: f32 = out.iter().map(area).sum();
++        let r2: Poly = ccw(vec![[4., 0.], [10., 10.], [4., 10.]]);
++        let out2: Vec<Poly> = out.iter().flat_map(|q| subtract(q, &r2)).collect();
++        assert!((out2.iter().map(area).sum::<f32>() - 8.).abs() < 1e-3);
++        assert!((a - 20.).abs() < 1e-3);
++    }
++
++    /// Every installed tile: GTAXSKATE_TILES=<tiles dir>. Runs the pass and
++    /// Skate's own normal check (`skate_world.rs`, in Skate space) on every
++    /// triangle; fails if the pass makes any triangle Skate would refuse.
++    #[test]
++    #[ignore]
++    fn all_tiles_stay_valid_for_skate() {
++        let Ok(dir) = std::env::var("GTAXSKATE_TILES") else { return };
++        let skate_ok = |t: &Triangle| {
++            let [a, b, c] = t.map(|p| crate::coords::to_skate(bevy_math::Vec3::from_array(p)));
++            (b - a).cross(c - a).try_normalize().is_some()
++        };
++        let (mut tiles, mut before_n, mut after_n, mut bad, mut worst) = (0usize, 0usize, 0usize, 0usize, 0f64);
++        let (mut bad_tiles, mut slowest) = (Vec::new(), (0f64, String::new()));
++        for e in std::fs::read_dir(&dir).unwrap().flatten() {
++            let path = e.path();
++            if path.extension().and_then(|x| x.to_str()) != Some("svwt") { continue; }
++            let Ok(mut t) = Tile::read(std::io::BufReader::new(std::fs::File::open(&path).unwrap())) else { continue };
++            let was_bad = t.triangles.iter().filter(|(t, _)| !skate_ok(t)).count();
++            before_n += t.triangles.len();
++            let start = std::time::Instant::now();
++            top_floor_wins(&mut t);
++            let ms = start.elapsed().as_secs_f64() * 1e3;
++            if ms > slowest.0 { slowest = (ms, path.display().to_string()); }
++            worst = worst.max(ms);
++            after_n += t.triangles.len();
++            let now_bad = t.triangles.iter().filter(|(t, _)| !skate_ok(t)).count();
++            if now_bad > was_bad { bad += now_bad - was_bad; bad_tiles.push(path.display().to_string()); }
++            tiles += 1;
++        }
++        eprintln!("{tiles} tiles: {before_n} -> {after_n} triangles (+{:.1} %), new invalid {bad}, slowest {:.0} ms ({})",
++            (after_n as f64 / before_n.max(1) as f64 - 1.) * 100., slowest.0, slowest.1);
++        assert!(bad == 0, "new invalid triangles in {:?}", &bad_tiles[..bad_tiles.len().min(10)]);
++    }
++}
 diff --git a/rust/skatev-runtime/src/hud.rs b/rust/skatev-runtime/src/hud.rs
 index 9274f07c8b82329fc03feca16ce872a822de7030..7414033bcb17df2f274f9cfabe336dbe209aacd5 100644
 --- a/rust/skatev-runtime/src/hud.rs
@@ -34800,7 +35513,7 @@ index 0000000000000000000000000000000000000000..437d8042b3c27bf863ad5001ee4120fe
 +
 +}
 diff --git a/rust/skatev-runtime/src/lib.rs b/rust/skatev-runtime/src/lib.rs
-index 8289cdfe052514977e06b4af76f76b35ede8facb..842b423fb534ffa57c273c7746ad8dac4e5686c1 100644
+index 8289cdfe052514977e06b4af76f76b35ede8facb..e268487265e139e6b2d1f72e151af850ae419539 100644
 --- a/rust/skatev-runtime/src/lib.rs
 +++ b/rust/skatev-runtime/src/lib.rs
 @@ -5,6 +5,12 @@
@@ -34816,7 +35529,7 @@ index 8289cdfe052514977e06b4af76f76b35ede8facb..842b423fb534ffa57c273c7746ad8dac
  pub mod board_pose;
  pub mod curbs;
  pub mod dynamic;
-@@ -17,7 +23,22 @@ pub mod skin;
+@@ -17,7 +23,23 @@ pub mod skin;
  mod worker;
  mod crash;
  pub mod world;
@@ -34826,6 +35539,7 @@ index 8289cdfe052514977e06b4af76f76b35ede8facb..842b423fb534ffa57c273c7746ad8dac
  pub mod live;
 +pub mod baked;
 +pub mod tiles;
++pub mod floors;
 +
 +/// Use offline static world tiles when compatible data is available (default on).
 +pub static BAKED_WORLD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
@@ -34839,7 +35553,7 @@ index 8289cdfe052514977e06b4af76f76b35ede8facb..842b423fb534ffa57c273c7746ad8dac
  pub mod materials;
  pub mod surfaces;
  pub mod ground;
-@@ -25,6 +46,9 @@ pub mod ground_at;
+@@ -25,6 +47,9 @@ pub mod ground_at;
  pub mod grid;
  pub mod plies;
  pub mod reuse;
@@ -34849,7 +35563,7 @@ index 8289cdfe052514977e06b4af76f76b35ede8facb..842b423fb534ffa57c273c7746ad8dac
  #[cfg(windows)]
  mod private_heap;
  /// All runtime allocations use a private heap (no lock shared with GTA).
-@@ -329,6 +353,7 @@ impl Default for SvScoreState {
+@@ -329,6 +354,7 @@ impl Default for SvScoreState {
  }
  
  struct Runtime {
@@ -34857,7 +35571,7 @@ index 8289cdfe052514977e06b4af76f76b35ede8facb..842b423fb534ffa57c273c7746ad8dac
      jobs: mpsc::Sender<Job>,
      shared: Arc<Mutex<Shared>>,
      /// Signalled with `Shared::steps_done`; `steps_sent` counts sv_step's jobs.
-@@ -416,16 +441,21 @@ fn file_logger(path: Option<PathBuf>) -> worker::Log {
+@@ -416,16 +442,21 @@ fn file_logger(path: Option<PathBuf>) -> worker::Log {
      });
      let file = Mutex::new(file);
      let start = std::time::Instant::now();
@@ -34881,7 +35595,7 @@ index 8289cdfe052514977e06b4af76f76b35ede8facb..842b423fb534ffa57c273c7746ad8dac
  /// Runs `f`, turning a panic into `fallback` so it never unwinds into C++.
  fn guard<T>(fallback: T, f: impl FnOnce() -> T) -> T {
      catch_unwind(AssertUnwindSafe(f)).unwrap_or(fallback)
-@@ -476,6 +506,7 @@ pub unsafe extern "C" fn sv_create(info: *const SvCreateInfo) -> *mut c_void {
+@@ -476,6 +507,7 @@ pub unsafe extern "C" fn sv_create(info: *const SvCreateInfo) -> *mut c_void {
          let (jobs, shared) =
              worker::spawn(root, cache, budget, board_only, hall_of_meat, natural_stance, Arc::clone(&log));
          Box::into_raw(Box::new(Runtime {
@@ -34889,7 +35603,7 @@ index 8289cdfe052514977e06b4af76f76b35ede8facb..842b423fb534ffa57c273c7746ad8dac
              jobs,
              shared,
              steps_sent: AtomicU64::new(0),
-@@ -940,6 +971,138 @@ pub unsafe extern "C" fn sv_get_status_text(
+@@ -940,6 +972,138 @@ pub unsafe extern "C" fn sv_get_status_text(
  }
  
  // Every export below is optional on the host (looked up with GetProcAddress).
@@ -35028,7 +35742,7 @@ index 8289cdfe052514977e06b4af76f76b35ede8facb..842b423fb534ffa57c273c7746ad8dac
  pub mod lifecycle;
  
  /// Lifecycle phases published in `SvLifecycleState::phase`.
-@@ -1010,6 +1173,7 @@ pub unsafe extern "C" fn sv_lifecycle_track(
+@@ -1010,6 +1174,7 @@ pub unsafe extern "C" fn sv_lifecycle_track(
              .send(Job::Track {
                  at,
                  heading: t.heading_degrees,
@@ -35036,7 +35750,7 @@ index 8289cdfe052514977e06b4af76f76b35ede8facb..842b423fb534ffa57c273c7746ad8dac
              })
              .is_ok() as u32
      })
-@@ -1097,6 +1261,40 @@ pub unsafe extern "C" fn sv_set_equipment(rt: *mut c_void, truck: f32, wheel: f3
+@@ -1097,6 +1262,40 @@ pub unsafe extern "C" fn sv_set_equipment(rt: *mut c_void, truck: f32, wheel: f3
      })
  }
  
@@ -35077,7 +35791,7 @@ index 8289cdfe052514977e06b4af76f76b35ede8facb..842b423fb534ffa57c273c7746ad8dac
  /// Skate 3's difficulty (overlay patch 0043): 0 easy, 1 normal, 2 hardcore,
  /// 3 motorized; applied live and to every later session. Returns 1 when queued.
  #[unsafe(no_mangle)]
-@@ -1107,6 +1305,103 @@ pub unsafe extern "C" fn sv_set_difficulty(rt: *mut c_void, index: u32) -> u32 {
+@@ -1107,6 +1306,103 @@ pub unsafe extern "C" fn sv_set_difficulty(rt: *mut c_void, index: u32) -> u32 {
      })
  }
  
@@ -35181,7 +35895,7 @@ index 8289cdfe052514977e06b4af76f76b35ede8facb..842b423fb534ffa57c273c7746ad8dac
  /// The SkateV ramp-lip rule (overlay patch 0033): nonzero (the default) lets
  /// a rolling board stall on a lip only riding up into it slowly; 0 restores
  /// retail grind admission. Returns 1 when queued.
-@@ -1512,8 +1807,8 @@ pub mod hom;
+@@ -1512,8 +1808,8 @@ pub mod hom;
  pub mod xray;
  pub mod records;
  pub use hud::{
@@ -35192,7 +35906,7 @@ index 8289cdfe052514977e06b4af76f76b35ede8facb..842b423fb534ffa57c273c7746ad8dac
  };
  
  // Dry Skate 3 gameplay voices per emitter; contract in the header's audio
-@@ -1912,4 +2207,74 @@ mod tests {
+@@ -1912,4 +2208,74 @@ mod tests {
          copy_str(&mut b, "a\u{e9}\u{20ac}");
          assert_eq!(&b, b"a\xc3\xa9\0");
      }
@@ -40641,10 +41355,10 @@ index 0000000000000000000000000000000000000000..960eda9d375e37b3b7db806ebfba1d95
 +}
 diff --git a/rust/skatev-runtime/src/tiles.rs b/rust/skatev-runtime/src/tiles.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..8cd04d22771b5c7c33f0776cefc1d6791bddca45
+index 0000000000000000000000000000000000000000..e83ec0b2c679ded20f5d676843891e10dfd355e5
 --- /dev/null
 +++ b/rust/skatev-runtime/src/tiles.rs
-@@ -0,0 +1,894 @@
+@@ -0,0 +1,898 @@
 +//! Final static collision tiles. All numbers are little endian, GTA metres.
 +//! SVWT v2: magic + version u32, then a zlib stream containing the v1 payload.
 +//! Payload: magic, version 1 u32, tile size f32, x/y i32, source UTF-8 length
@@ -41254,9 +41968,13 @@ index 0000000000000000000000000000000000000000..8cd04d22771b5c7c33f0776cefc1d679
 +            *used = self.clock;
 +            return Some(t.clone());
 +        }
-+        let t = Tile::read(io::BufReader::new(std::fs::File::open(path(dir, c)).ok()?)).ok()?;
++        let mut t = Tile::read(io::BufReader::new(std::fs::File::open(path(dir, c)).ok()?)).ok()?;
 +        if t.cell != c || t.size != size || !t.source.lines().any(rules_compatible) {
 +            return None;
++        }
++        // Top floor wins (design 2026-11-18-top-floor-wins): once per decode.
++        if crate::floors::TOP_FLOORS.load(std::sync::atomic::Ordering::Relaxed) {
++            crate::floors::top_floor_wins(&mut t);
 +        }
 +        let bytes = t.source.capacity()
 +            + t.triangles.capacity() * std::mem::size_of::<(Triangle, u32)>()
@@ -48009,7 +48727,7 @@ index 0000000000000000000000000000000000000000..497007f571047f7396a9952a4f6de463
 +    }
 +}
 diff --git a/rust/skatev-runtime/src/worker.rs b/rust/skatev-runtime/src/worker.rs
-index d2c1bcd3da50991492d75ce3e5738314e5bd6eaf..b1286a353401502a365db45df576df4347e268c2 100644
+index d2c1bcd3da50991492d75ce3e5738314e5bd6eaf..80852ae33f267eb3494c123ddce279a2b20bb740 100644
 --- a/rust/skatev-runtime/src/worker.rs
 +++ b/rust/skatev-runtime/src/worker.rs
 @@ -48,6 +48,7 @@ pub enum Job {
@@ -48565,7 +49283,23 @@ index d2c1bcd3da50991492d75ce3e5738314e5bd6eaf..b1286a353401502a365db45df576df43
                          life(shared, |l| {
                              l.collision_builds += 1;
                              l.collision_centre = centre;
-@@ -1311,10 +1608,40 @@ fn run(
+@@ -1297,11 +1594,13 @@ fn run(
+                         }
+                         if verbose() {
+                             log(&format!(
+-                                "collision streamed around ({:.0}, {:.0}){}: {n} triangles, {r} rails, {}ms after the request",
++                                "collision streamed around ({:.0}, {:.0}){}: {n} triangles, {r} rails, {}ms after the request; top floors so far: {} lower faces cut, {} riser triangles",
+                                 centre.x,
+                                 centre.y,
+                                 if active { "" } else { " while inactive" },
+-                                requested_at.elapsed().as_millis()
++                                requested_at.elapsed().as_millis(),
++                                crate::floors::SPLIT_FACES.load(std::sync::atomic::Ordering::Relaxed),
++                                crate::floors::RISERS.load(std::sync::atomic::Ordering::Relaxed)
+                             ));
+                         }
+                     }
+@@ -1311,10 +1610,40 @@ fn run(
                              log(&format!("collision stream failed: {e}"));
                          }
                          stream_failed_at = Some(centre);
@@ -48606,7 +49340,7 @@ index d2c1bcd3da50991492d75ce3e5738314e5bd6eaf..b1286a353401502a365db45df576df43
          if let Some(level) = pending_live {
              match static_world.try_lock() {
                  Ok(mut w) => {
-@@ -1333,6 +1660,11 @@ fn run(
+@@ -1333,6 +1662,11 @@ fn run(
                  Err(std::sync::TryLockError::Poisoned(_)) => return Err("world cache poisoned".into()),
              }
          }
@@ -48618,7 +49352,7 @@ index d2c1bcd3da50991492d75ce3e5738314e5bd6eaf..b1286a353401502a365db45df576df43
          // GTA streams collision in and out: a static bound loaded or dropped
          // near the skater (or the walking player) since the installed area
          // was read asks for a rebuild (checked once a second, rebuilt at most
-@@ -1354,8 +1686,11 @@ fn run(
+@@ -1354,8 +1688,11 @@ fn run(
                  }
              }
          }
@@ -48631,7 +49365,7 @@ index d2c1bcd3da50991492d75ce3e5738314e5bd6eaf..b1286a353401502a365db45df576df43
              && pending_centre.is_none()
              && built_at != PRELOAD_AT
              && live_checked.elapsed().as_secs_f32() >= 1.0
-@@ -1371,18 +1706,24 @@ fn run(
+@@ -1371,18 +1708,24 @@ fn run(
          let velocity = if active { skater_velocity } else { Vec3::ZERO };
          if let Some(t) = target
              && pending_centre.is_none()
@@ -48660,7 +49394,7 @@ index d2c1bcd3da50991492d75ce3e5738314e5bd6eaf..b1286a353401502a365db45df576df43
                  pending_centre = Some(centre);
                  requested_at = std::time::Instant::now();
                  rebuild_area = false;
-@@ -1422,6 +1763,7 @@ fn run(
+@@ -1422,6 +1765,7 @@ fn run(
                      crate::line::Next::Frame(f) => {
                          assist_packet = assist_packet.wrapping_add(1);
                          right_stick = f.right;
@@ -48668,7 +49402,7 @@ index d2c1bcd3da50991492d75ce3e5738314e5bd6eaf..b1286a353401502a365db45df576df43
                          s.collect(
                              InputFrame::from_pad(f.buttons, f.triggers, f.left, f.right, assist_packet),
                              period,
-@@ -1450,6 +1792,7 @@ fn run(
+@@ -1450,6 +1794,7 @@ fn run(
                  if let Some(i) = injected {
                      assist_packet = assist_packet.wrapping_add(1);
                      right_stick = i.right_stick;
@@ -48676,7 +49410,7 @@ index d2c1bcd3da50991492d75ce3e5738314e5bd6eaf..b1286a353401502a365db45df576df43
                      s.collect(
                          InputFrame::from_pad(
                              i.buttons,
-@@ -1467,16 +1810,44 @@ fn run(
+@@ -1467,16 +1812,44 @@ fn run(
              }
              let t = std::time::Instant::now();
              let air_frames = s.air_frames();
@@ -48727,7 +49461,7 @@ index d2c1bcd3da50991492d75ce3e5738314e5bd6eaf..b1286a353401502a365db45df576df43
              skitch_held = s.skitch_held_tag();
              if s.air_teleport_requested() {
                  log(&format!(
-@@ -1487,7 +1858,8 @@ fn run(
+@@ -1487,7 +1860,8 @@ fn run(
                  ));
              }
              let pose = s.pose();
@@ -48737,7 +49471,7 @@ index d2c1bcd3da50991492d75ce3e5738314e5bd6eaf..b1286a353401502a365db45df576df43
                  .into_iter()
                  .filter_map(|tag| host_groups.get(&tag).map(|g| (tag, *g)))
                  .collect();
-@@ -1623,8 +1995,21 @@ fn run(
+@@ -1623,8 +1997,21 @@ fn run(
  }
  
  /// Contact exchange bookkeeping kept across ticks.
@@ -48759,7 +49493,7 @@ index d2c1bcd3da50991492d75ce3e5738314e5bd6eaf..b1286a353401502a365db45df576df43
      /// Host impacts logged recently: (entity, when).
      impacts: Vec<(u32, std::time::Instant)>,
      /// The vehicle let go of, and when (its pushes stay withheld 0.5 s).
-@@ -1642,6 +2027,11 @@ fn exchange_impulses(
+@@ -1642,6 +2029,11 @@ fn exchange_impulses(
      shared: &Mutex<Shared>,
      log: &Log,
      peds: &[skate_host::bridge::HostBody],
@@ -48771,7 +49505,7 @@ index d2c1bcd3da50991492d75ce3e5738314e5bd6eaf..b1286a353401502a365db45df576df43
      state: &mut ImpulseLog,
  ) -> Vec<u32> {
      // Host-driven impacts (a car striking the rider), logged once per entity
-@@ -1668,6 +2058,31 @@ fn exchange_impulses(
+@@ -1668,6 +2060,31 @@ fn exchange_impulses(
      // (otherwise the rider pushes the car, which then tows the rider).
      let held = s.skitch_held_tag();
      let mut impulses = s.take_host_impulses();
@@ -48803,7 +49537,7 @@ index d2c1bcd3da50991492d75ce3e5738314e5bd6eaf..b1286a353401502a365db45df576df43
      let before = impulses.len();
      // ... and for 0.5 s after the release (the exit tick and the separation
      // still produce pushes on the car the rider just let go of).
-@@ -1767,12 +2182,16 @@ struct SkaterPrefs {
+@@ -1767,12 +2184,16 @@ struct SkaterPrefs {
      posture: u32,
      style: u32,
      equipment: (f32, f32),
@@ -48821,7 +49555,7 @@ index d2c1bcd3da50991492d75ce3e5738314e5bd6eaf..b1286a353401502a365db45df576df43
      }
  }
  
-@@ -1787,6 +2206,8 @@ fn apply_settings(s: &mut Session, hall_of_meat: bool, bail: Option<f32>, air: O
+@@ -1787,6 +2208,8 @@ fn apply_settings(s: &mut Session, hall_of_meat: bool, bail: Option<f32>, air: O
      s.set_posture(prefs.posture);
      s.set_riding_style(prefs.style);
      s.set_equipment(prefs.equipment.0, prefs.equipment.1);
@@ -48830,7 +49564,7 @@ index d2c1bcd3da50991492d75ce3e5738314e5bd6eaf..b1286a353401502a365db45df576df43
      s.set_bail_maximum_time(bail);
      s.set_air_time_limit(air);
      s.set_lip_rule(lip);
-@@ -1805,77 +2226,93 @@ fn prepare_session(
+@@ -1805,77 +2228,93 @@ fn prepare_session(
      natural_stance: u32,
      shared: &Mutex<Shared>,
      log: &Log,
@@ -48990,7 +49724,7 @@ index d2c1bcd3da50991492d75ce3e5738314e5bd6eaf..b1286a353401502a365db45df576df43
  }
  
  /// Collision centre of a preloaded session that has no player collision yet:
-@@ -2011,35 +2448,33 @@ fn start_builder(
+@@ -2011,35 +2450,33 @@ fn start_builder(
      static_world: Arc<Mutex<StaticWorld>>,
      out: mpsc::Sender<Built>,
      log: Log,
@@ -49035,7 +49769,7 @@ index d2c1bcd3da50991492d75ce3e5738314e5bd6eaf..b1286a353401502a365db45df576df43
              }
          })
          .map_err(|e| e.to_string())?;
-@@ -2084,7 +2519,9 @@ fn publish(
+@@ -2084,7 +2521,9 @@ fn publish(
      log: &Log,
  ) -> Published {
      let board_pose = crate::board_pose::world(&p.names, &p.bones, p.root).map(|mut w| {
@@ -49046,7 +49780,7 @@ index d2c1bcd3da50991492d75ce3e5738314e5bd6eaf..b1286a353401502a365db45df576df43
          w
      });
      let mut presenter = presenter;
-@@ -2228,69 +2665,163 @@ mod bail_tests {
+@@ -2228,69 +2667,163 @@ mod bail_tests {
      }
  }
  
@@ -49263,7 +49997,7 @@ index d2c1bcd3da50991492d75ce3e5738314e5bd6eaf..b1286a353401502a365db45df576df43
          let line = skate_host::bridge::GrabLine {
              tag: 7,
              frame: [[1., 0., 0., 0.], [0., 1., 0., 0.], [0., 0., 1., 0.], [10., 0., 5., 0.]],
-@@ -2298,42 +2829,16 @@ mod skitch_line_tests {
+@@ -2298,42 +2831,16 @@ mod skitch_line_tests {
              points: [[-1., -2., 0.5, 0.], [1., -2., 0.5, 0.]],
              approach: [0., -1., 0., 0.],
          };
@@ -72824,9 +73558,69 @@ index 0000000000000000000000000000000000000000..1bf6b4b56b02b3b7fa9f6857942f5136
 +
 +if __name__ == '__main__':
 +    main()
+diff --git a/tools/prepare-skate-overlay.ps1 b/tools/prepare-skate-overlay.ps1
+index 73c4dc969b9f93c85546baadd894ef320109c8e5..a814080297b75e3fe392941f894e9846bc870dd8 100644
+--- a/tools/prepare-skate-overlay.ps1
++++ b/tools/prepare-skate-overlay.ps1
+@@ -17,9 +17,35 @@ $material = (& git -C (Join-Path $Root 'upstream/2010-rust-rewrite-mashup') rev-
+ foreach ($p in $Patches) { $material += "`n" + $p.Name + ':' + (Get-FileHash $p.FullName -Algorithm SHA256).Hash }
+ $key = -join ($hasher.ComputeHash([Text.Encoding]::UTF8.GetBytes($material)) | ForEach-Object { $_.ToString('x2') })
+ 
+-if (-not $Force -and (Test-Path $Stamp) -and ((Get-Content $Stamp -Raw).Trim() -eq $key)) {
+-    Write-Host "Skate overlay up to date ($($Patches.Count) patches)"
+-    exit 0
++# Hash of the overlay's source text (newlines normalized). The stamp keeps it
++# beside the patch key, so a source edit made in the overlay itself (never
++# captured as a patch) is caught: 2026-11-18, an 11-11 edit to
++# wheel_scale_step sat in every overlay for a week behind a matching stamp and
++# made wheels sink into slopes in every runtime built from it.
++function Get-OverlaySourceHash([string]$Dir) {
++    $h = [Security.Cryptography.SHA256]::Create()
++    $files = @(Get-Item (Join-Path $Dir 'Cargo.toml')) + @(Get-ChildItem (Join-Path $Dir 'crates') -File -Recurse |
++        Where-Object { $_.FullName -notmatch '[\\/]target[\\/]' })
++    $sb = [Text.StringBuilder]::new()
++    foreach ($f in ($files | Sort-Object { $_.FullName.Substring($Dir.Length) } -Culture ([Globalization.CultureInfo]::InvariantCulture))) {
++        $text = [IO.File]::ReadAllText($f.FullName).Replace("`r`n", "`n")
++        $fileHash = -join ($h.ComputeHash([Text.Encoding]::UTF8.GetBytes($text)) | ForEach-Object { $_.ToString('x2') })
++        [void]$sb.Append($f.FullName.Substring($Dir.Length + 1).Replace('\', '/')).Append(':').Append($fileHash).Append("`n")
++    }
++    -join ($h.ComputeHash([Text.Encoding]::UTF8.GetBytes($sb.ToString())) | ForEach-Object { $_.ToString('x2') })
++}
++
++if (-not $Force -and (Test-Path $Stamp)) {
++    $lines = @((Get-Content $Stamp) | ForEach-Object { $_.Trim() })
++    if ($lines.Count -ge 2 -and $lines[0] -eq $key -and $lines[1] -eq (Get-OverlaySourceHash $Dest)) {
++        Write-Host "Skate overlay up to date ($($Patches.Count) patches)"
++        exit 0
++    }
++    # A stamp without a source hash (older script) or with a different one:
++    # rebuild the candidate below and compare; edits outside patches stop it.
++    if ($lines.Count -ge 1 -and $lines[0] -eq $key) {
++        Write-Host "Skate overlay stamp matches the patches; verifying overlay source against them"
++    }
+ }
+ 
+ # Build in a sibling first. A failed patch must never destroy the working
+@@ -40,7 +66,8 @@ foreach ($p in $Patches) {
+ if (Test-Path -LiteralPath $Dest) {
+     $uncaptured = @()
+     # Only compare source: Cargo may also have written a lock or target tree.
+-    foreach ($file in @(Get-Item (Join-Path $Dest 'Cargo.toml')) + @(Get-ChildItem (Join-Path $Dest 'crates') -File -Recurse)) {
++    foreach ($file in @(Get-Item (Join-Path $Dest 'Cargo.toml')) + @(Get-ChildItem (Join-Path $Dest 'crates') -File -Recurse |
++            Where-Object { $_.FullName -notmatch '[\\/]target[\\/]' })) {
+         $relative = $file.FullName.Substring($Dest.Length + 1)
+         $candidate = Join-Path $stage $relative
+         # Git may preserve CRLF on context and write LF for inserted lines.
+@@ -64,5 +91,5 @@ if (Test-Path -LiteralPath $Dest) {
+     Write-Host "Previous overlay preserved at $backup"
+ }
+ Move-Item -LiteralPath $stage -Destination $Dest
+-Set-Content $Stamp $key -NoNewline
++Set-Content $Stamp ($key + "`n" + (Get-OverlaySourceHash $Dest)) -NoNewline
+ Write-Host "Skate overlay -> $Dest ($($Patches.Count) patches)"
 diff --git a/tools/prepare-tutorial-dlc.py b/tools/prepare-tutorial-dlc.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..9ea58d8bae3545755f111a5ee0f422e63c011a75
+index 0000000000000000000000000000000000000000..7769a1293147bfc83e906bab437c043c6524029f
 --- /dev/null
 +++ b/tools/prepare-tutorial-dlc.py
 @@ -0,0 +1,381 @@
@@ -72842,6 +73636,7 @@ index 0000000000000000000000000000000000000000..9ea58d8bae3545755f111a5ee0f422e6
 +import importlib.util
 +import json
 +import math
++import os
 +import re
 +import struct
 +import subprocess
@@ -72856,10 +73651,8 @@ index 0000000000000000000000000000000000000000..9ea58d8bae3545755f111a5ee0f422e6
 +m0 = importlib.util.module_from_spec(spec)
 +spec.loader.exec_module(m0)
 +MAX_VERTICES = 60_000
-+EXTERNAL = Path('C:/SkateMods/external/sk8v')
-+DEFAULT_RAGE = EXTERNAL / 'build/tools/rage.exe'
-+if not DEFAULT_RAGE.is_file():
-+    DEFAULT_RAGE = REPO / 'build/tools/rage.exe'
++SK8V_ROOT = Path(os.environ.get('SK8V_ROOT', str(REPO)))
++DEFAULT_RAGE = Path(os.environ.get('SK8V_RAGE', str(SK8V_ROOT / 'build/tools/rage.exe')))
 +
 +
 +def transform(point, origin):
@@ -73196,7 +73989,8 @@ index 0000000000000000000000000000000000000000..9ea58d8bae3545755f111a5ee0f422e6
 +    parser = argparse.ArgumentParser(description=__doc__)
 +    parser.add_argument('--disc', type=Path, required=True, help='extracted Skate 3 disc root')
 +    parser.add_argument('--manifest', type=Path, default=REPO / 'local/m0-tutorial/m0-tutorial-manifest.json')
-+    parser.add_argument('--donor', type=Path, default=EXTERNAL / 'upstream/skate-3-rust-engine-donor')
++    default_donor = Path(os.environ.get('SKATE3_DONOR_ROOT', str(SK8V_ROOT / 'upstream/skate-3-rust-engine-donor')))
++    parser.add_argument('--donor', type=Path, default=default_donor)
 +    parser.add_argument('--rage', type=Path, default=DEFAULT_RAGE)
 +    parser.add_argument('--out', type=Path, default=REPO / 'local/m1-tutorial-dlc')
 +    parser.add_argument('--dry-run', action='store_true')

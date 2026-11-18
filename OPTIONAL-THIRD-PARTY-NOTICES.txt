@@ -1,0 +1,44 @@
+GTAxSkate optional downloads: third-party notices
+==================================================
+
+Friends-Only Coop optional package
+----------------------------------
+
+The Coop package redistributes the following components. Their licenses are
+included in licenses/ and apply to those components; they do not replace the
+GTAxSkate project license.
+
+ScriptHookVDotNet (ASI and managed assemblies)
+  Upstream: https://github.com/scripthookvdotnet/scripthookvdotnet
+  License: Zlib; see licenses/ZLIB.txt.
+  The optional package uses the pinned v3.7.0-nightly.193 distribution.
+
+RageCoop client and server
+  Upstream: https://github.com/RAGECOOP/RAGECOOP-V
+  License: MIT; see licenses/MIT.txt.
+  The client archive is pinned by SHA-256 in scripts/prepare-coop-test.ps1 in
+  the source repository. The server archive is pinned in the same script.
+
+ICSharpCode.SharpZipLib, Lidgren.Network, Microsoft.Extensions.ObjectPool,
+and System.Buffers
+  These dependency assemblies are distributed by the RageCoop package and
+  retain their respective upstream notices and license terms. Their upstream
+  licenses are MIT; see licenses/MIT.txt. Sources:
+  https://github.com/icsharpcode/SharpZipLib
+  https://github.com/lidgren/lidgren-network-gen3
+  https://github.com/dotnet/runtime
+
+GTAxSkate Coop adapter
+  Copyright 2026 Manatros. Licensed under Apache-2.0; see LICENSE.txt and
+  NOTICE.txt in this package. The package includes only the compiled adapter
+  binaries and install scripts.
+
+Tutorial Island optional package
+--------------------------------
+
+The tutorial archive contains GTAxSkate and SK8V preparation/installation
+tools, not third-party game assets. Their notices are provided as LICENSE.txt,
+NOTICE.txt, LICENSE-SK8V.txt and NOTICE-SK8V.txt inside that archive.
+
+No GTA V, Skate 3 or other retail game assets are included in either optional
+download. Users must provide game files they are entitled to use.

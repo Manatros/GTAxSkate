@@ -1,4 +1,4 @@
-GTAxSkate v0.7.0: Skate 3 in GTA V (Legacy)
+GTAxSkate v0.9.1: Skate 3 in GTA V (Legacy)
 ============================================
 
 SK8V (by becaring) with GTAxSkate's additions: keyboard and mouse,
@@ -19,6 +19,17 @@ Install
   4. Untick the parts you don't want, click Install, wait (20-40 minutes
      the first time: it converts Skate 3's data from your disc).
 
+Optional downloads (not included in the default installation)
+  Tutorial Island / Skate School: download GTAxSkate-Tutorial-Optional.zip
+  from the v0.9.1 release. It contains tools only; its assets are built from
+  your own Skate 3 files. Tutorial Island is experimental and has known
+  collision, texture and travel-position problems.
+  Friends-Only Multiplayer: download GTAxSkate-Coop-Optional.zip from the
+  v0.9.1 release. This is experimental; two-PC gameplay has not been tested.
+  Generate a private friend key locally and share it only with your friend.
+  Follow the README in each optional download. Neither add-on is required to
+  play the base mod.
+
 It gets SK8V and its tools by itself and keeps going where it stopped if
 anything interrupts it: just run it again.
 Music is optional. If the disc is missing when resuming, the mod installation
@@ -26,15 +37,14 @@ finishes and reports that the soundtrack was skipped. Run again with your disc
 to retry the music.
 
 Release status and optional data
-  Authorized by Manatros on 26 October 2026. Exact installed candidate:
-  test-20261026l-rc-b27eec6; world rules 4217eedcd28b7deb.
-  Earlier gameplay tests confirmed the object dropper working. Final bowl,
-  rail and shop changes remain untested in game; see TEST-RUN.md.
+  See CHANGELOG.md and STATUS.md in the v0.9.1 source/release for the tested
+  build, known issues and validation limits.
   Keep world selected: installer step 7 builds collision tiles, visible rails
   and high-res bowl meshes from your own GTA files using PowerShell 7.
   It needs time and several GB of space. It verifies the complete result
   before replacing world data and preserves the previous set for recovery.
-  Older tiles are incompatible: after updating, use -Redo world to rebuild.
+  Older tiles can still load, but to use the v0.9.0 park and road cleanup,
+  use -Redo world to rebuild them.
   There are no synthetic fallback floors, generic prop boxes or rail boxes.
   Glowing wheel models need a separately supplied CodeWalker installation;
   no CodeWalker is bundled. Keep the composition helper disabled and use

@@ -42,6 +42,15 @@ class PrivacyTests(unittest.TestCase):
             for prefix in (b"", b"!"):
                 result = scanner.scan_bytes(prefix + value.encode(encoding) + b"\x00\x01", self.rules)
                 self.assertIn("profile_path", result)
+        slash = chr(92)
+        spaced_unicode = "C:" + slash + "Users" + slash + "Rider Müller" + slash + "Videos" + slash + "capture.mp4"
+        self.assertIn("profile_path", scanner.scan_bytes(spaced_unicode.encode("utf-16-le"), self.rules))
+
+    def test_utf16_users_literal_does_not_join_unrelated_metadata(self):
+        # The real profile component starts with a letter/number/underscore;
+        # a leading combining mark is metadata, not a plausible username.
+        decoy = b"!" + ("/users/\u0301abcdef\x00").encode("utf-16-le")
+        self.assertNotIn("profile_path", scanner.scan_bytes(decoy, self.rules))
 
     def test_reviewed_exception_binds_path_hash_and_class(self):
         data = sample_profile_path().encode()
@@ -92,6 +101,11 @@ class PrivacyTests(unittest.TestCase):
         result = scanner.scan_bytes(("ghp_" + "a" * 36 + "\n" + key_header).encode(), self.rules)
         self.assertEqual(set(result), {"access_token", "private_key"})
 
+    def test_openai_token_shape_does_not_match_locale_table(self):
+        locale_table = "af-NA af-ZA am-ET ar-AE as-IN az-AZ be-BY bg-BG bn-BD ca-ES cs-CZ da-DK de-DE el-GR en-US es-ES et-EE eu-ES fa-IR fi-FI fil-PH fr-FR ga-IE gl-ES gu-IN he-IL hi-IN hr-HR hu-HU hy-AM id-ID is-IS it-IT ja-JP kk-KZ km-KH kn-IN ko-KR lo-LA lt-LT lv-LV mk-MK ml-IN mn-MN mr-IN ms-MY mt-MT my-MM nb-NO ne-NP nl-NL nn-NO pa-IN pl-PL pt-BR ro-RO ru-RU sk-SK sl-SI sq-AL sr-RS sv-SE sw-KE ta-IN te-IN th-TH tr-TR uk-UA ur-PK uz-UZ vi-VN zh-CN"
+        self.assertNotIn("access_token", scanner.scan_bytes(locale_table.encode(), self.rules))
+        self.assertIn("access_token", scanner.scan_bytes(("sk-proj-" + "A_" * 24).encode(), self.rules))
+
     def test_generic_game_path(self):
         value = "\\".join(("D:", "Games", "Example")).encode()
         self.assertIn("game_install_path", scanner.scan_bytes(value, self.rules))
@@ -120,6 +134,72 @@ class PrivacyTests(unittest.TestCase):
             classes = {kind for item in findings for kind in item["classes"]}
             self.assertEqual(classes, {"profile_path", "unsafe_archive_path", "debug_symbols", "retail_game_payload"})
             self.assertNotIn("SyntheticPerson", json.dumps(findings))
+
+    def test_binary_pk_signature_false_positive_still_scans_raw_bytes(self):
+        # A managed DLL may contain PK signatures without being an extractable
+        # nested archive. Keep raw-byte privacy checks while rejecting bad .zip files.
+        with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parents[1] / "_test") as directory:
+            payload = io.BytesIO()
+            with zipfile.ZipFile(payload, "w") as archive:
+                archive.writestr("payload.txt", "safe")
+            malformed = bytearray(payload.getvalue())
+            malformed[-6:-2] = (0x7FFFFFFF).to_bytes(4, "little")
+            self.assertTrue(zipfile.is_zipfile(io.BytesIO(malformed)))
+            dll = Path(directory) / "runtime.dll"
+            dll.write_bytes(malformed + sample_profile_path().encode())
+            findings = scanner.scan_path(dll, self.rules)
+            self.assertEqual(findings[0]["classes"], {"unreadable_archive_candidate": 1, "profile_path": 1})
+
+            bad_zip = Path(directory) / "broken.zip"
+            bad_zip.write_bytes(malformed)
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(scanner.main(["--path", str(bad_zip)]), 2)
+
+            folder_zip = Path(directory) / "folder-broken.zip"
+            folder_zip.write_bytes(b"not a zip")
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(scanner.main(["--path", str(folder_zip)]), 2)
+
+            unsupported = bytearray(payload.getvalue())
+            local_header = unsupported.find(b"PK\x03\x04")
+            central_header = unsupported.find(b"PK\x01\x02")
+            self.assertGreaterEqual(local_header, 0)
+            self.assertGreaterEqual(central_header, 0)
+            unsupported[local_header + 8:local_header + 10] = (99).to_bytes(2, "little")
+            unsupported[central_header + 10:central_header + 12] = (99).to_bytes(2, "little")
+            unsupported_zip = Path(directory) / "unsupported-method.zip"
+            unsupported_zip.write_bytes(unsupported)
+            with redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(scanner.main(["--path", str(unsupported_zip)]), 2)
+            self.assertNotIn("Traceback", output.getvalue())
+
+    def test_nested_archives_and_archive_named_dll(self):
+        with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parents[1] / "_test") as directory:
+            root = Path(directory)
+            inner = io.BytesIO()
+            with zipfile.ZipFile(inner, "w") as archive:
+                # Nested payloads are not treated as scanned just because their
+                # compressed outer bytes were inspected.
+                archive.writestr("private.txt", sample_profile_path())
+            nested = root / "outer.zip"
+            with zipfile.ZipFile(nested, "w") as archive:
+                archive.writestr("nested.dll", inner.getvalue())
+            findings = scanner.scan_path(nested, self.rules)
+            self.assertIn("nested_archive_requires_separate_scan", {kind for item in findings for kind in item["classes"]})
+
+            malformed = bytearray(inner.getvalue())
+            malformed[-6:-2] = (0x7FFFFFFF).to_bytes(4, "little")
+            bad_nested = root / "bad-nested.zip"
+            with zipfile.ZipFile(bad_nested, "w") as archive:
+                archive.writestr("inner.zip", malformed)
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(scanner.main(["--path", str(bad_nested)]), 2)
+
+            dll = root / "false-positive.zip"
+            with zipfile.ZipFile(dll, "w") as archive:
+                archive.writestr("runtime.dll", malformed + sample_profile_path().encode())
+            findings = scanner.scan_path(dll, self.rules)
+            self.assertIn("profile_path", {kind for item in findings for kind in item["classes"]})
 
     def test_directory_and_exit_status(self):
         with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parents[1] / "_test") as directory:
